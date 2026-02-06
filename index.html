@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DXF Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --bg-panel: #161822;
+      --bg-card: #1c1f2e;
+      --bg-hover: #232738;
+      --bg-active: #2a2f45;
+      --border: rgba(255,255,255,0.06);
+      --border-light: rgba(255,255,255,0.1);
+      --text: #e1e4ed;
+      --text-dim: #6b7194;
+      --text-muted: #454b6b;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-glow: rgba(99,102,241,0.15);
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.12);
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --cyan: #06b6d4;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+      --radius: 8px;
+      --radius-sm: 5px;
+    }
+    html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow: hidden; -webkit-font-smoothing: antialiased; }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ─── Toolbar ─── */
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; height: 46px;
+    }
+    .toolbar .logo {
+      font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px;
+      margin-right: 8px; white-space: nowrap;
+    }
+    .toolbar .logo span { color: var(--text-dim); font-weight: 400; }
+    .tb-btn {
+      background: transparent; border: 1px solid var(--border-light); color: var(--text-dim);
+      padding: 5px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
+      font-family: var(--font); font-weight: 500; transition: all 0.15s; display: flex; align-items: center; gap: 5px;
+      white-space: nowrap;
+    }
+    .tb-btn:hover { background: var(--bg-hover); color: var(--text); border-color: rgba(255,255,255,0.15); }
+    .tb-btn:active { background: var(--bg-active); transform: scale(0.97); }
+    .tb-btn.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent-hover); }
+    .tb-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .tb-sep { width: 1px; height: 22px; background: var(--border-light); margin: 0 4px; flex-shrink: 0; }
+
+    /* ─── Cutting badge ─── */
+    .cut-badge {
+      display: none; align-items: center; gap: 14px; margin-left: 6px;
+      background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius);
+      padding: 4px 14px; height: 32px;
+    }
+    .cut-badge.visible { display: flex; }
+    .cut-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+    .cut-item svg { width: 13px; height: 13px; stroke: var(--green); fill: none; stroke-width: 2.2; }
+    .cut-val { font-family: var(--mono); font-weight: 600; font-size: 13px; color: var(--green); }
+    .cut-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); }
+
+    /* ─── Pierce toggle ─── */
+    .pierce-toggle {
+      display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim);
+      cursor: pointer; user-select: none; padding: 5px 8px; border-radius: var(--radius-sm);
+      border: 1px solid transparent; transition: all 0.15s;
+    }
+    .pierce-toggle:hover { background: var(--bg-hover); }
+    .pierce-toggle.on { background: var(--green-dim); color: var(--green); border-color: rgba(34,197,94,0.25); }
+    .pierce-toggle input { display: none; }
+    .pierce-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor; transition: all 0.15s; }
+    .pierce-toggle.on .pierce-dot { background: var(--green); border-color: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+
+    .tb-spacer { flex: 1; }
+    .tb-filename {
+      font-size: 12px; color: var(--text-muted); font-family: var(--mono); font-weight: 400;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;
+    }
+    .tb-stats { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+    /* ─── Main area ─── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ─── Sidebar ─── */
+    .sidebar {
+      width: 240px; min-width: 200px; background: var(--bg-panel);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .sidebar.hidden { display: none; }
+    .sidebar-header {
+      padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+      color: var(--text-muted); border-bottom: 1px solid var(--border); letter-spacing: 0.8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-add-btn {
+      background: transparent; border: 1px solid var(--border-light); color: var(--text-dim);
+      width: 22px; height: 22px; border-radius: 4px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all 0.15s;
+    }
+    .sidebar-add-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+    .file-list { flex: 1; overflow-y: auto; padding: 4px 6px; }
+    .file-list::-webkit-scrollbar { width: 4px; }
+    .file-list::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 2px; }
+    .file-list-empty {
+      padding: 24px 14px; text-align: center; font-size: 12px; color: var(--text-muted);
+    }
+    .file-item {
+      display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+      cursor: pointer; font-size: 12px; transition: all 0.1s; border-radius: var(--radius-sm);
+      color: var(--text-dim); position: relative;
+    }
+    .file-item:hover { background: var(--bg-hover); color: var(--text); }
+    .file-item.active { background: var(--bg-active); color: var(--text); }
+    .file-item input[type=checkbox] {
+      accent-color: var(--green); cursor: pointer; flex-shrink: 0;
+      width: 14px; height: 14px;
+    }
+    .file-item-icon {
+      width: 14px; height: 14px; color: var(--accent); flex-shrink: 0;
+    }
+    .file-item-name {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;
+    }
+    .file-item-info {
+      font-size: 10px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap;
+    }
+    .file-item-remove {
+      opacity: 0; width: 16px; height: 16px; background: transparent; border: none;
+      color: var(--red); cursor: pointer; display: flex; align-items: center;
+      justify-content: center; border-radius: 3px; transition: all 0.15s; flex-shrink: 0;
+    }
+    .file-item:hover .file-item-remove { opacity: 0.6; }
+    .file-item-remove:hover { opacity: 1 !important; background: rgba(239,68,68,0.15); }
+
+    /* ─── Canvas area ─── */
+    .canvas-container { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+    .canvas-container canvas { display: block; width: 100%; height: 100%; }
+
+    /* ─── Inspector ─── */
+    .inspector {
+      width: 280px; min-width: 220px; background: var(--bg-panel);
+      border-left: 1px solid var(--border); overflow-y: auto; flex-shrink: 0;
+    }
+    .inspector.hidden { display: none; }
+    .inspector::-webkit-scrollbar { width: 4px; }
+    .inspector::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 2px; }
+    .inspector-header {
+      padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+      color: var(--text-muted); border-bottom: 1px solid var(--border); letter-spacing: 0.8px;
+    }
+    .inspector-content { padding: 10px 14px; }
+    .prop-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+    .prop-label { color: var(--text-dim); font-weight: 500; }
+    .prop-value { color: var(--text); font-family: var(--mono); font-size: 11px; text-align: right; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ─── Nesting panel ─── */
+    .nesting-panel {
+      width: 280px; min-width: 240px; background: var(--bg-panel);
+      border-left: 1px solid var(--border); overflow-y: auto; flex-shrink: 0;
+      display: flex; flex-direction: column;
+    }
+    .nesting-panel.hidden { display: none; }
+    .nesting-panel::-webkit-scrollbar { width: 4px; }
+    .nesting-panel::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 2px; }
+    .np-header {
+      padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+      color: var(--text-muted); border-bottom: 1px solid var(--border); letter-spacing: 0.8px;
+    }
+    .np-section { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .np-label { font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .np-select {
+      width: 100%; background: var(--bg-card); border: 1px solid var(--border-light);
+      color: var(--text); padding: 6px 8px; border-radius: var(--radius-sm); font-size: 12px;
+      font-family: var(--font); cursor: pointer; outline: none;
+    }
+    .np-select:focus { border-color: var(--accent); }
+    .np-select option { background: var(--bg-panel); color: var(--text); }
+    .np-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    .np-input {
+      flex: 1; background: var(--bg-card); border: 1px solid var(--border-light);
+      color: var(--text); padding: 5px 8px; border-radius: var(--radius-sm); font-size: 12px;
+      font-family: var(--mono); outline: none; width: 0;
+    }
+    .np-input:focus { border-color: var(--accent); }
+    .np-input-sm { max-width: 70px; }
+    .np-x { color: var(--text-muted); font-size: 12px; }
+    .np-unit { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+    .np-items { display: flex; flex-direction: column; gap: 4px; }
+    .np-items-empty { font-size: 12px; color: var(--text-muted); padding: 8px 0; }
+    .np-item-row {
+      display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px;
+    }
+    .np-item-name { flex: 1; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .np-item-size { color: var(--text-muted); font-family: var(--mono); font-size: 10px; white-space: nowrap; }
+    .np-item-qty {
+      width: 48px; background: var(--bg-card); border: 1px solid var(--border-light);
+      color: var(--text); padding: 3px 6px; border-radius: 4px; font-size: 12px;
+      font-family: var(--mono); text-align: center; outline: none;
+    }
+    .np-item-qty:focus { border-color: var(--accent); }
+    .np-qty-btn {
+      background: var(--bg-card); border: 1px solid var(--border-light); color: var(--text-dim);
+      padding: 2px 6px; border-radius: 4px; font-size: 10px; font-family: var(--mono);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+    }
+    .np-qty-btn:hover { background: var(--bg-hover); color: var(--text); }
+    .np-qty-rst {
+      background: none; border: 1px solid transparent; color: var(--text-muted);
+      padding: 2px 4px; border-radius: 4px; font-size: 12px; cursor: pointer;
+      transition: all 0.15s; flex-shrink: 0; line-height: 1;
+    }
+    .np-qty-rst:hover { color: var(--accent-hover); border-color: var(--border-light); }
+    .np-run-btn {
+      margin: 12px 14px; padding: 8px 16px; background: var(--accent); color: white;
+      border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600;
+      font-family: var(--font); cursor: pointer; transition: all 0.15s;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+    }
+    .np-run-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .np-run-btn:active { transform: scale(0.98); }
+    .np-results { padding: 10px 14px; }
+    .np-result-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .np-card {
+      flex: 1; background: var(--bg-card); border: 1px solid var(--border-light);
+      border-radius: var(--radius); padding: 10px; text-align: center;
+    }
+    .np-card-val { font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--green); }
+    .np-card-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .np-result-summary { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+    .np-sheet-nav {
+      display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 0;
+    }
+    .np-sheet-nav.hidden { display: none; }
+    .np-nav-btn {
+      background: var(--bg-card); border: 1px solid var(--border-light); color: var(--text-dim);
+      width: 28px; height: 28px; border-radius: var(--radius-sm); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 14px;
+      transition: all 0.15s;
+    }
+    .np-nav-btn:hover { background: var(--bg-hover); color: var(--text); }
+    #nest-sheet-label { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+
+    /* ─── Nesting canvas overlay ─── */
+    #nesting-scroll {
+      position: absolute; inset: 0; z-index: 10;
+      display: none; background: var(--bg); overflow-y: auto; overflow-x: hidden;
+    }
+    #nesting-scroll.visible { display: block; }
+    #nesting-scroll::-webkit-scrollbar { width: 6px; }
+    #nesting-scroll::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 3px; }
+    #nesting-canvas { display: block; }
+    .nest-close {
+      position: sticky; top: 8px; float: right; margin: 8px 12px 0 0; z-index: 11;
+      background: var(--bg-card); border: 1px solid var(--border-light); color: var(--text-dim);
+      width: 32px; height: 32px; border-radius: var(--radius); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .nest-close:hover { background: var(--bg-hover); color: var(--text); }
+    .nest-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .nest-zoom-popup {
+      position: fixed; z-index: 200;
+      background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      padding: 8px; display: none;
+    }
+    .nest-zoom-popup.visible { display: block; }
+    .nest-zoom-popup canvas { display: block; border-radius: 4px; cursor: grab; }
+    .nest-zoom-popup canvas:active { cursor: grabbing; }
+    .nest-zoom-label {
+      font-size: 11px; color: var(--text-dim); font-family: var(--mono);
+      text-align: center; margin-top: 4px; user-select: none;
+    }
+
+    /* ─── Drop overlay ─── */
+    .drop-overlay {
+      position: absolute; inset: 0; background: rgba(99,102,241,0.08);
+      border: 2px dashed var(--accent); border-radius: 12px; margin: 12px;
+      display: none; z-index: 100; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 500; color: var(--accent-hover); backdrop-filter: blur(4px);
+    }
+    .drop-overlay.active { display: flex; }
+
+    /* ─── Welcome ─── */
+    .welcome {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px; color: var(--text-dim);
+    }
+    .welcome.hidden { display: none; }
+    .welcome-icon { width: 64px; height: 64px; color: var(--text-muted); opacity: 0.4; }
+    .welcome h2 { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -0.5px; }
+    .welcome p { font-size: 13px; color: var(--text-dim); }
+    .welcome button {
+      background: var(--accent); color: white; border: none; padding: 10px 32px;
+      border-radius: var(--radius); font-size: 13px; font-weight: 600; font-family: var(--font);
+      cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 12px rgba(99,102,241,0.3);
+    }
+    .welcome button:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(99,102,241,0.4); }
+    .welcome-hint { font-size: 11px; color: var(--text-muted); margin-top: -8px; }
+
+    /* ─── Progress ─── */
+    .progress-bar { position: absolute; top: 0; left: 0; right: 0; height: 22px; z-index: 50; display: flex; align-items: center; }
+    .progress-bar.hidden { display: none; }
+    .progress-fill { position: absolute; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--cyan)); transition: width 0.2s; border-radius: 0 1px 1px 0; }
+    .progress-label {
+      position: relative; z-index: 1; padding: 0 12px; font-size: 11px;
+      color: var(--accent-hover); font-family: var(--mono); white-space: nowrap;
+    }
+
+    /* ─── Statusbar ─── */
+    .statusbar {
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 14px; background: var(--bg-panel); border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--text-muted); flex-shrink: 0; height: 24px;
+      font-family: var(--mono);
+    }
+    .statusbar span { white-space: nowrap; }
+    .sb-accent { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="logo">DXF<span>viewer</span></div>
+      <div class="tb-sep"></div>
+
+      <button class="tb-btn" id="btn-open" title="Открыть файл (Ctrl+O)">
+        <svg viewBox="0 0 24 24"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h4a2 2 0 0 1 2 2v1"/><path d="M20 19H9a2 2 0 0 1-2-2l1.5-6A2 2 0 0 1 10.5 9H21l-2 8a2 2 0 0 1-2 2z"/></svg>
+        Открыть
+      </button>
+      <button class="tb-btn" id="btn-fit" title="Вписать в экран (F)">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg>
+        Вписать
+      </button>
+
+      <div class="tb-sep"></div>
+
+      <button class="tb-btn" id="btn-inspector" title="Инспектор свойств">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        Свойства
+      </button>
+      <button class="tb-btn" id="btn-nesting" title="Раскладка на лист">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" fill="none"/><rect x="5" y="5" width="6" height="8" rx="0.5" fill="none"/><rect x="13" y="5" width="6" height="5" rx="0.5" fill="none"/><rect x="5" y="15" width="4" height="4" rx="0.5" fill="none"/><rect x="13" y="12" width="6" height="7" rx="0.5" fill="none"/></svg>
+        Раскладка
+      </button>
+      <button class="tb-btn" id="btn-grid" title="Сетка (G)">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      </button>
+
+      <div class="tb-sep"></div>
+
+      <label class="pierce-toggle" id="pierce-toggle" title="Показать точки врезки">
+        <input type="checkbox" id="chk-pierces" />
+        <span class="pierce-dot"></span>
+        Врезки
+      </label>
+
+      <!-- Cutting info badge -->
+      <div class="cut-badge" id="cutting-info">
+        <div class="cut-item">
+          <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          <span class="cut-val" id="ci-pierces">0</span>
+        </div>
+        <div class="cut-dot"></div>
+        <div class="cut-item">
+          <svg viewBox="0 0 24 24"><path d="M2 12h20"/><path d="M6 8l-4 4 4 4"/><path d="M18 8l4 4-4 4"/></svg>
+          <span class="cut-val" id="ci-length">0</span>
+        </div>
+      </div>
+
+      <div class="tb-spacer"></div>
+      <span class="tb-stats" id="stats"></span>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+      <!-- Sidebar: Files -->
+      <div class="sidebar" id="sidebar-files">
+        <div class="sidebar-header">
+          <span>Файлы</span>
+          <button class="sidebar-add-btn" id="btn-add-files" title="Добавить файлы">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div class="file-list" id="file-list">
+          <div class="file-list-empty" id="file-list-empty">Нет файлов</div>
+        </div>
+      </div>
+
+      <!-- Canvas -->
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="dxf-canvas"></canvas>
+        <div id="nesting-scroll">
+          <button class="nest-close" id="nest-close" title="Закрыть раскладку">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <canvas id="nesting-canvas"></canvas>
+        </div>
+        <div class="nest-zoom-popup" id="nest-zoom-popup">
+          <canvas id="nest-zoom-canvas"></canvas>
+          <div class="nest-zoom-label" id="nest-zoom-label"></div>
+        </div>
+        <div class="drop-overlay" id="drop-overlay">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Перетащите DXF файл сюда
+        </div>
+        <div class="welcome" id="welcome">
+          <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          <h2>DXF Viewer</h2>
+          <p>Просмотр чертежей с анализом лазерной резки</p>
+          <button id="btn-welcome-open">Открыть файл</button>
+          <span class="welcome-hint">или перетащите .dxf в окно</span>
+        </div>
+        <div class="progress-bar hidden" id="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+          <span class="progress-label" id="progress-label"></span>
+        </div>
+      </div>
+
+      <!-- Inspector -->
+      <div class="inspector hidden" id="sidebar-inspector">
+        <div class="inspector-header">Свойства</div>
+        <div class="inspector-content" id="inspector-content">
+          <p style="color: var(--text-muted); font-size: 12px;">Кликните на объект</p>
+        </div>
+      </div>
+
+      <!-- Nesting panel -->
+      <div class="nesting-panel hidden" id="nesting-panel">
+        <div class="np-header">Раскладка</div>
+
+        <div class="np-section">
+          <div class="np-label">Лист металла</div>
+          <select class="np-select" id="nest-preset">
+            <option value="0">1000 × 2000</option>
+            <option value="1" selected>1250 × 2500</option>
+            <option value="2">1500 × 3000</option>
+            <option value="3">1500 × 6000</option>
+            <option value="4">2000 × 6000</option>
+            <option value="custom">Свой размер...</option>
+          </select>
+          <div class="np-row np-custom-size hidden" id="nest-custom-row">
+            <input type="number" class="np-input" id="nest-w" placeholder="Ширина" min="1" value="1250" />
+            <span class="np-x">×</span>
+            <input type="number" class="np-input" id="nest-h" placeholder="Высота" min="1" value="2500" />
+            <span class="np-unit">мм</span>
+          </div>
+        </div>
+
+        <div class="np-section">
+          <div class="np-label">Зазор между деталями</div>
+          <div class="np-row">
+            <input type="number" class="np-input np-input-sm" id="nest-gap" min="0" value="5" step="1" />
+            <span class="np-unit">мм</span>
+          </div>
+        </div>
+
+        <div class="np-section">
+          <div class="np-label">Детали и количество</div>
+          <div id="nest-items" class="np-items"></div>
+          <div class="np-items-empty" id="nest-items-empty">Отметьте файлы в списке</div>
+        </div>
+
+        <button class="np-run-btn" id="btn-nest-run">Разложить</button>
+
+        <div class="np-results hidden" id="nest-results">
+          <div class="np-label">Результат</div>
+          <div class="np-result-cards" id="nest-result-cards"></div>
+          <div class="np-result-summary" id="nest-result-summary"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statusbar -->
+    <div class="statusbar">
+      <span id="status-coords">X: 0.00 &nbsp; Y: 0.00</span>
+      <span id="status-zoom">100%</span>
+      <span id="status-entities"></span>
+      <span class="sb-accent" id="status-pierces"></span>
+      <span class="sb-accent" id="status-cutlength"></span>
+      <span style="margin-left:auto" id="status-version"></span>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept=".dxf" multiple style="display:none" />
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
