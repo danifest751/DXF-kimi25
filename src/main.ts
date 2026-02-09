@@ -80,6 +80,8 @@ const nestClose = document.getElementById('nest-close') as HTMLButtonElement;
 const nestZoomPopup = document.getElementById('nest-zoom-popup') as HTMLDivElement;
 const nestZoomCanvas = document.getElementById('nest-zoom-canvas') as HTMLCanvasElement;
 const nestZoomLabel = document.getElementById('nest-zoom-label') as HTMLDivElement;
+const mobileBackdrop = document.getElementById('mobile-backdrop') as HTMLDivElement;
+const sidebarFiles = document.getElementById('sidebar-files') as HTMLDivElement;
 
 // ─── Состояние ──────────────────────────────────────────────────────
 
@@ -1016,12 +1018,62 @@ nestingScroll.addEventListener('mouseleave', () => {
   if (!zoomPopupLocked) scheduleHideZoomPopup();
 });
 
+// ─── Адаптивность (мобильные панели) ─────────────────────────────────
+
+function isMobile(): boolean { return window.innerWidth <= 768; }
+
+function closeMobilePanels(): void {
+  sidebarFiles.classList.remove('mobile-open');
+  sidebarInspector.classList.remove('mobile-open');
+  nestingPanel.classList.remove('mobile-open');
+  mobileBackdrop.classList.remove('active');
+}
+
+function openMobilePanel(panel: HTMLElement): void {
+  closeMobilePanels();
+  panel.classList.add('mobile-open');
+  mobileBackdrop.classList.add('active');
+}
+
+mobileBackdrop.addEventListener('click', closeMobilePanels);
+
+// Поведение кнопок для мобильных
+btnInspector.addEventListener('click', () => {
+  if (isMobile()) {
+    const isOpen = sidebarInspector.classList.contains('mobile-open');
+    closeMobilePanels();
+    if (!isOpen) openMobilePanel(sidebarInspector);
+  }
+});
+
+btnNesting.addEventListener('click', () => {
+  if (isMobile()) {
+    const isOpen = nestingPanel.classList.contains('mobile-open');
+    closeMobilePanels();
+    if (!isOpen) openMobilePanel(nestingPanel);
+  }
+});
+
+// Тап по логотипу — открыть/закрыть sidebar файлов на мобильных
+document.querySelector('.toolbar .logo')?.addEventListener('click', () => {
+  if (!isMobile()) return;
+  const isOpen = sidebarFiles.classList.contains('mobile-open');
+  closeMobilePanels();
+  if (!isOpen) openMobilePanel(sidebarFiles);
+});
+
+// Закрываем панели при resize на десктоп
+window.addEventListener('resize', () => {
+  if (!isMobile()) closeMobilePanels();
+});
+
 // ─── Клавиатура ─────────────────────────────────────────────────────
 
 window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); openFileDialog(); return; }
   if (e.key === 'f' || e.key === 'F') { renderer.zoomToFit(); updateStatusBar(); }
   if (e.key === 'Escape') {
+    if (isMobile() && mobileBackdrop.classList.contains('active')) { closeMobilePanels(); return; }
     if (nestingMode) { exitNestingMode(); }
     else { renderer.clearSelection(); clearInspector(); }
   }
