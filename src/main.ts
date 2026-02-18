@@ -13,6 +13,7 @@ import { computeCuttingStats, formatCutLength } from './core/cutting/index.js';
 import type { CuttingStats } from './core/cutting/index.js';
 import { nestItems, SHEET_PRESETS } from './core/nesting/index.js';
 import type { NestingResult } from './core/nesting/index.js';
+import { exportNestingToDXF, exportNestingToCSV } from './core/export/index.js';
 import type { NormalizedDocument, FlattenedEntity } from './core/normalize/index.js';
 import type { Color, Point3D } from './core/types/index.js';
 
@@ -74,6 +75,9 @@ const btnNestRun = document.getElementById('btn-nest-run') as HTMLButtonElement;
 const nestResults = document.getElementById('nest-results') as HTMLDivElement;
 const nestResultCards = document.getElementById('nest-result-cards') as HTMLDivElement;
 const nestResultSummary = document.getElementById('nest-result-summary') as HTMLDivElement;
+const btnExportDXF = document.getElementById('btn-export-dxf') as HTMLButtonElement;
+const btnExportCSV = document.getElementById('btn-export-csv') as HTMLButtonElement;
+const btnExport = document.getElementById('btn-export') as HTMLButtonElement;
 const nestingScroll = document.getElementById('nesting-scroll') as HTMLDivElement;
 const nestingCanvas = document.getElementById('nesting-canvas') as HTMLCanvasElement;
 const nestClose = document.getElementById('nest-close') as HTMLButtonElement;
@@ -444,6 +448,39 @@ nestPreset.addEventListener('change', () => {
 
 btnNestRun.addEventListener('click', runNesting);
 
+// ─── Экспорт ────────────────────────────────────────────────────────
+
+function downloadFile(content: string, fileName: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+btnExportDXF.addEventListener('click', () => {
+  if (!currentNestResult) return;
+  const dxf = exportNestingToDXF({ nestingResult: currentNestResult });
+  downloadFile(dxf, 'nesting.dxf', 'application/dxf');
+});
+
+btnExportCSV.addEventListener('click', () => {
+  if (!currentNestResult) return;
+  const csv = exportNestingToCSV({ nestingResult: currentNestResult, fileName: 'nesting' });
+  downloadFile(csv, 'nesting.csv', 'text/csv');
+});
+
+btnExport.addEventListener('click', () => {
+  if (!currentNestResult) return;
+  // Экспорт DXF по умолчанию
+  const dxf = exportNestingToDXF({ nestingResult: currentNestResult });
+  downloadFile(dxf, 'nesting.dxf', 'application/dxf');
+});
+
 
 function updateNestItems(): void {
   const checked = loadedFiles.filter(f => f.checked);
@@ -532,6 +569,11 @@ function showNestResults(): void {
 
   nestResultSummary.textContent = `Размещено ${r.totalPlaced} из ${r.totalRequired} деталей`;
   nestResults.classList.remove('hidden');
+  
+  // Показываем кнопки экспорта
+  btnExportDXF.style.display = 'flex';
+  btnExportCSV.style.display = 'flex';
+  btnExport.style.display = 'flex';
 }
 
 function enterNestingMode(): void {

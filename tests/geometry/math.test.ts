@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
   pt2, addPt2, subPt2, scalePt2, distPt2, lenPt2,
   pt3, addPt3, subPt3, scalePt3, distPt3, lenPt3,
@@ -10,7 +10,7 @@ import {
   buildInsertMatrix, ocsToWcsMatrix,
   normalizeAngle, lerp, lerpPt3, clamp,
   DEG2RAD, RAD2DEG, EPSILON,
-} from '@core/geometry/math';
+} from '../../src/core/geometry/math.js';
 
 describe('Point2D operations', () => {
   it('pt2 creates a 2D point', () => {

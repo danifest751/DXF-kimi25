@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { computeCuttingStats, formatCutLength } from '@core/cutting/index';
-import { DXFEntityType } from '@core/types/index';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { computeCuttingStats, formatCutLength } from '../../src/core/cutting/index.js';
+import { DXFEntityType } from '../../src/core/types/index.js';
 import type {
   DXFLineEntity,
   DXFCircleEntity,
@@ -10,9 +10,9 @@ import type {
   DXFDocument,
   DXFMetadata,
   BoundingBox,
-} from '@core/types/index';
-import { normalizeDocument } from '@core/normalize/index';
-import { IDENTITY_MATRIX } from '@core/geometry/math';
+} from '../../src/core/types/index.js';
+import { normalizeDocument } from '../../src/core/normalize/index.js';
+import { IDENTITY_MATRIX } from '../../src/core/geometry/math.js';
 
 function makeBase(type: DXFEntityType) {
   return {

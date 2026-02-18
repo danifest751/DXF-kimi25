@@ -15,3 +15,5 @@ export { computeCuttingStats, formatCutLength } from './cutting/index.js';
 export type { CuttingStats, ChainInfo, LayerCutStats } from './cutting/index.js';
 export { nestItems, SHEET_PRESETS } from './nesting/index.js';
 export type { SheetSize, SheetPreset, NestingItem, PlacedItem, NestingSheet, NestingResult } from './nesting/index.js';
+export { exportResults, exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from './export/index.js';
+export type { ExportFormat, ExportOptions, ExportDXFOptions, ExportCuttingStatsOptions, ExportNestingCSVOptions } from './export/index.js';

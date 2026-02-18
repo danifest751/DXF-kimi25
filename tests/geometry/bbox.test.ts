@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { computeEntityBBox, mergeBBox, computeAllBBoxes } from '@core/geometry/bbox';
-import { DXFEntityType } from '@core/types/index';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { computeEntityBBox, mergeBBox, computeAllBBoxes } from '../../src/core/geometry/bbox.js';
+import { DXFEntityType } from '../../src/core/types/index.js';
 import type {
   DXFLineEntity,
   DXFCircleEntity,
@@ -10,7 +10,7 @@ import type {
   DXFLWPolylineEntity,
   DXFTextEntity,
   DXFEntity,
-} from '@core/types/index';
+} from '../../src/core/types/index.js';
 
 function makeBase(type: DXFEntityType) {
   return {

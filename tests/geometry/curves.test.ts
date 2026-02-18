@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
   tessellateArc,
   tessellateCircle,
@@ -6,7 +6,7 @@ import {
   tessellateSpline,
   tessellateBulge,
   tessellateLWPolyline,
-} from '@core/geometry/curves';
+} from '../../src/core/geometry/curves.js';
 
 describe('tessellateArc', () => {
   it('returns correct number of points', () => {
