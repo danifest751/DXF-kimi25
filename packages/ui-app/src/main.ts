@@ -37,6 +37,8 @@ interface UICuttingStats {
   readonly chains: readonly UICuttingChain[];
 }
 
+type ComputeMode = 'api' | 'local';
+
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
 async function apiPostJSON<T>(path: string, payload: unknown): Promise<T> {
@@ -150,6 +152,28 @@ let nestingMode = false;
 let currentNestResult: NestingResult | null = null;
 let nestCellRects: { x: number; y: number; w: number; h: number; si: number }[] = [];
 let nestHoveredSheet = -1;
+let cuttingComputeMode: ComputeMode = 'api';
+let nestingComputeMode: ComputeMode = 'api';
+
+const modeBadge = document.createElement('div');
+modeBadge.style.position = 'fixed';
+modeBadge.style.right = '12px';
+modeBadge.style.bottom = '12px';
+modeBadge.style.padding = '6px 10px';
+modeBadge.style.borderRadius = '8px';
+modeBadge.style.font = '500 11px/1.2 system-ui, sans-serif';
+modeBadge.style.color = '#e5e7eb';
+modeBadge.style.background = 'rgba(17, 24, 39, 0.85)';
+modeBadge.style.border = '1px solid rgba(229, 231, 235, 0.2)';
+modeBadge.style.backdropFilter = 'blur(4px)';
+modeBadge.style.zIndex = '9999';
+
+function updateModeBadge(): void {
+  modeBadge.textContent = `Mode: cutting ${cuttingComputeMode.toUpperCase()} | nesting ${nestingComputeMode.toUpperCase()}`;
+}
+
+updateModeBadge();
+document.body.appendChild(modeBadge);
 
 // ─── Загрузка файлов ────────────────────────────────────────────────
 
@@ -198,6 +222,8 @@ async function loadSingleFile(file: File): Promise<void> {
         base64,
       });
       stats = cuttingRes.data;
+      cuttingComputeMode = 'api';
+      updateModeBadge();
     } catch {
       const localStats = computeCuttingStats(result.document);
       stats = {
@@ -206,6 +232,8 @@ async function loadSingleFile(file: File): Promise<void> {
         cuttingEntityCount: localStats.cuttingEntityCount,
         chains: localStats.chains,
       };
+      cuttingComputeMode = 'local';
+      updateModeBadge();
     }
 
     const entry: LoadedFile = {
@@ -620,8 +648,12 @@ async function runNesting(): Promise<void> {
   try {
     const response = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', { items, sheet, gap });
     currentNestResult = response.data;
+    nestingComputeMode = 'api';
+    updateModeBadge();
   } catch {
     currentNestResult = nestItems(items, sheet, gap);
+    nestingComputeMode = 'local';
+    updateModeBadge();
   }
 
   showNestResults();
