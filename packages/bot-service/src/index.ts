@@ -117,12 +117,15 @@ async function telegramSendMessageWithKeyboard(
   chatId: number,
   text: string,
   keyboardRows: readonly (readonly { text: string; callback_data: string }[])[],
+  parseMode: 'HTML' | '' = '',
 ): Promise<void> {
-  await telegramGet(token, 'sendMessage', {
+  const params: Record<string, string> = {
     chat_id: String(chatId),
     text,
     reply_markup: JSON.stringify({ inline_keyboard: keyboardRows }),
-  });
+  };
+  if (parseMode) params.parse_mode = parseMode;
+  await telegramGet(token, 'sendMessage', params);
 }
 
 function setPixel(pixels: Uint8Array, width: number, height: number, x: number, y: number): void {
@@ -577,33 +580,44 @@ function formatSheetLabel(sheet: SheetSize): string {
   return `${sheet.width}x${sheet.height} мм`;
 }
 
-function buildMainMenuButtons(hasNesting: boolean): readonly (readonly { text: string; callback_data: string }[])[] {
+const MODE_LABELS: Record<PendingNestingContext['mode'], string> = {
+  fast: 'Быстро',
+  precise: 'Точно',
+  common: 'Точно + общий рез',
+};
+
+function buildMainMenuButtons(context: PendingNestingContext): readonly (readonly { text: string; callback_data: string }[])[] {
+  const m = context.mode;
+  const hasNesting = context.variants.length > 0;
   const rows: { text: string; callback_data: string }[][] = [
     [
-      { text: 'Статистика', callback_data: `${ACTION_CALLBACK_PREFIX}stats` },
-      { text: 'Превью DXF', callback_data: `${ACTION_CALLBACK_PREFIX}preview` },
+      { text: '📊 Статистика', callback_data: `${ACTION_CALLBACK_PREFIX}stats` },
+      { text: '🖼 Превью DXF', callback_data: `${ACTION_CALLBACK_PREFIX}preview` },
     ],
     [
-      { text: 'Количество', callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
-      { text: 'Размер листа', callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
+      { text: `🔢 Кол-во: ${context.quantity ?? '—'}`, callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
+      { text: `📐 Лист: ${context.sheet.width}×${context.sheet.height}`, callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
     ],
     [
-      { text: 'Режим: Быстро', callback_data: `${ACTION_CALLBACK_PREFIX}mode_fast` },
-      { text: 'Точно', callback_data: `${ACTION_CALLBACK_PREFIX}mode_precise` },
-      { text: 'Точно + общий рез', callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
+      { text: `📏 Зазор: ${context.gap} мм`, callback_data: `${ACTION_CALLBACK_PREFIX}set_gap` },
     ],
-    [{ text: 'Запустить раскладку', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` }],
+    [
+      { text: m === 'fast' ? '● Быстро' : 'Быстро', callback_data: `${ACTION_CALLBACK_PREFIX}mode_fast` },
+      { text: m === 'precise' ? '● Точно' : 'Точно', callback_data: `${ACTION_CALLBACK_PREFIX}mode_precise` },
+      { text: m === 'common' ? '● Общий рез' : 'Общий рез', callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
+    ],
+    [{ text: '▶️ Запустить раскладку', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` }],
   ];
 
   if (hasNesting) {
     rows.push([
-      { text: 'Экспорт DXF', callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
-      { text: 'Экспорт CSV', callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
+      { text: '📄 Экспорт DXF', callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
+      { text: '📋 Экспорт CSV', callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
     ]);
-    rows.push([{ text: 'Варианты раскладки', callback_data: `${ACTION_CALLBACK_PREFIX}variants` }]);
+    rows.push([{ text: '📂 Варианты раскладки', callback_data: `${ACTION_CALLBACK_PREFIX}variants` }]);
   }
 
-  rows.push([{ text: 'Сбросить набор', callback_data: `${ACTION_CALLBACK_PREFIX}reset` }]);
+  rows.push([{ text: '🗑 Сбросить набор', callback_data: `${ACTION_CALLBACK_PREFIX}reset_confirm` }]);
 
   return rows;
 }
@@ -614,9 +628,25 @@ function buildQuantityButtons(): readonly (readonly { text: string; callback_dat
       { text: '1', callback_data: `${QUANTITY_CALLBACK_PREFIX}1` },
       { text: '5', callback_data: `${QUANTITY_CALLBACK_PREFIX}5` },
       { text: '10', callback_data: `${QUANTITY_CALLBACK_PREFIX}10` },
-      { text: '20', callback_data: `${QUANTITY_CALLBACK_PREFIX}20` },
     ],
-    [{ text: 'Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }],
+    [
+      { text: '20', callback_data: `${QUANTITY_CALLBACK_PREFIX}20` },
+      { text: '50', callback_data: `${QUANTITY_CALLBACK_PREFIX}50` },
+      { text: '100', callback_data: `${QUANTITY_CALLBACK_PREFIX}100` },
+    ],
+    [{ text: '← Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }],
+  ];
+}
+
+function buildGapButtons(): readonly (readonly { text: string; callback_data: string }[])[] {
+  return [
+    [
+      { text: '0 мм', callback_data: `${ACTION_CALLBACK_PREFIX}gap_0` },
+      { text: '2 мм', callback_data: `${ACTION_CALLBACK_PREFIX}gap_2` },
+      { text: '5 мм', callback_data: `${ACTION_CALLBACK_PREFIX}gap_5` },
+      { text: '10 мм', callback_data: `${ACTION_CALLBACK_PREFIX}gap_10` },
+    ],
+    [{ text: '← Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }],
   ];
 }
 
@@ -650,20 +680,19 @@ function getPrimaryFileLabel(context: PendingNestingContext): string {
 function composeDashboardText(context: PendingNestingContext): string {
   const activeVariant = getActiveVariant(context);
   const lines = [
-    `Файлы: ${context.fileNames.length}`,
-    `Набор: ${getPrimaryFileLabel(context)}`,
-    `Врезок: ${context.summary.totalPierces}`,
-    `Длина реза: ${formatCutLength(context.summary.totalCutLength, 'm')}`,
-    `Контуров/деталей: ${context.items.length}`,
-    `Количество: ${context.quantity ?? 'не задано'}`,
-    `Лист: ${formatSheetLabel(context.sheet)}`,
-    `Зазор: ${context.gap} мм (по умолчанию)`,
-    `Режим: ${context.mode}`,
+    `<b>Набор:</b> ${getPrimaryFileLabel(context)} (${context.fileNames.length} файл.)`,
+    `<b>Врезок:</b> ${context.summary.totalPierces}`,
+    `<b>Длина реза:</b> ${formatCutLength(context.summary.totalCutLength, 'm')}`,
+    `<b>Деталей:</b> ${context.items.length}`,
+    `<b>Количество:</b> ${context.quantity ?? '<i>не задано</i>'}`,
+    `<b>Лист:</b> ${formatSheetLabel(context.sheet)}`,
+    `<b>Зазор:</b> ${context.gap} мм`,
+    `<b>Режим:</b> ${MODE_LABELS[context.mode]}`,
   ];
 
   if (activeVariant !== null) {
     lines.push(
-      `Активный вариант: ${activeVariant.name} (листов ${activeVariant.nesting.totalSheets}, ${activeVariant.nesting.avgFillPercent}%)`,
+      `<b>Вариант:</b> ${activeVariant.name} — ${activeVariant.nesting.totalSheets} лист., ${activeVariant.nesting.avgFillPercent}%`,
     );
   }
 
@@ -676,7 +705,8 @@ async function sendDashboard(token: string, chatId: number, context: PendingNest
     token,
     chatId,
     composeDashboardText(context),
-    buildMainMenuButtons(context.variants.length > 0),
+    buildMainMenuButtons(context),
+    'HTML',
   );
 }
 
@@ -774,9 +804,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         ...context,
         quantity,
         awaitingInput: 'none',
-        lastNesting: null,
-        variants: [],
-        activeVariantIndex: null,
       };
       chatNestingContext.set(chatId, nextContext);
       await sendDashboard(token, chatId, nextContext);
@@ -826,9 +853,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         const nextContext: PendingNestingContext = {
           ...context,
           awaitingInput: 'quantity',
-          lastNesting: null,
-          variants: [],
-          activeVariantIndex: null,
         };
         chatNestingContext.set(chatId, nextContext);
         await telegramSendMessageWithKeyboard(
@@ -850,6 +874,32 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
+      if (action === 'set_gap') {
+        await telegramSendMessageWithKeyboard(
+          token,
+          chatId,
+          `Текущий зазор: ${context.gap} мм. Выберите новый:`,
+          buildGapButtons(),
+        );
+        return;
+      }
+
+      if (action.startsWith('gap_')) {
+        const gap = Number(action.slice(4));
+        if (!Number.isFinite(gap) || gap < 0) {
+          await telegramSendMessage(token, chatId, 'Некорректный зазор.');
+          return;
+        }
+        const nextContext: PendingNestingContext = {
+          ...context,
+          gap,
+          awaitingInput: 'none',
+        };
+        chatNestingContext.set(chatId, nextContext);
+        await sendDashboard(token, chatId, nextContext);
+        return;
+      }
+
       if (action === 'mode_fast' || action === 'mode_precise' || action === 'mode_common') {
         const mode: PendingNestingContext['mode'] = action === 'mode_fast'
           ? 'fast'
@@ -859,9 +909,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         const nextContext: PendingNestingContext = {
           ...context,
           mode,
-          lastNesting: null,
-          variants: [],
-          activeVariantIndex: null,
           awaitingInput: 'none',
         };
         chatNestingContext.set(chatId, nextContext);
@@ -873,9 +920,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         const nextContext: PendingNestingContext = {
           ...context,
           awaitingInput: 'custom_sheet',
-          lastNesting: null,
-          variants: [],
-          activeVariantIndex: null,
         };
         chatNestingContext.set(chatId, nextContext);
         await telegramSendMessage(token, chatId, 'Введите размер листа, например: 1500x3000');
@@ -922,7 +966,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           `Раскладка: ${getPrimaryFileLabel(context)} (${variantName})`,
           `Количество: ${context.quantity}`,
           `Лист: ${formatSheetLabel(context.sheet)}`,
-          `Режим: ${context.mode}`,
+          `Режим: ${MODE_LABELS[context.mode]}`,
           `Листов: ${nesting.totalSheets}`,
           `Размещено: ${nesting.totalPlaced}/${nesting.totalRequired}`,
           `Среднее заполнение: ${nesting.avgFillPercent}%`,
@@ -960,7 +1004,22 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
-      if (action === 'reset') {
+      if (action === 'reset_confirm') {
+        await telegramSendMessageWithKeyboard(
+          token,
+          chatId,
+          `Сбросить набор (${context.fileNames.length} файл., ${context.variants.length} вариант.)?`,
+          [
+            [
+              { text: '✅ Да, сбросить', callback_data: `${ACTION_CALLBACK_PREFIX}reset_yes` },
+              { text: '❌ Отмена', callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
+            ],
+          ],
+        );
+        return;
+      }
+
+      if (action === 'reset_yes') {
         chatNestingContext.delete(chatId);
         await telegramSendMessage(token, chatId, 'Набор сброшен. Отправьте DXF файл для нового расчета.');
         return;
@@ -1024,9 +1083,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       ...context,
       sheet,
       awaitingInput: 'none',
-      lastNesting: null,
-      variants: [],
-      activeVariantIndex: null,
     };
     chatNestingContext.set(chatId, nextContext);
     await sendDashboard(token, chatId, nextContext);
@@ -1111,9 +1167,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         ...pending,
         quantity,
         awaitingInput: 'none',
-        lastNesting: null,
-        variants: [],
-        activeVariantIndex: null,
       });
 
       await sendDashboard(token, chatId, chatNestingContext.get(chatId)!);
@@ -1131,9 +1184,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         ...pending,
         sheet,
         awaitingInput: 'none',
-        lastNesting: null,
-        variants: [],
-        activeVariantIndex: null,
       });
 
       await sendDashboard(token, chatId, chatNestingContext.get(chatId)!);
