@@ -52,19 +52,17 @@ async function apiPostJSON<T>(path: string, payload: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function apiPostFile<T>(path: string, file: File): Promise<T> {
-  const form = new FormData();
-  form.append('file', file, file.name);
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
   }
-  return response.json() as Promise<T>;
+
+  return btoa(binary);
 }
 
 async function apiPostBlob(path: string, payload: unknown): Promise<Blob> {
@@ -193,7 +191,9 @@ async function loadSingleFile(file: File): Promise<void> {
     progressFill.style.width = '100%';
     setTimeout(() => progressBar.classList.add('hidden'), 400);
 
-    const cuttingRes = await apiPostFile<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', file);
+    const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
+      base64: arrayBufferToBase64(buffer),
+    });
     const stats = cuttingRes.data;
     const entry: LoadedFile = {
       id: nextFileId++,

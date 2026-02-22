@@ -10,6 +10,7 @@
     "dev": "npm run dev -w @dxf-viewer/ui-app",
     "dev:api": "npm run dev -w @dxf-viewer/api-service",
     "dev:all": "concurrently -k -n api,ui -c blue,green \"npm run dev:api\" \"npm run dev\"",
+    "typecheck": "npm run typecheck -ws --if-present",
     "build": "npm run build -w @dxf-viewer/core-engine && npm run build -w @dxf-viewer/api-service && npm run build -w @dxf-viewer/pricing && npm run build -w @dxf-viewer/bot-service && npm run build -w @dxf-viewer/ui-app",
     "build:core": "npm run build -w @dxf-viewer/core-engine",
     "build:api": "npm run build -w @dxf-viewer/api-service",
