@@ -4,7 +4,13 @@
     "outDir": "./dist",
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": "../..",
+    "paths": {
+      "@dxf-viewer/core-engine": ["packages/core-engine/src/index.ts"],
+      "@dxf-viewer/pricing": ["packages/pricing/src/index.ts"],
+      "@dxf-viewer/bot-service": ["packages/bot-service/src/index.ts"]
+    }
   },
   "include": ["src/**/*", "../core-engine/src/**/*", "../pricing/src/**/*", "../bot-service/src/**/*"],
   "exclude": ["node_modules", "dist"]
