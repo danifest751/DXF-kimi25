@@ -181,6 +181,7 @@ async function loadSingleFile(file: File): Promise<void> {
 
   try {
     const buffer = await file.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
     const result = await parseDXFInWorker(buffer, {
       onProgress(p) {
         const pct = p.totalBytes > 0 ? (p.bytesProcessed / p.totalBytes) * 100 : 0;
@@ -192,7 +193,7 @@ async function loadSingleFile(file: File): Promise<void> {
     setTimeout(() => progressBar.classList.add('hidden'), 400);
 
     const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
-      base64: arrayBufferToBase64(buffer),
+      base64,
     });
     const stats = cuttingRes.data;
     const entry: LoadedFile = {
