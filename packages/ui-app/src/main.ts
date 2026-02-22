@@ -768,6 +768,11 @@ function getNestingOptions(): NestingOptions {
   };
 }
 
+function getPlacedAngleDeg(p: { angleDeg?: unknown; rotated?: unknown }): number {
+  if (typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg)) return p.angleDeg;
+  return p.rotated === true ? 90 : 0;
+}
+
 async function runNesting(): Promise<void> {
   const checked = loadedFiles.filter(f => f.checked);
   if (checked.length === 0) return;
@@ -816,6 +821,8 @@ function showNestResults(): void {
   if (!currentNestResult) return;
   const r = currentNestResult;
   const commonLineActive = lastNestingOptions?.commonLine?.enabled ?? false;
+  const sharedCutLength = Number.isFinite(r.sharedCutLength) ? r.sharedCutLength : 0;
+  const pierceDelta = Number.isFinite(r.pierceDelta) ? r.pierceDelta : 0;
 
   // Суммарные врезки и длина реза по всем размещённым деталям
   let totalPierces = 0;
@@ -831,7 +838,7 @@ function showNestResults(): void {
   }
   const cutM = totalCutLen / 1000;
   const cutStr = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLen.toFixed(1) + ' мм';
-  const sharedCutStr = (r.sharedCutLength / 1000).toFixed(2) + ' м';
+  const sharedCutStr = (sharedCutLength / 1000).toFixed(2) + ' м';
 
   nestResultCards.innerHTML = `
     <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">Листов</div></div>
@@ -839,12 +846,12 @@ function showNestResults(): void {
     <div class="np-card"><div class="np-card-val">${totalPierces}</div><div class="np-card-label">Врезок</div></div>
     <div class="np-card"><div class="np-card-val">${cutStr}</div><div class="np-card-label">Длина реза</div></div>
     <div class="np-card"><div class="np-card-val">${sharedCutStr}</div><div class="np-card-label">Экономия реза</div></div>
-    <div class="np-card"><div class="np-card-val">−${r.pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
+    <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
   `;
 
   let commonLineSummary = '';
   if (commonLineActive) {
-    commonLineSummary = r.sharedCutLength > 0 || r.pierceDelta > 0
+    commonLineSummary = sharedCutLength > 0 || pierceDelta > 0
       ? ' • Совместный рез: ВКЛ'
       : ' • Совместный рез: ВКЛ (совпадения не найдены)';
   }
@@ -983,7 +990,8 @@ function renderAllNestingSheets(): void {
         const bbW = bb.max.x - bb.min.x;
         const bbH = bb.max.y - bb.min.y;
         if (bbW > 0 && bbH > 0) {
-          const angleRad = (p.angleDeg * Math.PI) / 180;
+          const angleDeg = getPlacedAngleDeg(p);
+          const angleRad = (angleDeg * Math.PI) / 180;
           const c = Math.abs(Math.cos(angleRad));
           const s = Math.abs(Math.sin(angleRad));
           const rotW = bbW * c + bbH * s;
@@ -996,7 +1004,7 @@ function renderAllNestingSheets(): void {
           ctx.clip();
 
           ctx.translate(px + pw / 2, py + ph / 2);
-          ctx.rotate(-(p.angleDeg * Math.PI) / 180);
+          ctx.rotate(-(angleDeg * Math.PI) / 180);
           ctx.scale(partScale, -partScale);
           ctx.translate(-(bb.min.x + bbW / 2), -(bb.min.y + bbH / 2));
 
@@ -1124,9 +1132,13 @@ function renderZoomSheet(sheetIndex: number): void {
       const bbW = bb.max.x - bb.min.x;
       const bbH = bb.max.y - bb.min.y;
       if (bbW > 0 && bbH > 0) {
-        const partScale = p.rotated
-          ? Math.min(pw / bbH, ph / bbW)
-          : Math.min(pw / bbW, ph / bbH);
+        const angleDeg = getPlacedAngleDeg(p);
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const c = Math.abs(Math.cos(angleRad));
+        const s = Math.abs(Math.sin(angleRad));
+        const rotW = bbW * c + bbH * s;
+        const rotH = bbW * s + bbH * c;
+        const partScale = Math.min(pw / rotW, ph / rotH);
 
         ctx.save();
         ctx.beginPath();
@@ -1134,7 +1146,7 @@ function renderZoomSheet(sheetIndex: number): void {
         ctx.clip();
 
         ctx.translate(px + pw / 2, py + ph / 2);
-        if (p.rotated) ctx.rotate(-Math.PI / 2);
+        ctx.rotate(-(angleDeg * Math.PI) / 180);
         ctx.scale(partScale, -partScale);
         ctx.translate(-(bb.min.x + bbW / 2), -(bb.min.y + bbH / 2));
 
