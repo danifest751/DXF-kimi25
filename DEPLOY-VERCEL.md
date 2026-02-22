@@ -93,3 +93,29 @@ ALLOWED_ORIGINS=https://my-dxf-viewer.vercel.app
 
 - If API domain changes, update `VITE_API_BASE` and redeploy UI.
 - If CORS errors appear, check `ALLOWED_ORIGINS` in API env.
+
+---
+
+## 7) Troubleshooting: 500 on `/api/cutting-stats` or `/api/nest`
+
+1. First check API bootstrap:
+   - Open `https://<your-domain>/api/health`
+   - If this endpoint returns 500, problem is in function bootstrap (not DXF payload).
+
+2. Ensure API functions run as ESM on Vercel:
+   - `api/package.json` must contain:
+
+```json
+{
+  "private": true,
+  "type": "module"
+}
+```
+
+3. Verify serverless entrypoint is catch-all function:
+   - `api/[...all].ts` exists and forwards requests to api-service app.
+
+4. If UI shows `Mode: cutting LOCAL | nesting LOCAL`:
+   - UI fallback is active because API requests failed.
+   - Open browser Network tab and inspect response body for `/api/cutting-stats` or `/api/nest`.
+   - Use `details` field from response to locate exact crash reason.
