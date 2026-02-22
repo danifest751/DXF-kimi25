@@ -627,7 +627,8 @@ export function nestItems(
 
   const cutLengthAfterMerge = Math.max(0, cutLengthEstimate - sharedCutLength);
   const pierceEstimate = totalPlaced;
-  const pierceDelta = commonLineEnabled ? Math.min(Math.max(0, totalPlaced - 1), mergePairs) : 0;
+  const maxPierceSavings = sheets.reduce((acc, s) => acc + Math.max(0, s.placed.length - 1), 0);
+  const pierceDelta = commonLineEnabled ? Math.min(maxPierceSavings, mergePairs) : 0;
 
   return {
     sheet,
