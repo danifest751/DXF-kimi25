@@ -25,6 +25,7 @@ function makeNestingResult(
       width: p.width ?? 100,
       height: p.height ?? 100,
       rotated: p.rotated ?? false,
+      angleDeg: (p as any).angleDeg ?? 0,
       copyIndex: p.copyIndex ?? 0,
     })) ?? [],
     usedArea: s.usedArea ?? 0,
@@ -43,6 +44,11 @@ function makeNestingResult(
     avgFillPercent: fullSheets.length > 0
       ? fullSheets.reduce((sum, s) => sum + s.fillPercent, 0) / fullSheets.length
       : 0,
+    cutLengthEstimate: 0,
+    sharedCutLength: 0,
+    cutLengthAfterMerge: 0,
+    pierceEstimate: totalPlaced,
+    pierceDelta: 0,
   };
 }
 

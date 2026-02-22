@@ -17,7 +17,7 @@
     "build:api": "npm run build -w @dxf-viewer/api-service",
     "build:ui": "npm run build -w @dxf-viewer/ui-app",
     "start:bot": "npm run start -w @dxf-viewer/bot-service",
-    "test": "npm run test -w @dxf-viewer/core-engine",
+    "test": "vitest run",
     "test:ui": "npm run test -w @dxf-viewer/ui-app"
   },
   "devDependencies": {
