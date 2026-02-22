@@ -6,17 +6,15 @@
 
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import multer from 'multer';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
-import { nestItems } from '../../core-engine/src/nesting/index.js';
+import { nestItems, type NestingItem, type SheetSize } from '../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
 import { calculatePrice } from '../../pricing/src/index.js';
 import { processBotMessage } from '../../bot-service/src/index.js';
 
 const app = express();
-const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } });
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -48,9 +46,6 @@ function toArrayBuffer(buf: Buffer): ArrayBuffer {
 }
 
 function getBufferFromRequest(req: Request): Buffer | null {
-  const file = (req as Request & { file?: Express.Multer.File }).file;
-  if (file?.buffer) return file.buffer;
-
   const body = req.body as { base64?: string; text?: string };
   if (typeof body?.base64 === 'string' && body.base64.length > 0) {
     return Buffer.from(body.base64, 'base64');
@@ -67,11 +62,11 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
 });
 
 // Parse DXF file
-app.post('/api/parse', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+app.post('/api/parse', async (req: Request, res: Response): Promise<void> => {
   try {
     const buffer = getBufferFromRequest(req);
     if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via multipart file field "file", or body.base64/body.text' });
+      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
       return;
     }
 
@@ -96,11 +91,11 @@ app.post('/api/parse', upload.single('file'), async (req: Request, res: Response
 });
 
 // Normalize DXF (summary)
-app.post('/api/normalize', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+app.post('/api/normalize', async (req: Request, res: Response): Promise<void> => {
   try {
     const buffer = getBufferFromRequest(req);
     if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via multipart file field "file", or body.base64/body.text' });
+      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
       return;
     }
 
@@ -122,11 +117,11 @@ app.post('/api/normalize', upload.single('file'), async (req: Request, res: Resp
 });
 
 // Cutting stats from DXF
-app.post('/api/cutting-stats', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+app.post('/api/cutting-stats', async (req: Request, res: Response): Promise<void> => {
   try {
     const buffer = getBufferFromRequest(req);
     if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via multipart file field "file", or body.base64/body.text' });
+      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
       return;
     }
 
@@ -158,15 +153,27 @@ app.post('/api/cutting-stats', upload.single('file'), async (req: Request, res: 
 // Nesting
 app.post('/api/nest', async (req: Request, res: Response): Promise<void> => {
   try {
-    const params = req.body;
+    const params = req.body as {
+      items?: unknown;
+      sheet?: unknown;
+      gap?: unknown;
+    } | undefined;
 
-    if (!params.items || !params.sheet) {
+    if (!params || !Array.isArray(params.items) || typeof params.sheet !== 'object' || params.sheet === null) {
       res.status(400).json({ error: 'Invalid params: items and sheet are required' });
       return;
     }
 
+    const maybeSheet = params.sheet as { width?: unknown; height?: unknown };
+    if (typeof maybeSheet.width !== 'number' || typeof maybeSheet.height !== 'number') {
+      res.status(400).json({ error: 'Invalid sheet: width and height must be numbers' });
+      return;
+    }
+
+    const items = params.items as readonly NestingItem[];
+    const sheet = params.sheet as SheetSize;
     const gap = typeof params.gap === 'number' ? params.gap : 5;
-    const result = nestItems(params.items, params.sheet, gap);
+    const result = nestItems(items, sheet, gap);
 
     res.json({
       success: true,
