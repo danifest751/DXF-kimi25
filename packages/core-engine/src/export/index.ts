@@ -27,12 +27,66 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   const entities: DXFEntity[] = [];
   let handleCounter = 1000;
 
+  const maxMergeDistanceMm = 0.2;
+  const minSharedLenMm = 20;
+
+  function overlapLength(a1: number, a2: number, b1: number, b2: number): number {
+    const lo = Math.max(Math.min(a1, a2), Math.min(b1, b2));
+    const hi = Math.min(Math.max(a1, a2), Math.max(b1, b2));
+    return Math.max(0, hi - lo);
+  }
+
+  function createCommonLineSegments(
+    placed: readonly { x: number; y: number; width: number; height: number }[],
+  ): { x1: number; y1: number; x2: number; y2: number }[] {
+    const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (let i = 0; i < placed.length; i++) {
+      const a = placed[i]!;
+      const aLeft = a.x;
+      const aRight = a.x + a.width;
+      const aBottom = a.y;
+      const aTop = a.y + a.height;
+
+      for (let j = i + 1; j < placed.length; j++) {
+        const b = placed[j]!;
+        const bLeft = b.x;
+        const bRight = b.x + b.width;
+        const bBottom = b.y;
+        const bTop = b.y + b.height;
+
+        const vertTouch = Math.min(Math.abs(aRight - bLeft), Math.abs(bRight - aLeft));
+        if (vertTouch <= maxMergeDistanceMm) {
+          const ov = overlapLength(aBottom, aTop, bBottom, bTop);
+          if (ov >= minSharedLenMm) {
+            const x = Math.abs(aRight - bLeft) <= Math.abs(bRight - aLeft) ? (aRight + bLeft) / 2 : (bRight + aLeft) / 2;
+            const y1 = Math.max(aBottom, bBottom);
+            const y2 = Math.min(aTop, bTop);
+            segments.push({ x1: x, y1, x2: x, y2 });
+          }
+        }
+
+        const horTouch = Math.min(Math.abs(aTop - bBottom), Math.abs(bTop - aBottom));
+        if (horTouch <= maxMergeDistanceMm) {
+          const ov = overlapLength(aLeft, aRight, bLeft, bRight);
+          if (ov >= minSharedLenMm) {
+            const y = Math.abs(aTop - bBottom) <= Math.abs(bTop - aBottom) ? (aTop + bBottom) / 2 : (bTop + aBottom) / 2;
+            const x1 = Math.max(aLeft, bLeft);
+            const x2 = Math.min(aRight, bRight);
+            segments.push({ x1, y1: y, x2, y2: y });
+          }
+        }
+      }
+    }
+    return segments;
+  }
+
   // Создаём сущности для каждого размещённого объекта
   for (const sheet of nestingResult.sheets) {
+    const sheetOffsetY = sheet.sheetIndex * (nestingResult.sheet.height + nestingResult.gap);
     for (const placed of sheet.placed) {
       // Создаём прямоугольник (4 линии) для каждой детали
       const x = placed.x;
-      const y = placed.y;
+      const y = placed.y + sheetOffsetY;
       const w = placed.width;
       const h = placed.height;
 
@@ -44,6 +98,18 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
       entities.push(createLine(x + w, y + h, x, y + h, handleCounter++, placed.name));
       // Линия 4: (x, y+h) -> (x, y)
       entities.push(createLine(x, y + h, x, y, handleCounter++, placed.name));
+    }
+
+    const sharedSegments = createCommonLineSegments(
+      sheet.placed.map((p) => ({
+        x: p.x,
+        y: p.y + sheetOffsetY,
+        width: p.width,
+        height: p.height,
+      })),
+    );
+    for (const seg of sharedSegments) {
+      entities.push(createLine(seg.x1, seg.y1, seg.x2, seg.y2, handleCounter++, 'COMMON_LINE'));
     }
   }
 
@@ -87,13 +153,14 @@ function createDXFDocument(entities: DXFEntity[]): DXFDocument {
       units: 1,
       extents: { min: { x: 0, y: 0, z: 0 }, max: { x: 1000, y: 1000, z: 0 } },
       entityCount: entities.length,
-      layerCount: 2,
+      layerCount: 3,
       blockCount: 0,
     },
     entities,
     layers: new Map<string, DXFLayer>([
       ['0', { name: '0', color: { r: 255, g: 255, b: 255 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
       ['SHEET', { name: 'SHEET', color: { r: 128, g: 128, b: 128 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
+      ['COMMON_LINE', { name: 'COMMON_LINE', color: { r: 0, g: 255, b: 157 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
     ]),
     blocks: new Map(),
     lineTypes: new Map(),
@@ -281,6 +348,11 @@ export function exportNestingToCSV(options: ExportNestingCSVOptions): string {
   lines.push(`Total Placed,${nestingResult.totalPlaced}`);
   lines.push(`Total Required,${nestingResult.totalRequired}`);
   lines.push(`Average Fill,${nestingResult.avgFillPercent.toFixed(1)}%`);
+  lines.push(`Cut Length Estimate,${nestingResult.cutLengthEstimate.toFixed(2)} mm`);
+  lines.push(`Shared Cut Length,${nestingResult.sharedCutLength.toFixed(2)} mm`);
+  lines.push(`Cut Length After Merge,${nestingResult.cutLengthAfterMerge.toFixed(2)} mm`);
+  lines.push(`Pierce Estimate,${nestingResult.pierceEstimate}`);
+  lines.push(`Pierce Delta,${nestingResult.pierceDelta}`);
   lines.push('');
   
   // Детали по листам
@@ -295,13 +367,13 @@ export function exportNestingToCSV(options: ExportNestingCSVOptions): string {
   
   // Размещённые детали
   lines.push('Placed Items');
-  lines.push('Sheet Index,Item ID,Name,X (mm),Y (mm),Width (mm),Height (mm),Rotated,Copy Index');
+  lines.push('Sheet Index,Item ID,Name,X (mm),Y (mm),Width (mm),Height (mm),Rotated,Angle Deg,Copy Index');
   
   for (const sheet of nestingResult.sheets) {
     for (const placed of sheet.placed) {
       lines.push(
         `${sheet.sheetIndex},${placed.itemId},${placed.name},${placed.x.toFixed(4)},${placed.y.toFixed(4)},` +
-        `${placed.width.toFixed(4)},${placed.height.toFixed(4)},${placed.rotated},${placed.copyIndex}`
+        `${placed.width.toFixed(4)},${placed.height.toFixed(4)},${placed.rotated},${placed.angleDeg.toFixed(2)},${placed.copyIndex}`
       );
     }
   }

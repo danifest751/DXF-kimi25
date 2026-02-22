@@ -8,7 +8,7 @@ import jpeg from 'jpeg-js';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument, type FlattenedEntity, type NormalizedDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
-import { nestItems, SHEET_PRESETS, type NestingItem, type NestingResult, type SheetSize } from '../../core-engine/src/nesting/index.js';
+import { nestItems, SHEET_PRESETS, type NestingItem, type NestingOptions, type NestingResult, type SheetSize } from '../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
@@ -79,6 +79,7 @@ interface PendingNestingContext {
   readonly quantity: number | null;
   readonly sheet: SheetSize;
   readonly gap: number;
+  readonly mode: 'fast' | 'precise' | 'common';
   readonly previewJpeg: Buffer;
   readonly lastNesting: NestingResult | null;
   readonly variants: readonly SavedNestingVariant[];
@@ -586,6 +587,11 @@ function buildMainMenuButtons(hasNesting: boolean): readonly (readonly { text: s
       { text: 'Количество', callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
       { text: 'Размер листа', callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
     ],
+    [
+      { text: 'Режим: Быстро', callback_data: `${ACTION_CALLBACK_PREFIX}mode_fast` },
+      { text: 'Точно', callback_data: `${ACTION_CALLBACK_PREFIX}mode_precise` },
+      { text: 'Точно + общий рез', callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
+    ],
     [{ text: 'Запустить раскладку', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` }],
   ];
 
@@ -652,6 +658,7 @@ function composeDashboardText(context: PendingNestingContext): string {
     `Количество: ${context.quantity ?? 'не задано'}`,
     `Лист: ${formatSheetLabel(context.sheet)}`,
     `Зазор: ${context.gap} мм (по умолчанию)`,
+    `Режим: ${context.mode}`,
   ];
 
   if (activeVariant !== null) {
@@ -699,6 +706,7 @@ function appendAnalysisToContext(
     },
     items: [...context.items, ...remappedItems],
     nextItemId: context.nextItemId + remappedItems.length,
+    mode: context.mode,
     previewJpeg: analysis.previewJpeg,
     lastNesting: null,
     variants: [],
@@ -842,6 +850,25 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
+      if (action === 'mode_fast' || action === 'mode_precise' || action === 'mode_common') {
+        const mode: PendingNestingContext['mode'] = action === 'mode_fast'
+          ? 'fast'
+          : action === 'mode_precise'
+            ? 'precise'
+            : 'common';
+        const nextContext: PendingNestingContext = {
+          ...context,
+          mode,
+          lastNesting: null,
+          variants: [],
+          activeVariantIndex: null,
+          awaitingInput: 'none',
+        };
+        chatNestingContext.set(chatId, nextContext);
+        await sendDashboard(token, chatId, nextContext);
+        return;
+      }
+
       if (action === 'sheet_custom') {
         const nextContext: PendingNestingContext = {
           ...context,
@@ -865,16 +892,42 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           ...item,
           quantity: context.quantity!,
         }));
-        const nesting = nestItems(itemsWithQuantity, context.sheet, context.gap);
+        const nestingOptions: NestingOptions = context.mode === 'fast'
+          ? {
+              strategy: 'blf_bbox',
+              multiStart: false,
+              commonLine: { enabled: false },
+              rotationEnabled: true,
+              rotationAngleStepDeg: 2,
+            }
+          : context.mode === 'precise'
+            ? {
+                strategy: 'maxrects_bbox',
+                multiStart: true,
+                commonLine: { enabled: false },
+                rotationEnabled: true,
+                rotationAngleStepDeg: 2,
+              }
+            : {
+                strategy: 'maxrects_bbox',
+                multiStart: true,
+                commonLine: { enabled: true, maxMergeDistanceMm: 0.2, minSharedLenMm: 20 },
+                rotationEnabled: true,
+                rotationAngleStepDeg: 2,
+              };
+        const nesting = nestItems(itemsWithQuantity, context.sheet, context.gap, nestingOptions);
         const firstSheet = nesting.sheets[0];
         const variantName = `V${context.variants.length + 1}`;
         const caption = [
           `Раскладка: ${getPrimaryFileLabel(context)} (${variantName})`,
           `Количество: ${context.quantity}`,
           `Лист: ${formatSheetLabel(context.sheet)}`,
+          `Режим: ${context.mode}`,
           `Листов: ${nesting.totalSheets}`,
           `Размещено: ${nesting.totalPlaced}/${nesting.totalRequired}`,
           `Среднее заполнение: ${nesting.avgFillPercent}%`,
+          `Совм. рез: ${nesting.sharedCutLength.toFixed(1)} мм`,
+          `Экономия врезок: -${nesting.pierceDelta}`,
           firstSheet ? `Заполнение листа #1: ${firstSheet.fillPercent}%` : 'Детали не влезли',
         ].join('\n');
 
@@ -1010,6 +1063,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
             quantity: 1,
             sheet: { ...defaultSheet },
             gap: 5,
+            mode: 'precise',
             previewJpeg: result.previewJpeg,
             lastNesting: null,
             variants: [],

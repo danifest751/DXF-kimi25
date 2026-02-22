@@ -11,7 +11,7 @@ import type { EntityRenderOptions } from '../../core-engine/src/render/entity-re
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
-import type { NestingResult } from '../../core-engine/src/nesting/index.js';
+import type { NestingResult, NestingOptions } from '../../core-engine/src/nesting/index.js';
 import type { NormalizedDocument, FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
 
@@ -121,6 +121,16 @@ const nestCustomRow = document.getElementById('nest-custom-row') as HTMLDivEleme
 const nestW = document.getElementById('nest-w') as HTMLInputElement;
 const nestH = document.getElementById('nest-h') as HTMLInputElement;
 const nestGap = document.getElementById('nest-gap') as HTMLInputElement;
+const nestRotateEnabled = document.getElementById('nest-rotate-enabled') as HTMLInputElement;
+const nestRotateStep = document.getElementById('nest-rotate-step') as HTMLSelectElement;
+const nestMode = document.getElementById('nest-mode') as HTMLSelectElement;
+const nestStrategy = document.getElementById('nest-strategy') as HTMLSelectElement;
+const nestMultiStart = document.getElementById('nest-multistart') as HTMLInputElement;
+const nestSeed = document.getElementById('nest-seed') as HTMLInputElement;
+const nestCommonLineEnabled = document.getElementById('nest-commonline-enabled') as HTMLInputElement;
+const nestCommonLineStatus = document.getElementById('nest-commonline-status') as HTMLDivElement;
+const nestCommonLineDist = document.getElementById('nest-commonline-dist') as HTMLInputElement;
+const nestCommonLineMinLen = document.getElementById('nest-commonline-minlen') as HTMLInputElement;
 const nestItemsEl = document.getElementById('nest-items') as HTMLDivElement;
 const nestItemsEmpty = document.getElementById('nest-items-empty') as HTMLDivElement;
 const btnNestRun = document.getElementById('btn-nest-run') as HTMLButtonElement;
@@ -150,6 +160,7 @@ const loadedFiles: LoadedFile[] = [];
 let activeFileId: number = -1;
 let nestingMode = false;
 let currentNestResult: NestingResult | null = null;
+let lastNestingOptions: NestingOptions | null = null;
 let nestCellRects: { x: number; y: number; w: number; h: number; si: number }[] = [];
 let nestHoveredSheet = -1;
 let cuttingComputeMode: ComputeMode = 'api';
@@ -540,6 +551,111 @@ nestPreset.addEventListener('change', () => {
   }
 });
 
+function updateRotationControls(): void {
+  nestRotateStep.disabled = !nestRotateEnabled.checked;
+  nestRotateStep.style.opacity = nestRotateEnabled.checked ? '1' : '0.5';
+}
+
+function updateCommonLineControls(): void {
+  const enabled = nestCommonLineEnabled.checked;
+  nestCommonLineDist.disabled = !enabled;
+  nestCommonLineMinLen.disabled = !enabled;
+  nestCommonLineDist.style.opacity = enabled ? '1' : '0.5';
+  nestCommonLineMinLen.style.opacity = enabled ? '1' : '0.5';
+  nestCommonLineStatus.textContent = enabled
+    ? 'Status: ON (совместный рез включен)'
+    : 'Status: OFF';
+  nestCommonLineStatus.style.color = enabled ? '#10b981' : '#f59e0b';
+}
+
+let applyingModePreset = false;
+
+function applyNestingModePreset(mode: 'fast' | 'precise' | 'common'): void {
+  applyingModePreset = true;
+  if (mode === 'fast') {
+    nestStrategy.value = 'blf_bbox';
+    nestMultiStart.checked = false;
+    nestCommonLineEnabled.checked = false;
+  } else if (mode === 'precise') {
+    nestStrategy.value = 'maxrects_bbox';
+    nestMultiStart.checked = true;
+    nestCommonLineEnabled.checked = false;
+  } else {
+    nestStrategy.value = 'maxrects_bbox';
+    nestMultiStart.checked = true;
+    nestCommonLineEnabled.checked = true;
+  }
+  updateCommonLineControls();
+  applyingModePreset = false;
+}
+
+function syncModeByAdvancedControls(): void {
+  if (applyingModePreset) return;
+  const strategy = nestStrategy.value;
+  const multiStart = nestMultiStart.checked;
+  const commonLine = nestCommonLineEnabled.checked;
+  if (strategy === 'blf_bbox' && !multiStart && !commonLine) {
+    nestMode.value = 'fast';
+    return;
+  }
+  if (strategy === 'maxrects_bbox' && multiStart && !commonLine) {
+    nestMode.value = 'precise';
+    return;
+  }
+  if (strategy === 'maxrects_bbox' && multiStart && commonLine) {
+    nestMode.value = 'common';
+    return;
+  }
+  nestMode.value = strategy === 'blf_bbox' ? 'fast' : 'precise';
+}
+
+updateRotationControls();
+applyNestingModePreset('precise');
+updateCommonLineControls();
+
+nestMode.addEventListener('change', () => {
+  const mode = nestMode.value === 'fast' || nestMode.value === 'common' ? nestMode.value : 'precise';
+  applyNestingModePreset(mode);
+  autoRerunNesting();
+});
+
+nestRotateEnabled.addEventListener('change', () => {
+  updateRotationControls();
+  autoRerunNesting();
+});
+
+nestRotateStep.addEventListener('change', () => {
+  autoRerunNesting();
+});
+
+nestStrategy.addEventListener('change', () => {
+  syncModeByAdvancedControls();
+  autoRerunNesting();
+});
+
+nestMultiStart.addEventListener('change', () => {
+  syncModeByAdvancedControls();
+  autoRerunNesting();
+});
+
+nestSeed.addEventListener('change', () => {
+  autoRerunNesting();
+});
+
+nestCommonLineEnabled.addEventListener('change', () => {
+  updateCommonLineControls();
+  syncModeByAdvancedControls();
+  autoRerunNesting();
+});
+
+nestCommonLineDist.addEventListener('change', () => {
+  autoRerunNesting();
+});
+
+nestCommonLineMinLen.addEventListener('change', () => {
+  autoRerunNesting();
+});
+
 btnNestRun.addEventListener('click', runNesting);
 
 // ─── Экспорт ────────────────────────────────────────────────────────
@@ -631,12 +747,38 @@ function getSheetSize(): { width: number; height: number } {
   return SHEET_PRESETS[Number(nestPreset.value)]!.size;
 }
 
+function getNestingOptions(): NestingOptions {
+  const raw = Number(nestRotateStep.value);
+  const rotationAngleStepDeg: 1 | 2 | 5 = raw === 1 || raw === 5 ? raw : 2;
+  const strategy = nestStrategy.value === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
+  const seed = Number.isFinite(Number(nestSeed.value)) ? Math.trunc(Number(nestSeed.value)) : 0;
+  const maxMergeDistanceMm = Number.isFinite(Number(nestCommonLineDist.value)) ? Number(nestCommonLineDist.value) : 0.2;
+  const minSharedLenMm = Number.isFinite(Number(nestCommonLineMinLen.value)) ? Number(nestCommonLineMinLen.value) : 20;
+  return {
+    rotationEnabled: nestRotateEnabled.checked,
+    rotationAngleStepDeg,
+    strategy,
+    multiStart: nestMultiStart.checked,
+    seed,
+    commonLine: {
+      enabled: nestCommonLineEnabled.checked,
+      maxMergeDistanceMm,
+      minSharedLenMm,
+    },
+  };
+}
+
 async function runNesting(): Promise<void> {
   const checked = loadedFiles.filter(f => f.checked);
   if (checked.length === 0) return;
 
   const sheet = getSheetSize();
   const gap = Number(nestGap.value) || 5;
+  const options = getNestingOptions();
+  lastNestingOptions = {
+    ...options,
+    commonLine: options.commonLine ? { ...options.commonLine } : undefined,
+  };
 
   const items = checked.map(f => {
     const bb = f.doc.totalBBox;
@@ -646,12 +788,22 @@ async function runNesting(): Promise<void> {
   });
 
   try {
-    const response = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', { items, sheet, gap });
+    const response = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+      items,
+      sheet,
+      gap,
+      rotationEnabled: options.rotationEnabled,
+      rotationAngleStepDeg: options.rotationAngleStepDeg,
+      strategy: options.strategy,
+      multiStart: options.multiStart,
+      seed: options.seed,
+      commonLine: options.commonLine,
+    });
     currentNestResult = response.data;
     nestingComputeMode = 'api';
     updateModeBadge();
   } catch {
-    currentNestResult = nestItems(items, sheet, gap);
+    currentNestResult = nestItems(items, sheet, gap, options);
     nestingComputeMode = 'local';
     updateModeBadge();
   }
@@ -663,6 +815,7 @@ async function runNesting(): Promise<void> {
 function showNestResults(): void {
   if (!currentNestResult) return;
   const r = currentNestResult;
+  const commonLineActive = lastNestingOptions?.commonLine?.enabled ?? false;
 
   // Суммарные врезки и длина реза по всем размещённым деталям
   let totalPierces = 0;
@@ -678,15 +831,24 @@ function showNestResults(): void {
   }
   const cutM = totalCutLen / 1000;
   const cutStr = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLen.toFixed(1) + ' мм';
+  const sharedCutStr = (r.sharedCutLength / 1000).toFixed(2) + ' м';
 
   nestResultCards.innerHTML = `
     <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">Листов</div></div>
     <div class="np-card"><div class="np-card-val">${r.avgFillPercent}%</div><div class="np-card-label">Заполнение</div></div>
     <div class="np-card"><div class="np-card-val">${totalPierces}</div><div class="np-card-label">Врезок</div></div>
     <div class="np-card"><div class="np-card-val">${cutStr}</div><div class="np-card-label">Длина реза</div></div>
+    <div class="np-card"><div class="np-card-val">${sharedCutStr}</div><div class="np-card-label">Экономия реза</div></div>
+    <div class="np-card"><div class="np-card-val">−${r.pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
   `;
 
-  nestResultSummary.textContent = `Размещено ${r.totalPlaced} из ${r.totalRequired} деталей`;
+  let commonLineSummary = '';
+  if (commonLineActive) {
+    commonLineSummary = r.sharedCutLength > 0 || r.pierceDelta > 0
+      ? ' • Совместный рез: ВКЛ'
+      : ' • Совместный рез: ВКЛ (совпадения не найдены)';
+  }
+  nestResultSummary.textContent = `Размещено ${r.totalPlaced} из ${r.totalRequired} деталей${commonLineSummary}`;
   nestResults.classList.remove('hidden');
   
   // Показываем кнопки экспорта
@@ -821,9 +983,12 @@ function renderAllNestingSheets(): void {
         const bbW = bb.max.x - bb.min.x;
         const bbH = bb.max.y - bb.min.y;
         if (bbW > 0 && bbH > 0) {
-          const partScale = p.rotated
-            ? Math.min(pw / bbH, ph / bbW)
-            : Math.min(pw / bbW, ph / bbH);
+          const angleRad = (p.angleDeg * Math.PI) / 180;
+          const c = Math.abs(Math.cos(angleRad));
+          const s = Math.abs(Math.sin(angleRad));
+          const rotW = bbW * c + bbH * s;
+          const rotH = bbW * s + bbH * c;
+          const partScale = Math.min(pw / rotW, ph / rotH);
 
           ctx.save();
           ctx.beginPath();
@@ -831,7 +996,7 @@ function renderAllNestingSheets(): void {
           ctx.clip();
 
           ctx.translate(px + pw / 2, py + ph / 2);
-          if (p.rotated) ctx.rotate(-Math.PI / 2);
+          ctx.rotate(-(p.angleDeg * Math.PI) / 180);
           ctx.scale(partScale, -partScale);
           ctx.translate(-(bb.min.x + bbW / 2), -(bb.min.y + bbH / 2));
 

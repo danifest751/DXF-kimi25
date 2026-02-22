@@ -93,9 +93,35 @@ curl -X POST "http://localhost:3000/api/cutting-stats" \
     { "id": 1, "name": "A", "width": 100, "height": 80, "quantity": 3 },
     { "id": 2, "name": "B", "width": 120, "height": 50, "quantity": 2 }
   ],
-  "sheet": { "width": 1500, "height": 3000 }
+  "sheet": { "width": 1500, "height": 3000 },
+  "gap": 5,
+  "rotationEnabled": true,
+  "rotationAngleStepDeg": 2,
+  "strategy": "maxrects_bbox",
+  "multiStart": true,
+  "seed": 0,
+  "commonLine": {
+    "enabled": true,
+    "maxMergeDistanceMm": 0.2,
+    "minSharedLenMm": 20
+  }
 }
 ```
+
+Ключевые опции:
+- `rotationAngleStepDeg`: `1 | 2 | 5`
+- `strategy`: `blf_bbox | maxrects_bbox`
+- `commonLine.enabled`: включает расчёт общего реза и метрик экономии
+- при `commonLine.enabled = true` фактический зазор в раскладке принудительно `0` (в ответе `data.gap` возвращается уже эффективное значение)
+
+В ответе `data` (NestingResult) дополнительно присутствуют метрики:
+- `cutLengthEstimate` (мм)
+- `sharedCutLength` (мм)
+- `cutLengthAfterMerge` (мм)
+- `pierceEstimate`
+- `pierceDelta`
+
+Примечание по UI: в web-интерфейсе метрика экономии реза может отображаться в метрах для удобства чтения, но API возвращает длины в миллиметрах.
 
 **Пример**
 
@@ -208,6 +234,7 @@ npm run dev:bot
 - загрузка одного или нескольких DXF в набор
 - статистика резки по набору (врезки/длина)
 - интерактивный выбор количества, размера листа (пресеты и custom)
+- выбор режима раскладки: `Быстро / Точно / Точно+общий рез`
 - запуск раскладки и сохранение вариантов (`V1`, `V2`, ...)
 - выбор активного варианта
 - экспорт активного варианта в DXF/CSV

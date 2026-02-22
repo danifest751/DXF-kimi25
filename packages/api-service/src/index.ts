@@ -157,6 +157,12 @@ app.post('/api/nest', async (req: Request, res: Response): Promise<void> => {
       items?: unknown;
       sheet?: unknown;
       gap?: unknown;
+      rotationEnabled?: unknown;
+      rotationAngleStepDeg?: unknown;
+      strategy?: unknown;
+      multiStart?: unknown;
+      seed?: unknown;
+      commonLine?: unknown;
     } | undefined;
 
     if (!params || !Array.isArray(params.items) || typeof params.sheet !== 'object' || params.sheet === null) {
@@ -173,7 +179,28 @@ app.post('/api/nest', async (req: Request, res: Response): Promise<void> => {
     const items = params.items as readonly NestingItem[];
     const sheet = params.sheet as SheetSize;
     const gap = typeof params.gap === 'number' ? params.gap : 5;
-    const result = nestItems(items, sheet, gap);
+    const rotationEnabled = typeof params.rotationEnabled === 'boolean' ? params.rotationEnabled : true;
+    const rawStep = params.rotationAngleStepDeg;
+    const rotationAngleStepDeg: 1 | 2 | 5 = rawStep === 1 || rawStep === 5 ? rawStep : 2;
+    const strategy = params.strategy === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
+    const multiStart = typeof params.multiStart === 'boolean' ? params.multiStart : false;
+    const seed = typeof params.seed === 'number' && Number.isFinite(params.seed) ? Math.trunc(params.seed) : 0;
+    const commonLineInput = (typeof params.commonLine === 'object' && params.commonLine !== null)
+      ? (params.commonLine as { enabled?: unknown; maxMergeDistanceMm?: unknown; minSharedLenMm?: unknown })
+      : null;
+    const commonLine = {
+      enabled: typeof commonLineInput?.enabled === 'boolean' ? commonLineInput.enabled : false,
+      maxMergeDistanceMm: typeof commonLineInput?.maxMergeDistanceMm === 'number' ? commonLineInput.maxMergeDistanceMm : 0.2,
+      minSharedLenMm: typeof commonLineInput?.minSharedLenMm === 'number' ? commonLineInput.minSharedLenMm : 20,
+    };
+    const result = nestItems(items, sheet, gap, {
+      rotationEnabled,
+      rotationAngleStepDeg,
+      strategy,
+      multiStart,
+      seed,
+      commonLine,
+    });
 
     res.json({
       success: true,

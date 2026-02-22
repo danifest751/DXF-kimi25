@@ -1076,6 +1076,71 @@
         </div>
 
         <div class="np-section">
+          <div class="np-label">Поворот деталей</div>
+          <div class="np-row" style="justify-content: space-between;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+              <input type="checkbox" id="nest-rotate-enabled" checked />
+              Разрешить поворот
+            </label>
+          </div>
+          <div class="np-row" style="margin-top:10px;">
+            <span class="np-unit" style="min-width: 76px;">Шаг угла</span>
+            <select class="np-select" id="nest-rotate-step" style="max-width: 120px;">
+              <option value="1">1°</option>
+              <option value="2" selected>2°</option>
+              <option value="5">5°</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="np-section">
+          <div class="np-label">Алгоритм</div>
+          <div class="np-row" style="margin-bottom:10px;">
+            <span class="np-unit" style="min-width: 76px;">Режим</span>
+            <select class="np-select" id="nest-mode">
+              <option value="fast">Быстро</option>
+              <option value="precise" selected>Точно</option>
+              <option value="common">Точно + общий рез</option>
+            </select>
+          </div>
+          <div class="np-row">
+            <select class="np-select" id="nest-strategy">
+              <option value="blf_bbox">Быстрый (BLF BBox)</option>
+              <option value="maxrects_bbox" selected>Точный (MaxRects BBox)</option>
+            </select>
+          </div>
+          <div class="np-row" style="justify-content: space-between; margin-top:10px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+              <input type="checkbox" id="nest-multistart" checked />
+              Multi-start
+            </label>
+          </div>
+          <div class="np-row" style="margin-top:10px;">
+            <span class="np-unit" style="min-width: 76px;">Seed</span>
+            <input type="number" class="np-input np-input-sm" id="nest-seed" value="0" step="1" />
+          </div>
+          <div class="np-row" style="justify-content: space-between; margin-top:10px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+              <input type="checkbox" id="nest-commonline-enabled" />
+              Совместный рез (common-line)
+            </label>
+          </div>
+          <div id="nest-commonline-status" style="margin-top:6px; font-size:11px; font-weight:600; color:#f59e0b;">
+            Status: OFF
+          </div>
+          <div class="np-row" style="margin-top:10px;">
+            <span class="np-unit" style="min-width: 76px;">Δ merge</span>
+            <input type="number" class="np-input np-input-sm" id="nest-commonline-dist" value="0.2" min="0" step="0.1" />
+            <span class="np-unit">мм</span>
+          </div>
+          <div class="np-row" style="margin-top:8px;">
+            <span class="np-unit" style="min-width: 76px;">Min len</span>
+            <input type="number" class="np-input np-input-sm" id="nest-commonline-minlen" value="20" min="0" step="1" />
+            <span class="np-unit">мм</span>
+          </div>
+        </div>
+
+        <div class="np-section">
           <div class="np-label">Детали и количество</div>
           <div id="nest-items" class="np-items"></div>
           <div class="np-items-empty" id="nest-items-empty">Отметьте файлы в списке</div>
