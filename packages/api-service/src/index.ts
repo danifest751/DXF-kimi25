@@ -6,19 +6,14 @@
 
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import {
-  parseDXF,
-  normalizeDocument,
-  computeCuttingStats,
-  nestItems,
-  exportNestingToDXF,
-  exportNestingToCSV,
-  exportCuttingStatsToCSV,
-  type NestingItem,
-  type SheetSize,
-} from '@dxf-viewer/core-engine';
-import { calculatePrice } from '@dxf-viewer/pricing';
-import { processBotMessage } from '@dxf-viewer/bot-service';
+import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
+import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
+import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
+import { nestItems } from '../../core-engine/src/nesting/index.js';
+import type { NestingItem, SheetSize } from '../../core-engine/src/nesting/index.js';
+import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
+import { calculatePrice } from '../../pricing/src/index.js';
+import { processBotMessage } from '../../bot-service/src/index.js';
 
 const app = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')

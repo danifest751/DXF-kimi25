@@ -11,7 +11,6 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@dxf-viewer/core-engine": "*",
     "@dxf-viewer/pricing": "*",
     "@dxf-viewer/bot-service": "*",
     "cors": "^2.8.5",

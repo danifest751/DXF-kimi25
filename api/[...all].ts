@@ -6,19 +6,13 @@ async function loadApp(): Promise<ExpressLikeHandler> {
   if (cachedApp) return cachedApp;
 
   try {
-    const mod = await import('../packages/api-service/dist/index.js');
+    const mod = await import('../packages/api-service/src/index.ts');
     cachedApp = mod.default as ExpressLikeHandler;
     return cachedApp;
   } catch {
-    try {
-      const mod = await import('../packages/api-service/src/index.ts');
-      cachedApp = mod.default as ExpressLikeHandler;
-      return cachedApp;
-    } catch {
-      const mod = await import('../packages/api-service/src/index.js');
-      cachedApp = mod.default as ExpressLikeHandler;
-      return cachedApp;
-    }
+    const mod = await import('../packages/api-service/src/index.js');
+    cachedApp = mod.default as ExpressLikeHandler;
+    return cachedApp;
   }
 }
 
