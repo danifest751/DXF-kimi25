@@ -780,6 +780,7 @@ async function runNesting(): Promise<void> {
   const sheet = getSheetSize();
   const gap = Number(nestGap.value) || 5;
   const options = getNestingOptions();
+  const effectiveGap = options.commonLine?.enabled ? 0 : gap;
   lastNestingOptions = {
     ...options,
     commonLine: options.commonLine ? { ...options.commonLine } : undefined,
@@ -796,7 +797,7 @@ async function runNesting(): Promise<void> {
     const response = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
       items,
       sheet,
-      gap,
+      gap: effectiveGap,
       rotationEnabled: options.rotationEnabled,
       rotationAngleStepDeg: options.rotationAngleStepDeg,
       strategy: options.strategy,
@@ -808,7 +809,7 @@ async function runNesting(): Promise<void> {
     nestingComputeMode = 'api';
     updateModeBadge();
   } catch {
-    currentNestResult = nestItems(items, sheet, gap, options);
+    currentNestResult = nestItems(items, sheet, effectiveGap, options);
     nestingComputeMode = 'local';
     updateModeBadge();
   }
