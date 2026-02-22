@@ -1,4 +1,20 @@
-import app from '../packages/api-service/src/index.js';
+type ExpressLikeHandler = (req: any, res: any) => void;
+
+let cachedApp: ExpressLikeHandler | null = null;
+
+async function loadApp(): Promise<ExpressLikeHandler> {
+  if (cachedApp) return cachedApp;
+
+  try {
+    const mod = await import('../packages/api-service/src/index.ts');
+    cachedApp = mod.default as ExpressLikeHandler;
+    return cachedApp;
+  } catch {
+    const mod = await import('../packages/api-service/src/index.js');
+    cachedApp = mod.default as ExpressLikeHandler;
+    return cachedApp;
+  }
+}
 
 export const config = {
   api: {
@@ -7,6 +23,12 @@ export const config = {
   },
 };
 
-export default function handler(req: any, res: any): void {
-  app(req, res);
+export default async function handler(req: any, res: any): Promise<void> {
+  try {
+    const app = await loadApp();
+    app(req, res);
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Unknown bootstrap error';
+    res.status(500).json({ error: 'API bootstrap failed', details });
+  }
 }
