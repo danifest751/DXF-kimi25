@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest --passWithNoTests",
+    "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {},

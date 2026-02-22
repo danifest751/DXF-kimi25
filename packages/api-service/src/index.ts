@@ -22,17 +22,23 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
+function isDefaultAllowedOrigin(origin: string): boolean {
+  return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)
+    || /^http:\/\/localhost(?::\d+)?$/i.test(origin)
+    || /^http:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
       callback(null, true);
       return;
     }
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isDefaultAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
+    callback(null, false);
   },
 }));
 app.use(express.json({ limit: '50mb' }));

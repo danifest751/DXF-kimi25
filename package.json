@@ -15,7 +15,7 @@
     "build:core": "npm run build -w @dxf-viewer/core-engine",
     "build:api": "npm run build -w @dxf-viewer/api-service",
     "build:ui": "npm run build -w @dxf-viewer/ui-app",
-    "test": "npm run test -w @dxf-viewer/core-engine -- --run --passWithNoTests",
+    "test": "npm run test -w @dxf-viewer/core-engine",
     "test:ui": "npm run test -w @dxf-viewer/ui-app"
   },
   "devDependencies": {

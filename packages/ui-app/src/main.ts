@@ -9,7 +9,7 @@ import { DXFRenderer } from '../../core-engine/src/render/renderer.js';
 import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
-import { formatCutLength } from '../../core-engine/src/cutting/index.js';
+import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
 import { SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { NestingResult } from '../../core-engine/src/nesting/index.js';
 import type { NormalizedDocument, FlattenedEntity } from '../../core-engine/src/normalize/index.js';
@@ -192,10 +192,22 @@ async function loadSingleFile(file: File): Promise<void> {
     progressFill.style.width = '100%';
     setTimeout(() => progressBar.classList.add('hidden'), 400);
 
-    const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
-      base64,
-    });
-    const stats = cuttingRes.data;
+    let stats: UICuttingStats;
+    try {
+      const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
+        base64,
+      });
+      stats = cuttingRes.data;
+    } catch {
+      const localStats = computeCuttingStats(result.document);
+      stats = {
+        totalPierces: localStats.totalPierces,
+        totalCutLength: localStats.totalCutLength,
+        cuttingEntityCount: localStats.cuttingEntityCount,
+        chains: localStats.chains,
+      };
+    }
+
     const entry: LoadedFile = {
       id: nextFileId++,
       name: file.name,
