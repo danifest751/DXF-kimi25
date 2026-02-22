@@ -6,7 +6,7 @@ import {
   tessellateSpline,
   tessellateBulge,
   tessellateLWPolyline,
-} from '../../src/core/geometry/curves.js';
+} from '../../packages/core-engine/src/geometry/curves.js';
 
 describe('tessellateArc', () => {
   it('returns correct number of points', () => {
@@ -208,3 +208,4 @@ describe('tessellateLWPolyline', () => {
     expect(pts.length).toBe(1);
   });
 });
+

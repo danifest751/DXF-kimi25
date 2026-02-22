@@ -96,14 +96,23 @@
 - **IndexedDB** — хранение настроек
 - **Vitest** — 76 тестов (геометрия, bbox, cutting)
 
-## Запуск
+## Запуск (локально)
 
 ```bash
 npm install
-npm run dev
+npm run dev:all
 ```
 
-Откроется на http://localhost:5173/
+Будут подняты:
+- UI: `http://localhost:5173` (или следующий свободный порт)
+- API: `http://localhost:3000`
+
+Для запуска по отдельности:
+
+```bash
+npm run dev      # UI
+npm run dev:api  # API
+```
 
 ## Сборка
 
@@ -111,4 +120,16 @@ npm run dev
 npm run build
 ```
 
-Результат в папке `dist/` — готов для деплоя на Vercel, Netlify и т.д.
+Результат UI в `packages/ui-app/dist/`.
+
+## Деплой на Vercel (UI + API)
+
+Проект настроен для деплоя в **один Vercel-проект**:
+- UI (Vite static output)
+- API (`api/[...all].ts` serverless function)
+
+После push в git и подключения репозитория в Vercel деплой проходит автоматически.
+
+Параметры берутся из `vercel.json`.
+
+Подробная инструкция: `DEPLOY-VERCEL.md`.

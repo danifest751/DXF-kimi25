@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { nestItems, SHEET_PRESETS } from '../../src/core/nesting/index.js';
-import type { SheetSize, NestingItem } from '../../src/core/nesting/index.js';
+import { nestItems, SHEET_PRESETS } from '../../packages/core-engine/src/nesting/index.js';
+import type { SheetSize, NestingItem } from '../../packages/core-engine/src/nesting/index.js';
 
 // ─── Тесты SHEET_PRESETS ────────────────────────────────────────────
 
@@ -350,3 +350,4 @@ describe('nestItems', () => {
     });
   });
 });
+

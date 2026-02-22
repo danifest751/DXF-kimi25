@@ -18,3 +18,4 @@ HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.g
     return Reflect.apply(target, thisArg, args);
   },
 });
+

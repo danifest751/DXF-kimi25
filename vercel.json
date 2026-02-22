@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build -w @dxf-viewer/ui-app",
+  "outputDirectory": "packages/ui-app/dist",
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/((?!api|health).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

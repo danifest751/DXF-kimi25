@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Camera } from '../../src/core/render/camera.js';
-import { RTree } from '../../src/core/render/rtree.js';
-import type { BoundingBox } from '../../src/core/types/index.js';
+import { Camera } from '../../packages/core-engine/src/render/camera.js';
+import { RTree } from '../../packages/core-engine/src/render/rtree.js';
+import type { BoundingBox } from '../../packages/core-engine/src/types/index.js';
 
 // ─── Тесты Camera ───────────────────────────────────────────────────
 
@@ -467,3 +467,4 @@ describe('RTree', () => {
     });
   });
 });
+

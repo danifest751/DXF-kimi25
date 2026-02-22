@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "../core-engine/src/**/*", "../pricing/src/**/*", "../bot-service/src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

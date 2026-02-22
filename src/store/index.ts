@@ -4,7 +4,7 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
-import type { AppSettings, RecentFileRecord } from '../core/types/index.js';
+import type { AppSettings, RecentFileRecord } from '../../packages/core-engine/src/types/index.js';
 
 const DB_NAME = 'dxf-viewer-db';
 const DB_VERSION = 1;

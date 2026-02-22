@@ -5,17 +5,17 @@
  * чекбоксы для включения в расчёт резки.
  */
 
-import { DXFRenderer } from './core/render/renderer.js';
-import { renderEntity } from './core/render/entity-renderer.js';
-import type { EntityRenderOptions } from './core/render/entity-renderer.js';
-import { parseDXFInWorker } from './core/workers/index.js';
-import { computeCuttingStats, formatCutLength } from './core/cutting/index.js';
-import type { CuttingStats } from './core/cutting/index.js';
-import { nestItems, SHEET_PRESETS } from './core/nesting/index.js';
-import type { NestingResult } from './core/nesting/index.js';
-import { exportNestingToDXF, exportNestingToCSV } from './core/export/index.js';
-import type { NormalizedDocument, FlattenedEntity } from './core/normalize/index.js';
-import type { Color, Point3D } from './core/types/index.js';
+import { DXFRenderer } from '../packages/core-engine/src/render/renderer.js';
+import { renderEntity } from '../packages/core-engine/src/render/entity-renderer.js';
+import type { EntityRenderOptions } from '../packages/core-engine/src/render/entity-renderer.js';
+import { parseDXFInWorker } from '../packages/core-engine/src/workers/index.js';
+import { computeCuttingStats, formatCutLength } from '../packages/core-engine/src/cutting/index.js';
+import type { CuttingStats } from '../packages/core-engine/src/cutting/index.js';
+import { nestItems, SHEET_PRESETS } from '../packages/core-engine/src/nesting/index.js';
+import type { NestingResult } from '../packages/core-engine/src/nesting/index.js';
+import { exportNestingToDXF, exportNestingToCSV } from '../packages/core-engine/src/export/index.js';
+import type { NormalizedDocument, FlattenedEntity } from '../packages/core-engine/src/normalize/index.js';
+import type { Color, Point3D } from '../packages/core-engine/src/types/index.js';
 
 // ─── Типы ───────────────────────────────────────────────────────────
 

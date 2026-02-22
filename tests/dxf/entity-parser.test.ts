@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseEntity, aciToColor } from '../../src/core/dxf/reader/entity-parser.js';
-import { DXFEntityType, DXFFormat } from '../../src/core/types/index.js';
-import type { DXFGroup, DXFDocument } from '../../src/core/types/index.js';
+import { parseEntity, aciToColor } from '../../packages/core-engine/src/dxf/reader/entity-parser.js';
+import { DXFEntityType, DXFFormat } from '../../packages/core-engine/src/types/index.js';
+import type { DXFGroup, DXFDocument } from '../../packages/core-engine/src/types/index.js';
 
 // ─── Вспомогательные функции ────────────────────────────────────────
 
@@ -411,3 +411,4 @@ describe('parseEntity: неизвестные типы', () => {
     expect(entity).toBeNull();
   });
 });
+

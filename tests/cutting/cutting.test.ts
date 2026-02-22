@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import { computeCuttingStats, formatCutLength } from '../../src/core/cutting/index.js';
-import { DXFEntityType } from '../../src/core/types/index.js';
+import { computeCuttingStats, formatCutLength } from '../../packages/core-engine/src/cutting/index.js';
+import { DXFEntityType } from '../../packages/core-engine/src/types/index.js';
 import type {
   DXFLineEntity,
   DXFCircleEntity,
@@ -10,9 +10,9 @@ import type {
   DXFDocument,
   DXFMetadata,
   BoundingBox,
-} from '../../src/core/types/index.js';
-import { normalizeDocument } from '../../src/core/normalize/index.js';
-import { IDENTITY_MATRIX } from '../../src/core/geometry/math.js';
+} from '../../packages/core-engine/src/types/index.js';
+import { normalizeDocument } from '../../packages/core-engine/src/normalize/index.js';
+import { IDENTITY_MATRIX } from '../../packages/core-engine/src/geometry/math.js';
 
 function makeBase(type: DXFEntityType) {
   return {
@@ -345,3 +345,4 @@ describe('formatCutLength', () => {
     expect(formatCutLength(100)).toBe('100.00 мм');
   });
 });
+

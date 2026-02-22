@@ -5,9 +5,9 @@ import {
   resolveLineWeight,
   flattenEntities,
   normalizeDocument,
-} from '../../src/core/normalize/index.js';
-import { DXFEntityType, DXFFormat, DXFVersion } from '../../src/core/types/index.js';
-import type { DXFEntity, DXFDocument, DXFLayer, Color, DXFBlock } from '../../src/core/types/index.js';
+} from '../../packages/core-engine/src/normalize/index.js';
+import { DXFEntityType, DXFFormat, DXFVersion } from '../../packages/core-engine/src/types/index.js';
+import type { DXFEntity, DXFDocument, DXFLayer, Color, DXFBlock } from '../../packages/core-engine/src/types/index.js';
 
 // ─── Вспомогательные функции ────────────────────────────────────────
 
@@ -457,3 +457,4 @@ describe('normalizeDocument', () => {
     expect(result.layerNames).toEqual(['A_LAYER', 'M_LAYER', 'Z_LAYER']);
   });
 });
+

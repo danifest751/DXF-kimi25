@@ -4,9 +4,9 @@ import {
   exportNestingToDXF,
   exportNestingToCSV,
   exportCuttingStatsToCSV,
-} from '../../src/core/export/index.js';
-import type { NestingResult, NestingSheet, PlacedItem, SheetSize } from '../../src/core/nesting/index.js';
-import type { CuttingStats } from '../../src/core/cutting/index.js';
+} from '../../packages/core-engine/src/export/index.js';
+import type { NestingResult, NestingSheet, PlacedItem, SheetSize } from '../../packages/core-engine/src/nesting/index.js';
+import type { CuttingStats } from '../../packages/core-engine/src/cutting/index.js';
 
 // ─── Вспомогательные функции ────────────────────────────────────────
 
@@ -347,3 +347,4 @@ describe('exportResults', () => {
     }).toThrow('Unsupported export format: PDF');
   });
 });
+

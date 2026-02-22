@@ -1,0 +1,195 @@
+# DXF Viewer API
+
+Краткая документация по `api-service`.
+
+## Базовый URL
+
+- Локально: `http://localhost:3000`
+
+## Endpoints
+
+### 1) Health
+
+`GET /health`
+
+Проверка, что сервис запущен.
+
+**Ответ**
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-02-22T10:00:00.000Z"
+}
+```
+
+---
+
+### 2) Parse DXF
+
+`POST /api/parse`
+
+Парсинг DXF и краткая сводка.
+
+Поддержка входа:
+1. `multipart/form-data` с полем `file`
+2. JSON `{ "base64": "..." }`
+3. JSON `{ "text": "..." }` для ASCII DXF
+
+**Пример (multipart)**
+
+```bash
+curl -X POST "http://localhost:3000/api/parse" \
+  -F "file=@part.dxf"
+```
+
+---
+
+### 3) Normalize DXF
+
+`POST /api/normalize`
+
+Нормализация документа (flatten INSERT, bbox, слои).
+
+**Пример**
+
+```bash
+curl -X POST "http://localhost:3000/api/normalize" \
+  -F "file=@part.dxf"
+```
+
+---
+
+### 4) Cutting stats
+
+`POST /api/cutting-stats`
+
+Расчёт статистики резки.
+
+Опционально:
+- `layerFilter: string[]`
+- `tolerance: number`
+
+**Пример**
+
+```bash
+curl -X POST "http://localhost:3000/api/cutting-stats" \
+  -F "file=@part.dxf"
+```
+
+---
+
+### 5) Nesting
+
+`POST /api/nest`
+
+Раскладка деталей.
+
+**Body**
+
+```json
+{
+  "items": [
+    { "id": 1, "name": "A", "width": 100, "height": 80, "quantity": 3 },
+    { "id": 2, "name": "B", "width": 120, "height": 50, "quantity": 2 }
+  ],
+  "sheet": { "width": 1500, "height": 3000 }
+}
+```
+
+**Пример**
+
+```bash
+curl -X POST "http://localhost:3000/api/nest" \
+  -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"id\":1,\"name\":\"A\",\"width\":100,\"height\":80,\"quantity\":3}],\"sheet\":{\"width\":1500,\"height\":3000}}"
+```
+
+---
+
+### 6) Export DXF
+
+`POST /api/export/dxf`
+
+Экспорт результата раскладки в DXF.
+
+**Body**
+
+```json
+{
+  "nestingResult": { "...": "результат из /api/nest" }
+}
+```
+
+---
+
+### 7) Export CSV
+
+`POST /api/export/csv`
+
+Экспорт в CSV:
+- либо `nestingResult`
+- либо `cuttingStats`
+
+**Body**
+
+```json
+{
+  "nestingResult": { "...": "результат из /api/nest" },
+  "fileName": "nesting_report"
+}
+```
+
+---
+
+### 8) Pricing
+
+`POST /api/price`
+
+Расчёт стоимости.
+
+**Body**
+
+```json
+{
+  "cutLength": 12345,
+  "pierces": 40,
+  "sheets": 2,
+  "material": "steel",
+  "thickness": 2,
+  "complexity": 1.1
+}
+```
+
+---
+
+### 9) Bot (stub)
+
+`POST /api/bot/message`
+
+Заглушка для будущего бота.
+
+**Body**
+
+```json
+{
+  "chatId": "123",
+  "text": "/price"
+}
+```
+
+---
+
+## Запуск API
+
+Из корня проекта:
+
+```bash
+npm run dev:api
+```
+
+## Важно: текущий статус интеграции UI
+
+На текущий момент UI (web-интерфейс) **не вызывает HTTP API**, а использует `core-engine` напрямую в браузере.
+
+Это можно увидеть в `src/main.ts`: отсутствуют `fetch`/`axios` вызовы, работа идёт через прямые импорты ядра.

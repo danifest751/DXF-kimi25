@@ -10,7 +10,7 @@ import {
   buildInsertMatrix, ocsToWcsMatrix,
   normalizeAngle, lerp, lerpPt3, clamp,
   DEG2RAD, RAD2DEG, EPSILON,
-} from '../../src/core/geometry/math.js';
+} from '../../packages/core-engine/src/geometry/math.js';
 
 describe('Point2D operations', () => {
   it('pt2 creates a 2D point', () => {
@@ -198,3 +198,4 @@ describe('Utility functions', () => {
     expect(Math.PI * RAD2DEG).toBeCloseTo(180);
   });
 });
+

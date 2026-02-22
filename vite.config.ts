@@ -5,10 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
-      '@core': path.resolve(__dirname, 'src/core'),
-      '@ui': path.resolve(__dirname, 'src/ui'),
+      '@core': path.resolve(__dirname, 'packages/core-engine/src'),
       '@store': path.resolve(__dirname, 'src/store'),
-      '@tests': path.resolve(__dirname, 'tests'),
     },
   },
   worker: {
@@ -22,10 +20,10 @@ export default defineConfig({
       output: {
         manualChunks: {
           'dxf-core': [
-            path.resolve(__dirname, 'src/core/dxf/reader/index.ts'),
-            path.resolve(__dirname, 'src/core/dxf/model/index.ts'),
+            path.resolve(__dirname, 'packages/core-engine/src/dxf/reader/index.ts'),
+            path.resolve(__dirname, 'packages/core-engine/src/dxf/model/index.ts'),
           ],
-          'render-core': [path.resolve(__dirname, 'src/core/render/index.ts')],
+          'render-core': [path.resolve(__dirname, 'packages/core-engine/src/render/index.ts')],
         },
       },
     },
