@@ -114,6 +114,25 @@ npm run dev      # UI
 npm run dev:api  # API
 ```
 
+### Telegram bot (DXF -> JPEG + cutting stats)
+
+`bot-service` умеет принимать `.dxf` в Telegram, и в ответ отправляет:
+- JPEG-превью контура
+- количество врезок
+- длину реза
+
+Запуск:
+
+```bash
+# 1) Установить переменную окружения
+# TELEGRAM_BOT_TOKEN=<token>
+
+# 2) Запустить бота
+npm run dev -w @dxf-viewer/bot-service
+```
+
+Пример env: `packages/bot-service/.env.example`.
+
 ## Сборка
 
 ```bash

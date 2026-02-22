@@ -2,10 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
-    "lib": ["ES2022"],
+    "rootDir": "../..",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../core-engine/src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

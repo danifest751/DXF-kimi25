@@ -13,10 +13,12 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "dev": "tsx watch src/runner.ts",
+    "start": "node dist/runner.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "jpeg-js": "^0.4.4"
+  },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
