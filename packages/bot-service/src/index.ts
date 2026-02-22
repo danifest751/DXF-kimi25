@@ -8,6 +8,8 @@ import jpeg from 'jpeg-js';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument, type FlattenedEntity, type NormalizedDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
+import { nestItems, SHEET_PRESETS, type NestingItem, type NestingResult, type SheetSize } from '../../core-engine/src/nesting/index.js';
+import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
 
@@ -40,6 +42,13 @@ interface TelegramUpdate {
       readonly mime_type?: string;
     };
   };
+  readonly callback_query?: {
+    readonly id: string;
+    readonly data?: string;
+    readonly message?: {
+      readonly chat: { readonly id: number };
+    };
+  };
 }
 
 interface TelegramFile {
@@ -51,9 +60,42 @@ interface BotCuttingSummary {
   readonly totalCutLength: number;
 }
 
+interface BotAnalysisResult {
+  readonly previewJpeg: Buffer;
+  readonly summary: BotCuttingSummary;
+  readonly nestingItems: readonly NestingItem[];
+}
+
+interface SavedNestingVariant {
+  readonly name: string;
+  readonly nesting: NestingResult;
+}
+
+interface PendingNestingContext {
+  readonly fileNames: readonly string[];
+  readonly summary: BotCuttingSummary;
+  readonly items: readonly NestingItem[];
+  readonly nextItemId: number;
+  readonly quantity: number | null;
+  readonly sheet: SheetSize;
+  readonly gap: number;
+  readonly previewJpeg: Buffer;
+  readonly lastNesting: NestingResult | null;
+  readonly variants: readonly SavedNestingVariant[];
+  readonly activeVariantIndex: number | null;
+  readonly awaitingInput: 'none' | 'quantity' | 'custom_sheet';
+}
+
 const PREVIEW_WIDTH = 1280;
 const PREVIEW_HEIGHT = 720;
 const PREVIEW_PADDING = 28;
+const NESTING_PREVIEW_WIDTH = 1280;
+const NESTING_PREVIEW_HEIGHT = 720;
+const NESTING_CALLBACK_PREFIX = 'nest:';
+const ACTION_CALLBACK_PREFIX = 'act:';
+const QUANTITY_CALLBACK_PREFIX = 'qty:';
+const VARIANT_CALLBACK_PREFIX = 'var:';
+const chatNestingContext = new Map<number, PendingNestingContext>();
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
@@ -69,6 +111,19 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+async function telegramSendMessageWithKeyboard(
+  token: string,
+  chatId: number,
+  text: string,
+  keyboardRows: readonly (readonly { text: string; callback_data: string }[])[],
+): Promise<void> {
+  await telegramGet(token, 'sendMessage', {
+    chat_id: String(chatId),
+    text,
+    reply_markup: JSON.stringify({ inline_keyboard: keyboardRows }),
+  });
+}
+
 function setPixel(pixels: Uint8Array, width: number, height: number, x: number, y: number): void {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   const ix = Math.round(x);
@@ -78,6 +133,27 @@ function setPixel(pixels: Uint8Array, width: number, height: number, x: number, 
   pixels[idx] = 20;
   pixels[idx + 1] = 20;
   pixels[idx + 2] = 20;
+  pixels[idx + 3] = 255;
+}
+
+function setPixelRgb(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  r: number,
+  g: number,
+  b: number,
+): void {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+  if (ix < 0 || iy < 0 || ix >= width || iy >= height) return;
+  const idx = (iy * width + ix) * 4;
+  pixels[idx] = r;
+  pixels[idx + 1] = g;
+  pixels[idx + 2] = b;
   pixels[idx + 3] = 255;
 }
 
@@ -93,6 +169,29 @@ function drawLine(pixels: Uint8Array, width: number, height: number, x0: number,
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     setPixel(pixels, width, height, x0 + dx * t, y0 + dy * t);
+  }
+}
+
+function fillRect(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  g: number,
+  b: number,
+): void {
+  const x0 = Math.max(0, Math.floor(x));
+  const y0 = Math.max(0, Math.floor(y));
+  const x1 = Math.min(width - 1, Math.ceil(x + w));
+  const y1 = Math.min(height - 1, Math.ceil(y + h));
+  for (let py = y0; py <= y1; py++) {
+    for (let px = x0; px <= x1; px++) {
+      setPixelRgb(pixels, width, height, px, py, r, g, b);
+    }
   }
 }
 
@@ -224,7 +323,126 @@ function drawEntityBBoxFallback(
   drawLine(pixels, width, height, s4.x, s4.y, s1.x, s1.y);
 }
 
-function analyzeDXF(buffer: Buffer): { previewJpeg: Buffer; summary: BotCuttingSummary } {
+function getEntityWorldBBox(fe: FlattenedEntity): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const bb = fe.entity.boundingBox;
+  if (bb === undefined) return null;
+
+  const p1 = mat4TransformPoint(fe.transform, bb.min);
+  const p2 = mat4TransformPoint(fe.transform, { x: bb.max.x, y: bb.min.y, z: bb.min.z });
+  const p3 = mat4TransformPoint(fe.transform, bb.max);
+  const p4 = mat4TransformPoint(fe.transform, { x: bb.min.x, y: bb.max.y, z: bb.min.z });
+  const xs = [p1.x, p2.x, p3.x, p4.x];
+  const ys = [p1.y, p2.y, p3.y, p4.y];
+
+  return {
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+  };
+}
+
+function extractNestingItems(normalized: NormalizedDocument): readonly NestingItem[] {
+  const stats = computeCuttingStats(normalized);
+  const items: NestingItem[] = [];
+
+  for (let i = 0; i < stats.chains.length; i++) {
+    const chain = stats.chains[i]!;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const entityIndex of chain.entityIndices) {
+      const fe = normalized.flatEntities[entityIndex];
+      if (fe === undefined) continue;
+      const bb = getEntityWorldBBox(fe);
+      if (bb === null) continue;
+      minX = Math.min(minX, bb.minX);
+      minY = Math.min(minY, bb.minY);
+      maxX = Math.max(maxX, bb.maxX);
+      maxY = Math.max(maxY, bb.maxY);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      continue;
+    }
+
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    items.push({
+      id: i + 1,
+      name: `Part ${i + 1}`,
+      width,
+      height,
+      quantity: 1,
+    });
+  }
+
+  if (items.length > 0) {
+    return items;
+  }
+
+  const total = normalized.totalBBox;
+  if (total === null) return [];
+
+  return [{
+    id: 1,
+    name: 'Part 1',
+    width: Math.max(1, total.max.x - total.min.x),
+    height: Math.max(1, total.max.y - total.min.y),
+    quantity: 1,
+  }];
+}
+
+function renderNestingPreview(result: NestingResult): Buffer {
+  const width = NESTING_PREVIEW_WIDTH;
+  const height = NESTING_PREVIEW_HEIGHT;
+  const pixels = Buffer.alloc(width * height * 4, 255);
+  const sheet = result.sheets[0];
+
+  if (sheet === undefined || sheet.placed.length === 0) {
+    return Buffer.from(jpeg.encode({ data: pixels, width, height }, 88).data);
+  }
+
+  const sheetW = Math.max(result.sheet.width, 1);
+  const sheetH = Math.max(result.sheet.height, 1);
+  const scale = Math.min(
+    (width - PREVIEW_PADDING * 2) / sheetW,
+    (height - PREVIEW_PADDING * 2) / sheetH,
+  );
+
+  const ox = PREVIEW_PADDING;
+  const oy = height - PREVIEW_PADDING;
+  const toX = (x: number): number => ox + x * scale;
+  const toY = (y: number): number => oy - y * scale;
+
+  drawLine(pixels, width, height, toX(0), toY(0), toX(sheetW), toY(0));
+  drawLine(pixels, width, height, toX(sheetW), toY(0), toX(sheetW), toY(sheetH));
+  drawLine(pixels, width, height, toX(sheetW), toY(sheetH), toX(0), toY(sheetH));
+  drawLine(pixels, width, height, toX(0), toY(sheetH), toX(0), toY(0));
+
+  for (let i = 0; i < sheet.placed.length; i++) {
+    const p = sheet.placed[i]!;
+    const colorR = 80 + (i * 53) % 140;
+    const colorG = 90 + (i * 79) % 130;
+    const colorB = 100 + (i * 37) % 120;
+    const x = toX(p.x);
+    const y = toY(p.y + p.height);
+    const w = p.width * scale;
+    const h = p.height * scale;
+
+    fillRect(pixels, width, height, x + 1, y + 1, Math.max(1, w - 2), Math.max(1, h - 2), colorR, colorG, colorB);
+    drawLine(pixels, width, height, x, y, x + w, y);
+    drawLine(pixels, width, height, x + w, y, x + w, y + h);
+    drawLine(pixels, width, height, x + w, y + h, x, y + h);
+    drawLine(pixels, width, height, x, y + h, x, y);
+  }
+
+  return Buffer.from(jpeg.encode({ data: pixels, width, height }, 88).data);
+}
+
+function analyzeDXF(buffer: Buffer): BotAnalysisResult {
   const doc = parseDXF(toArrayBuffer(buffer));
   const normalized = normalizeDocument(doc);
   const stats = computeCuttingStats(normalized);
@@ -235,6 +453,7 @@ function analyzeDXF(buffer: Buffer): { previewJpeg: Buffer; summary: BotCuttingS
       totalPierces: stats.totalPierces,
       totalCutLength: stats.totalCutLength,
     },
+    nestingItems: extractNestingItems(normalized),
   };
 }
 
@@ -271,6 +490,223 @@ async function telegramSendPhoto(token: string, chatId: number, photo: Buffer, c
   }
 }
 
+async function telegramSendDocument(
+  token: string,
+  chatId: number,
+  document: Buffer,
+  fileName: string,
+  caption: string,
+  mimeType: string,
+): Promise<void> {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('caption', caption);
+  form.append('document', new Blob([new Uint8Array(document)], { type: mimeType }), fileName);
+
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+    method: 'POST',
+    body: form,
+  });
+  const data = await response.json() as TelegramResponse<unknown>;
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description ?? 'Telegram sendDocument failed');
+  }
+}
+
+async function telegramAnswerCallbackQuery(token: string, callbackQueryId: string): Promise<void> {
+  await telegramGet(token, 'answerCallbackQuery', {
+    callback_query_id: callbackQueryId,
+  });
+}
+
+function getSheetFromCallbackData(data: string): SheetSize | null {
+  if (!data.startsWith(NESTING_CALLBACK_PREFIX)) return null;
+  const payload = data.slice(NESTING_CALLBACK_PREFIX.length);
+  const [rawW, rawH] = payload.split('x');
+  const width = Number(rawW);
+  const height = Number(rawH);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}
+
+function buildSheetButtons(): readonly (readonly { text: string; callback_data: string }[])[] {
+  const rows: { text: string; callback_data: string }[][] = [];
+  for (let i = 0; i < SHEET_PRESETS.length; i += 2) {
+    const row: { text: string; callback_data: string }[] = [];
+    const a = SHEET_PRESETS[i];
+    const b = SHEET_PRESETS[i + 1];
+    if (a !== undefined) {
+      row.push({
+        text: a.label,
+        callback_data: `${NESTING_CALLBACK_PREFIX}${a.size.width}x${a.size.height}`,
+      });
+    }
+    if (b !== undefined) {
+      row.push({
+        text: b.label,
+        callback_data: `${NESTING_CALLBACK_PREFIX}${b.size.width}x${b.size.height}`,
+      });
+    }
+    rows.push(row);
+  }
+  rows.push([{ text: 'Свой размер (ввести)', callback_data: `${ACTION_CALLBACK_PREFIX}sheet_custom` }]);
+  rows.push([{ text: 'Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
+  return rows;
+}
+
+function isPositiveIntegerText(text: string): boolean {
+  return /^\d+$/.test(text.trim());
+}
+
+function parseSheetSizeText(text: string): SheetSize | null {
+  const normalized = text.trim().toLowerCase().replace('х', 'x').replace('*', 'x');
+  const match = normalized.match(/^(\d{2,5})\s*x\s*(\d{2,5})$/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}
+
+function formatSheetLabel(sheet: SheetSize): string {
+  return `${sheet.width}x${sheet.height} мм`;
+}
+
+function buildMainMenuButtons(hasNesting: boolean): readonly (readonly { text: string; callback_data: string }[])[] {
+  const rows: { text: string; callback_data: string }[][] = [
+    [
+      { text: 'Статистика', callback_data: `${ACTION_CALLBACK_PREFIX}stats` },
+      { text: 'Превью DXF', callback_data: `${ACTION_CALLBACK_PREFIX}preview` },
+    ],
+    [
+      { text: 'Количество', callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
+      { text: 'Размер листа', callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
+    ],
+    [{ text: 'Запустить раскладку', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` }],
+  ];
+
+  if (hasNesting) {
+    rows.push([
+      { text: 'Экспорт DXF', callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
+      { text: 'Экспорт CSV', callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
+    ]);
+    rows.push([{ text: 'Варианты раскладки', callback_data: `${ACTION_CALLBACK_PREFIX}variants` }]);
+  }
+
+  rows.push([{ text: 'Сбросить набор', callback_data: `${ACTION_CALLBACK_PREFIX}reset` }]);
+
+  return rows;
+}
+
+function buildQuantityButtons(): readonly (readonly { text: string; callback_data: string }[])[] {
+  return [
+    [
+      { text: '1', callback_data: `${QUANTITY_CALLBACK_PREFIX}1` },
+      { text: '5', callback_data: `${QUANTITY_CALLBACK_PREFIX}5` },
+      { text: '10', callback_data: `${QUANTITY_CALLBACK_PREFIX}10` },
+      { text: '20', callback_data: `${QUANTITY_CALLBACK_PREFIX}20` },
+    ],
+    [{ text: 'Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }],
+  ];
+}
+
+function buildVariantsButtons(context: PendingNestingContext): readonly (readonly { text: string; callback_data: string }[])[] {
+  const rows: { text: string; callback_data: string }[][] = [];
+  for (let i = 0; i < context.variants.length; i++) {
+    const variant = context.variants[i]!;
+    const isActive = context.activeVariantIndex === i;
+    rows.push([
+      {
+        text: isActive ? `* ${variant.name}` : variant.name,
+        callback_data: `${VARIANT_CALLBACK_PREFIX}${i}`,
+      },
+    ]);
+  }
+  rows.push([{ text: 'Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
+  return rows;
+}
+
+function getActiveVariant(context: PendingNestingContext): SavedNestingVariant | null {
+  if (context.activeVariantIndex === null) return null;
+  return context.variants[context.activeVariantIndex] ?? null;
+}
+
+function getPrimaryFileLabel(context: PendingNestingContext): string {
+  if (context.fileNames.length === 0) return 'без_имени';
+  if (context.fileNames.length === 1) return context.fileNames[0]!;
+  return `${context.fileNames[0]} +${context.fileNames.length - 1}`;
+}
+
+function composeDashboardText(context: PendingNestingContext): string {
+  const activeVariant = getActiveVariant(context);
+  const lines = [
+    `Файлы: ${context.fileNames.length}`,
+    `Набор: ${getPrimaryFileLabel(context)}`,
+    `Врезок: ${context.summary.totalPierces}`,
+    `Длина реза: ${formatCutLength(context.summary.totalCutLength, 'm')}`,
+    `Контуров/деталей: ${context.items.length}`,
+    `Количество: ${context.quantity ?? 'не задано'}`,
+    `Лист: ${formatSheetLabel(context.sheet)}`,
+    `Зазор: ${context.gap} мм (по умолчанию)`,
+  ];
+
+  if (activeVariant !== null) {
+    lines.push(
+      `Активный вариант: ${activeVariant.name} (листов ${activeVariant.nesting.totalSheets}, ${activeVariant.nesting.avgFillPercent}%)`,
+    );
+  }
+
+  lines.push('', 'Выберите действие:');
+  return lines.join('\n');
+}
+
+async function sendDashboard(token: string, chatId: number, context: PendingNestingContext): Promise<void> {
+  await telegramSendMessageWithKeyboard(
+    token,
+    chatId,
+    composeDashboardText(context),
+    buildMainMenuButtons(context.variants.length > 0),
+  );
+}
+
+function toSafeBaseName(fileName: string): string {
+  const base = fileName.replace(/\.dxf$/i, '');
+  const safe = base.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '');
+  return safe.length > 0 ? safe : 'result';
+}
+
+function appendAnalysisToContext(
+  context: PendingNestingContext,
+  fileName: string,
+  analysis: BotAnalysisResult,
+): PendingNestingContext {
+  const remappedItems: NestingItem[] = analysis.nestingItems.map((item, index) => ({
+    ...item,
+    id: context.nextItemId + index,
+    name: `${toSafeBaseName(fileName)}:${item.name}`,
+  }));
+
+  return {
+    ...context,
+    fileNames: [...context.fileNames, fileName],
+    summary: {
+      totalPierces: context.summary.totalPierces + analysis.summary.totalPierces,
+      totalCutLength: context.summary.totalCutLength + analysis.summary.totalCutLength,
+    },
+    items: [...context.items, ...remappedItems],
+    nextItemId: context.nextItemId + remappedItems.length,
+    previewJpeg: analysis.previewJpeg,
+    lastNesting: null,
+    variants: [],
+    activeVariantIndex: null,
+    awaitingInput: 'none',
+  };
+}
+
 async function downloadTelegramFile(token: string, fileId: string): Promise<Buffer> {
   const fileInfo = await telegramGet<TelegramFile>(token, 'getFile', {
     file_id: fileId,
@@ -284,6 +720,266 @@ async function downloadTelegramFile(token: string, fileId: string): Promise<Buff
 }
 
 async function handleTelegramUpdate(token: string, update: TelegramUpdate): Promise<void> {
+  if (update.callback_query !== undefined) {
+    const callback = update.callback_query;
+    const data = callback.data;
+    const chatId = callback.message?.chat.id;
+    await telegramAnswerCallbackQuery(token, callback.id);
+
+    if (chatId === undefined || data === undefined) {
+      return;
+    }
+
+    const context = chatNestingContext.get(chatId);
+
+    if (data.startsWith(VARIANT_CALLBACK_PREFIX)) {
+      if (context === undefined) {
+        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        return;
+      }
+      const idx = Number(data.slice(VARIANT_CALLBACK_PREFIX.length));
+      if (!Number.isInteger(idx) || idx < 0 || idx >= context.variants.length) {
+        await telegramSendMessage(token, chatId, 'Вариант не найден.');
+        return;
+      }
+      const nextContext: PendingNestingContext = {
+        ...context,
+        activeVariantIndex: idx,
+        lastNesting: context.variants[idx]!.nesting,
+      };
+      chatNestingContext.set(chatId, nextContext);
+      await sendDashboard(token, chatId, nextContext);
+      return;
+    }
+
+    if (data.startsWith(QUANTITY_CALLBACK_PREFIX)) {
+      if (context === undefined) {
+        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        return;
+      }
+      const quantity = Number(data.slice(QUANTITY_CALLBACK_PREFIX.length));
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        await telegramSendMessage(token, chatId, 'Некорректное количество.');
+        return;
+      }
+      const nextContext: PendingNestingContext = {
+        ...context,
+        quantity,
+        awaitingInput: 'none',
+        lastNesting: null,
+        variants: [],
+        activeVariantIndex: null,
+      };
+      chatNestingContext.set(chatId, nextContext);
+      await sendDashboard(token, chatId, nextContext);
+      return;
+    }
+
+    if (data.startsWith(ACTION_CALLBACK_PREFIX)) {
+      const action = data.slice(ACTION_CALLBACK_PREFIX.length);
+
+      if (action === 'menu') {
+        if (context === undefined) {
+          await telegramSendMessage(token, chatId, 'Отправьте DXF файл (.dxf), чтобы открыть рабочее меню.');
+          return;
+        }
+        await sendDashboard(token, chatId, context);
+        return;
+      }
+
+      if (context === undefined) {
+        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        return;
+      }
+
+      if (action === 'stats') {
+        await telegramSendMessage(
+          token,
+          chatId,
+          [
+            `Файлов в наборе: ${context.fileNames.length}`,
+            `Набор: ${getPrimaryFileLabel(context)}`,
+            `Врезок: ${context.summary.totalPierces}`,
+            `Длина реза: ${formatCutLength(context.summary.totalCutLength, 'm')}`,
+            `Контуров/деталей: ${context.items.length}`,
+          ].join('\n'),
+        );
+        await sendDashboard(token, chatId, context);
+        return;
+      }
+
+      if (action === 'preview') {
+        await telegramSendPhoto(token, chatId, context.previewJpeg, `Превью: ${getPrimaryFileLabel(context)}`);
+        await sendDashboard(token, chatId, context);
+        return;
+      }
+
+      if (action === 'set_qty') {
+        const nextContext: PendingNestingContext = {
+          ...context,
+          awaitingInput: 'quantity',
+          lastNesting: null,
+          variants: [],
+          activeVariantIndex: null,
+        };
+        chatNestingContext.set(chatId, nextContext);
+        await telegramSendMessageWithKeyboard(
+          token,
+          chatId,
+          'Выберите количество кнопкой или введите вручную целое число:',
+          buildQuantityButtons(),
+        );
+        return;
+      }
+
+      if (action === 'set_sheet') {
+        await telegramSendMessageWithKeyboard(
+          token,
+          chatId,
+          'Выберите размер листа или введите свой форматом 1250x2500:',
+          buildSheetButtons(),
+        );
+        return;
+      }
+
+      if (action === 'sheet_custom') {
+        const nextContext: PendingNestingContext = {
+          ...context,
+          awaitingInput: 'custom_sheet',
+          lastNesting: null,
+          variants: [],
+          activeVariantIndex: null,
+        };
+        chatNestingContext.set(chatId, nextContext);
+        await telegramSendMessage(token, chatId, 'Введите размер листа, например: 1500x3000');
+        return;
+      }
+
+      if (action === 'run_nesting') {
+        if (context.quantity === null || context.quantity <= 0) {
+          await telegramSendMessage(token, chatId, 'Сначала задайте количество деталей.');
+          return;
+        }
+
+        const itemsWithQuantity: NestingItem[] = context.items.map((item) => ({
+          ...item,
+          quantity: context.quantity!,
+        }));
+        const nesting = nestItems(itemsWithQuantity, context.sheet, context.gap);
+        const firstSheet = nesting.sheets[0];
+        const variantName = `V${context.variants.length + 1}`;
+        const caption = [
+          `Раскладка: ${getPrimaryFileLabel(context)} (${variantName})`,
+          `Количество: ${context.quantity}`,
+          `Лист: ${formatSheetLabel(context.sheet)}`,
+          `Листов: ${nesting.totalSheets}`,
+          `Размещено: ${nesting.totalPlaced}/${nesting.totalRequired}`,
+          `Среднее заполнение: ${nesting.avgFillPercent}%`,
+          firstSheet ? `Заполнение листа #1: ${firstSheet.fillPercent}%` : 'Детали не влезли',
+        ].join('\n');
+
+        await telegramSendPhoto(token, chatId, renderNestingPreview(nesting), caption);
+
+        const variants = [...context.variants, { name: variantName, nesting }];
+        const nextContext: PendingNestingContext = {
+          ...context,
+          lastNesting: nesting,
+          variants,
+          activeVariantIndex: variants.length - 1,
+          awaitingInput: 'none',
+        };
+        chatNestingContext.set(chatId, nextContext);
+        await sendDashboard(token, chatId, nextContext);
+        return;
+      }
+
+      if (action === 'variants') {
+        if (context.variants.length === 0) {
+          await telegramSendMessage(token, chatId, 'Пока нет сохраненных вариантов. Сначала запустите раскладку.');
+          return;
+        }
+        await telegramSendMessageWithKeyboard(
+          token,
+          chatId,
+          'Выберите активный вариант для экспорта:',
+          buildVariantsButtons(context),
+        );
+        return;
+      }
+
+      if (action === 'reset') {
+        chatNestingContext.delete(chatId);
+        await telegramSendMessage(token, chatId, 'Набор сброшен. Отправьте DXF файл для нового расчета.');
+        return;
+      }
+
+      if (action === 'export_dxf') {
+        const activeVariant = getActiveVariant(context);
+        if (activeVariant === null) {
+          await telegramSendMessage(token, chatId, 'Сначала запустите раскладку.');
+          return;
+        }
+        const safe = toSafeBaseName(getPrimaryFileLabel(context));
+        const dxf = exportNestingToDXF({ nestingResult: activeVariant.nesting });
+        await telegramSendDocument(
+          token,
+          chatId,
+          Buffer.from(dxf, 'utf-8'),
+          `${safe}-${activeVariant.name}.dxf`,
+          `Экспорт раскладки DXF (${activeVariant.name})`,
+          'application/dxf',
+        );
+        return;
+      }
+
+      if (action === 'export_csv') {
+        const activeVariant = getActiveVariant(context);
+        if (activeVariant === null) {
+          await telegramSendMessage(token, chatId, 'Сначала запустите раскладку.');
+          return;
+        }
+        const safe = toSafeBaseName(getPrimaryFileLabel(context));
+        const csv = exportNestingToCSV({ nestingResult: activeVariant.nesting, fileName: `${safe}-${activeVariant.name}` });
+        await telegramSendDocument(
+          token,
+          chatId,
+          Buffer.from(csv, 'utf-8'),
+          `${safe}-${activeVariant.name}.csv`,
+          `Экспорт раскладки CSV (${activeVariant.name})`,
+          'text/csv',
+        );
+        return;
+      }
+
+      await telegramSendMessage(token, chatId, 'Команда не распознана.');
+      return;
+    }
+
+    const sheet = getSheetFromCallbackData(data);
+    if (sheet === null) {
+      await telegramSendMessage(token, chatId, 'Не понял размер листа. Выберите пресет кнопкой ниже.');
+      await telegramSendMessageWithKeyboard(token, chatId, 'Выберите размер листа:', buildSheetButtons());
+      return;
+    }
+
+    if (context === undefined) {
+      await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+      return;
+    }
+
+    const nextContext: PendingNestingContext = {
+      ...context,
+      sheet,
+      awaitingInput: 'none',
+      lastNesting: null,
+      variants: [],
+      activeVariantIndex: null,
+    };
+    chatNestingContext.set(chatId, nextContext);
+    await sendDashboard(token, chatId, nextContext);
+    return;
+  }
+
   const message = update.message;
   if (message === undefined) return;
   const chatId = message.chat.id;
@@ -303,13 +999,38 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     try {
       const dxfBuffer = await downloadTelegramFile(token, message.document.file_id);
       const result = analyzeDXF(dxfBuffer);
+      const defaultSheet = SHEET_PRESETS[1]?.size ?? SHEET_PRESETS[0]!.size;
+      const current = chatNestingContext.get(chatId);
+      const context: PendingNestingContext = current === undefined
+        ? {
+            fileNames: [fileName],
+            summary: result.summary,
+            items: result.nestingItems,
+            nextItemId: result.nestingItems.length + 1,
+            quantity: 1,
+            sheet: { ...defaultSheet },
+            gap: 5,
+            previewJpeg: result.previewJpeg,
+            lastNesting: null,
+            variants: [],
+            activeVariantIndex: null,
+            awaitingInput: 'none',
+          }
+        : appendAnalysisToContext(current, fileName, result);
+
+      chatNestingContext.set(chatId, context);
+
       const caption = [
         `Файл: ${fileName}`,
         `Врезок: ${result.summary.totalPierces}`,
         `Длина реза: ${formatCutLength(result.summary.totalCutLength, 'm')}`,
+        current === undefined
+          ? 'Открываю рабочее меню ниже.'
+          : `Добавлен в набор. Теперь файлов в наборе: ${context.fileNames.length}`,
       ].join('\n');
 
       await telegramSendPhoto(token, chatId, result.previewJpeg, caption);
+      await sendDashboard(token, chatId, context);
     } catch (error) {
       const details = error instanceof Error ? error.message : String(error);
       await telegramSendMessage(token, chatId, `Ошибка обработки DXF: ${details}`);
@@ -319,7 +1040,72 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
   }
 
   if (message.text !== undefined) {
-    await telegramSendMessage(token, chatId, 'Отправьте DXF файл, и я верну JPEG-превью + врезки и длину реза.');
+    const pending = chatNestingContext.get(chatId);
+    if (pending !== undefined && pending.awaitingInput === 'quantity') {
+      if (!isPositiveIntegerText(message.text)) {
+        await telegramSendMessage(token, chatId, 'Введите целое число больше 0. Например: 5');
+        return;
+      }
+
+      const quantity = Number(message.text.trim());
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        await telegramSendMessage(token, chatId, 'Введите целое число больше 0. Например: 5');
+        return;
+      }
+
+      chatNestingContext.set(chatId, {
+        ...pending,
+        quantity,
+        awaitingInput: 'none',
+        lastNesting: null,
+        variants: [],
+        activeVariantIndex: null,
+      });
+
+      await sendDashboard(token, chatId, chatNestingContext.get(chatId)!);
+      return;
+    }
+
+    if (pending !== undefined && pending.awaitingInput === 'custom_sheet') {
+      const sheet = parseSheetSizeText(message.text);
+      if (sheet === null) {
+        await telegramSendMessage(token, chatId, 'Неверный формат. Введите так: 1500x3000');
+        return;
+      }
+
+      chatNestingContext.set(chatId, {
+        ...pending,
+        sheet,
+        awaitingInput: 'none',
+        lastNesting: null,
+        variants: [],
+        activeVariantIndex: null,
+      });
+
+      await sendDashboard(token, chatId, chatNestingContext.get(chatId)!);
+      return;
+    }
+
+    if (message.text === '/start' || message.text === '/help' || message.text === '/menu') {
+      if (pending !== undefined) {
+        await sendDashboard(token, chatId, pending);
+      } else {
+        await telegramSendMessage(
+          token,
+          chatId,
+          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.',
+        );
+      }
+      return;
+    }
+
+    await telegramSendMessage(
+      token,
+      chatId,
+      pending !== undefined
+        ? 'Используйте /menu для панели действий или отправьте новый DXF файл.'
+        : 'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.',
+    );
   }
 }
 
