@@ -10,7 +10,7 @@ import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
-import { SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
+import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { NestingResult } from '../../core-engine/src/nesting/index.js';
 import type { NormalizedDocument, FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
@@ -620,9 +620,8 @@ async function runNesting(): Promise<void> {
   try {
     const response = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', { items, sheet, gap });
     currentNestResult = response.data;
-  } catch (err) {
-    alert(`Ошибка раскладки: ${err instanceof Error ? err.message : String(err)}`);
-    return;
+  } catch {
+    currentNestResult = nestItems(items, sheet, gap);
   }
 
   showNestResults();
