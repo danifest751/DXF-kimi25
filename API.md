@@ -163,11 +163,12 @@ curl -X POST "http://localhost:3000/api/nest" \
 
 ---
 
-### 9) Bot (stub)
+### 9) Bot helper endpoint
 
 `POST /api/bot/message`
 
-Заглушка для будущего бота.
+Вспомогательный endpoint для внутренней проверки bot-service.
+Полноценный Telegram workflow работает через отдельный `packages/bot-service` (polling), а не через этот endpoint.
 
 **Body**
 
@@ -188,8 +189,34 @@ curl -X POST "http://localhost:3000/api/nest" \
 npm run dev:api
 ```
 
+---
+
+## Telegram bot-service (отдельный сервис)
+
+Бот запускается отдельно от API и использует Telegram polling.
+
+Запуск из корня:
+
+```bash
+# обязательно задать токен
+# TELEGRAM_BOT_TOKEN=<token>
+
+npm run dev:bot
+```
+
+Ключевые возможности бота:
+- загрузка одного или нескольких DXF в набор
+- статистика резки по набору (врезки/длина)
+- интерактивный выбор количества, размера листа (пресеты и custom)
+- запуск раскладки и сохранение вариантов (`V1`, `V2`, ...)
+- выбор активного варианта
+- экспорт активного варианта в DXF/CSV
+- сброс набора через кнопку
+
 ## Важно: текущий статус интеграции UI
 
-На текущий момент UI (web-интерфейс) **не вызывает HTTP API**, а использует `core-engine` напрямую в браузере.
+На текущий момент UI (web-интерфейс) **вызывает HTTP API** (эндпоинты `/api/cutting-stats`, `/api/nest`, `/api/export/*`).
 
-Это можно увидеть в `src/main.ts`: отсутствуют `fetch`/`axios` вызовы, работа идёт через прямые импорты ядра.
+Это реализовано в `packages/ui-app/src/main.ts` через `fetch`-запросы (helper-функции `apiPostJSON`/`apiPostBlob`).
+
+При ошибке API в ряде сценариев включается fallback на локальные вычисления через `core-engine`.
