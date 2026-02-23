@@ -361,6 +361,35 @@
   stroke-width: 2;
 }
 
+/* Per-sheet hash copy button */
+.nest-sheet-hash {
+  position: absolute;
+  pointer-events: auto;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: rgba(10, 14, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--accent-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  transition: var(--transition-fast);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+.nest-sheet-hash:hover {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+  box-shadow: var(--glow-primary);
+}
+
 /* Download all sheets button */
 .np-download-all-btn {
   justify-content: center;

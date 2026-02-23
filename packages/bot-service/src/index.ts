@@ -12,6 +12,7 @@ import { nestItems, SHEET_PRESETS, type NestingItem, type NestingOptions, type N
 import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
+import { sharedSheetStore } from '../../api-service/src/shared-sheets.js';
 
 export interface BotMessage {
   readonly chatId: string;
@@ -1182,8 +1183,41 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         await telegramSendMessage(
           token,
           chatId,
-          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.',
+          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.\n\nТакже можно отправить код листа (8 символов) для получения DXF раскладки.',
         );
+      }
+      return;
+    }
+
+    // ── Hash-based sheet retrieval ──
+    const hashPattern = /\b[0-9a-f]{8}\b/gi;
+    const hashes = message.text.match(hashPattern);
+    if (hashes && hashes.length > 0) {
+      const uniqueHashes = [...new Set(hashes.map(h => h.toLowerCase()))];
+      let found = 0;
+      let notFound = 0;
+      for (const hash of uniqueHashes) {
+        const entry = sharedSheetStore.get(hash);
+        if (entry) {
+          const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
+          const s = entry.singleResult;
+          const caption = `📋 Лист #${entry.sheetIndex + 1} [${hash}]\n${s.sheet.width}×${s.sheet.height} мм · ${s.totalPlaced} дет. · ${s.avgFillPercent}%`;
+          await telegramSendDocument(
+            token, chatId,
+            Buffer.from(dxf, 'utf-8'),
+            `sheet_${entry.sheetIndex + 1}_${hash}.dxf`,
+            caption,
+            'application/dxf',
+          );
+          found++;
+        } else {
+          notFound++;
+        }
+      }
+      if (notFound > 0 && found === 0) {
+        await telegramSendMessage(token, chatId, `Код${uniqueHashes.length > 1 ? 'ы' : ''} не найден${uniqueHashes.length > 1 ? 'ы' : ''} или истёк срок действия.`);
+      } else if (notFound > 0) {
+        await telegramSendMessage(token, chatId, `${found} из ${uniqueHashes.length} листов отправлено. Остальные коды не найдены.`);
       }
       return;
     }
@@ -1192,8 +1226,8 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       token,
       chatId,
       pending !== undefined
-        ? 'Используйте /menu для панели действий или отправьте новый DXF файл.'
-        : 'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.',
+        ? 'Используйте /menu для панели действий, отправьте DXF файл или код листа (8 символов).'
+        : 'Отправьте DXF файл (.dxf) или код листа (8 символов) для получения раскладки.',
     );
   }
 }

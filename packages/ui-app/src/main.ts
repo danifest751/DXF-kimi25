@@ -111,6 +111,7 @@ let nestingMode = false;
 let currentNestResult: NestingResult | null = null;
 let lastNestingOptions: NestingOptions | null = null;
 let nestCellRects: { x: number; y: number; w: number; h: number; si: number }[] = [];
+let nestSheetHashes: string[] = [];
 let nestHoveredSheet = -1;
 let cuttingComputeMode: ComputeMode = 'api';
 let nestingComputeMode: ComputeMode = 'api';
@@ -721,6 +722,19 @@ async function runNesting(): Promise<void> {
     updateModeBadge();
   }
 
+  // Share sheets to get per-sheet hashes
+  nestSheetHashes = [];
+  if (currentNestResult) {
+    try {
+      const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting/share', {
+        nestingResult: currentNestResult,
+      });
+      nestSheetHashes = shareResp.hashes;
+    } catch {
+      // Sharing failed (e.g. no API) — hashes stay empty
+    }
+  }
+
   showNestResults();
   enterNestingMode();
 }
@@ -871,7 +885,8 @@ function renderAllNestingSheets(): void {
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(`#${si + 1}  ${sheet.fillPercent}%  (${sheet.placed.length})`, cellX, cellY);
+    const hashLabel = nestSheetHashes[si] ? `  [${nestSheetHashes[si]}]` : '';
+    ctx.fillText(`#${si + 1}  ${sheet.fillPercent}%  (${sheet.placed.length})${hashLabel}`, cellX, cellY);
 
     const ox = cellX;
     const oy = cellY + labelH;
@@ -965,14 +980,17 @@ function renderAllNestingSheets(): void {
   ctx.textBaseline = 'top';
   ctx.fillText(`${sw}×${sh} мм  |  ${n} листов  |  ${r.avgFillPercent}% заполнение`, margin, footY);
 
-  // Per-sheet download buttons
+  // Per-sheet download + hash buttons
   nestSheetBtns.innerHTML = '';
   for (const cell of nestCellRects) {
+    const hash = nestSheetHashes[cell.si] ?? '';
+
+    // Download button
     const btn = document.createElement('button');
     btn.className = 'nest-sheet-dl';
     btn.title = `Скачать лист #${cell.si + 1} (DXF)`;
     btn.style.left = `${cell.x + cell.w - 28}px`;
-    btn.style.top = `${cell.y - 22}px`;
+    btn.style.top = `${cell.y + 4}px`;
     btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     const sheetIdx = cell.si;
     btn.addEventListener('click', (e) => {
@@ -980,6 +998,24 @@ function renderAllNestingSheets(): void {
       exportSingleSheetDXF(sheetIdx);
     });
     nestSheetBtns.appendChild(btn);
+
+    // Copy hash button
+    if (hash) {
+      const hashBtn = document.createElement('button');
+      hashBtn.className = 'nest-sheet-hash';
+      hashBtn.title = `Копировать код: ${hash}`;
+      hashBtn.style.left = `${cell.x + cell.w - 28 - 68}px`;
+      hashBtn.style.top = `${cell.y + 4}px`;
+      hashBtn.textContent = hash;
+      hashBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void navigator.clipboard.writeText(hash).then(() => {
+          hashBtn.textContent = '✓';
+          setTimeout(() => { hashBtn.textContent = hash; }, 1200);
+        });
+      });
+      nestSheetBtns.appendChild(hashBtn);
+    }
   }
 }
 

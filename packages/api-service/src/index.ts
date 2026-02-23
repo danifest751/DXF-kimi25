@@ -10,10 +10,11 @@ import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
 import { nestItems } from '../../core-engine/src/nesting/index.js';
-import type { NestingItem, SheetSize } from '../../core-engine/src/nesting/index.js';
+import type { NestingItem, NestingResult, SheetSize } from '../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
 import { calculatePrice } from '../../pricing/src/index.js';
 import { processBotMessage } from '../../bot-service/src/index.js';
+import { sharedSheetStore, generateShortHash, pruneExpiredSheets } from './shared-sheets.js';
 
 const app = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -287,6 +288,92 @@ app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> =
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'CSV export failed', details: message });
   }
+});
+
+// ─── Share nesting sheets (generate hashes) ─────────────────────────
+
+app.post('/api/nesting/share', (req: Request, res: Response): void => {
+  try {
+    pruneExpiredSheets();
+    const { nestingResult } = req.body as { nestingResult?: NestingResult };
+    if (!nestingResult || !nestingResult.sheets) {
+      res.status(400).json({ error: 'nestingResult is required' });
+      return;
+    }
+
+    const hashes: string[] = [];
+    for (let i = 0; i < nestingResult.sheets.length; i++) {
+      const sheet = nestingResult.sheets[i]!;
+      let hash = generateShortHash();
+      while (sharedSheetStore.has(hash)) hash = generateShortHash();
+
+      const singleResult: NestingResult = {
+        sheet: nestingResult.sheet,
+        gap: nestingResult.gap,
+        sheets: [{ ...sheet, sheetIndex: 0 }],
+        totalSheets: 1,
+        totalPlaced: sheet.placed.length,
+        totalRequired: sheet.placed.length,
+        avgFillPercent: sheet.fillPercent,
+        cutLengthEstimate: nestingResult.cutLengthEstimate,
+        sharedCutLength: nestingResult.sharedCutLength,
+        cutLengthAfterMerge: nestingResult.cutLengthAfterMerge,
+        pierceEstimate: sheet.placed.length,
+        pierceDelta: 0,
+      };
+
+      sharedSheetStore.set(hash, {
+        hash,
+        sheetIndex: i,
+        singleResult,
+        createdAt: Date.now(),
+      });
+      hashes.push(hash);
+    }
+
+    res.json({ success: true, hashes });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Share failed', details: message });
+  }
+});
+
+// Get shared sheet DXF by hash
+app.get('/api/nesting/sheet/:hash', (req: Request, res: Response): void => {
+  try {
+    const { hash } = req.params;
+    const entry = sharedSheetStore.get(hash!);
+    if (!entry) {
+      res.status(404).json({ error: 'Sheet not found or expired' });
+      return;
+    }
+
+    const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
+    res.setHeader('Content-Type', 'application/dxf');
+    res.setHeader('Content-Disposition', `attachment; filename="sheet_${entry.sheetIndex + 1}_${hash}.dxf"`);
+    res.send(dxf);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'DXF export failed', details: message });
+  }
+});
+
+// Get shared sheet info (JSON) by hash
+app.get('/api/nesting/sheet/:hash/info', (req: Request, res: Response): void => {
+  const { hash } = req.params;
+  const entry = sharedSheetStore.get(hash!);
+  if (!entry) {
+    res.status(404).json({ error: 'Sheet not found or expired' });
+    return;
+  }
+  const s = entry.singleResult;
+  res.json({
+    hash,
+    sheetIndex: entry.sheetIndex,
+    sheetSize: s.sheet,
+    placedCount: s.totalPlaced,
+    fillPercent: s.avgFillPercent,
+  });
 });
 
 // Bot message handler (stub)
