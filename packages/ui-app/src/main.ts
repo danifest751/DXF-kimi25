@@ -20,7 +20,8 @@ import type { EntityRenderOptions } from '../../core-engine/src/render/entity-re
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
-import type { NestingResult, NestingOptions } from '../../core-engine/src/nesting/index.js';
+import type { NestingResult, NestingOptions, NestingSheet } from '../../core-engine/src/nesting/index.js';
+import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
 import { apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
@@ -89,6 +90,8 @@ const btnExportCSV = document.getElementById('btn-export-csv') as HTMLButtonElem
 const nestingScroll = document.getElementById('nesting-scroll') as HTMLDivElement;
 const nestingCanvas = document.getElementById('nesting-canvas') as HTMLCanvasElement;
 const nestClose = document.getElementById('nest-close') as HTMLButtonElement;
+const nestSheetBtns = document.getElementById('nest-sheet-btns') as HTMLDivElement;
+const btnExportAllSheets = document.getElementById('btn-export-all-sheets') as HTMLButtonElement;
 const nestZoomPopup = document.getElementById('nest-zoom-popup') as HTMLDivElement;
 const nestZoomCanvas = document.getElementById('nest-zoom-canvas') as HTMLCanvasElement;
 const nestZoomLabel = document.getElementById('nest-zoom-label') as HTMLDivElement;
@@ -729,30 +732,39 @@ function showNestResults(): void {
   const sharedCutLength = Number.isFinite(r.sharedCutLength) ? r.sharedCutLength : 0;
   const pierceDelta = Number.isFinite(r.pierceDelta) ? r.pierceDelta : 0;
 
-  // Суммарные врезки и длина реза по всем размещённым деталям
-  let totalPierces = 0;
-  let totalCutLen = 0;
+  // Суммарные врезки и длина реза по всем размещённым деталям (сырые)
+  let rawPierces = 0;
+  let rawCutLen = 0;
   for (const sheet of r.sheets) {
     for (const p of sheet.placed) {
       const f = loadedFiles.find(lf => lf.id === p.itemId);
       if (f) {
-        totalPierces += f.stats.totalPierces;
-        totalCutLen += f.stats.totalCutLength;
+        rawPierces += f.stats.totalPierces;
+        rawCutLen += f.stats.totalCutLength;
       }
     }
   }
+
+  // Итоговые метрики с учётом экономии от common-line
+  const totalPierces = commonLineActive ? Math.max(0, rawPierces - pierceDelta) : rawPierces;
+  const totalCutLen = commonLineActive ? Math.max(0, rawCutLen - sharedCutLength) : rawCutLen;
   const cutM = totalCutLen / 1000;
   const cutStr = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLen.toFixed(1) + ' мм';
-  const sharedCutStr = (sharedCutLength / 1000).toFixed(2) + ' м';
 
-  nestResultCards.innerHTML = `
+  let cardsHtml = `
     <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">Листов</div></div>
     <div class="np-card"><div class="np-card-val">${r.avgFillPercent}%</div><div class="np-card-label">Заполнение</div></div>
     <div class="np-card"><div class="np-card-val">${totalPierces}</div><div class="np-card-label">Врезок</div></div>
     <div class="np-card"><div class="np-card-val">${cutStr}</div><div class="np-card-label">Длина реза</div></div>
-    <div class="np-card"><div class="np-card-val">${sharedCutStr}</div><div class="np-card-label">Экономия реза</div></div>
-    <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
   `;
+  if (commonLineActive && (sharedCutLength > 0 || pierceDelta > 0)) {
+    const sharedCutStr = (sharedCutLength / 1000).toFixed(2) + ' м';
+    cardsHtml += `
+      <div class="np-card"><div class="np-card-val">−${sharedCutStr}</div><div class="np-card-label">Экономия реза</div></div>
+      <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
+    `;
+  }
+  nestResultCards.innerHTML = cardsHtml;
 
   let commonLineSummary = '';
   if (commonLineActive) {
@@ -952,7 +964,61 @@ function renderAllNestingSheets(): void {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.fillText(`${sw}×${sh} мм  |  ${n} листов  |  ${r.avgFillPercent}% заполнение`, margin, footY);
+
+  // Per-sheet download buttons
+  nestSheetBtns.innerHTML = '';
+  for (const cell of nestCellRects) {
+    const btn = document.createElement('button');
+    btn.className = 'nest-sheet-dl';
+    btn.title = `Скачать лист #${cell.si + 1} (DXF)`;
+    btn.style.left = `${cell.x + cell.w - 28}px`;
+    btn.style.top = `${cell.y - 22}px`;
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+    const sheetIdx = cell.si;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportSingleSheetDXF(sheetIdx);
+    });
+    nestSheetBtns.appendChild(btn);
+  }
 }
+
+function exportSingleSheetDXF(sheetIndex: number): void {
+  if (!currentNestResult) return;
+  const r = currentNestResult;
+  const sheet = r.sheets[sheetIndex];
+  if (!sheet) return;
+
+  // Build a NestingResult with only this one sheet, reset sheetIndex to 0
+  const singleResult: NestingResult = {
+    sheet: r.sheet,
+    gap: r.gap,
+    sheets: [{ ...sheet, sheetIndex: 0 }],
+    totalSheets: 1,
+    totalPlaced: sheet.placed.length,
+    totalRequired: sheet.placed.length,
+    avgFillPercent: sheet.fillPercent,
+    cutLengthEstimate: r.cutLengthEstimate,
+    sharedCutLength: r.sharedCutLength,
+    cutLengthAfterMerge: r.cutLengthAfterMerge,
+    pierceEstimate: sheet.placed.length,
+    pierceDelta: 0,
+  };
+
+  const dxfStr = exportNestingToDXF({ nestingResult: singleResult });
+  const blob = new Blob([dxfStr], { type: 'application/dxf' });
+  downloadBlob(blob, `nesting_sheet_${sheetIndex + 1}.dxf`);
+}
+
+function exportAllSheetsDXF(): void {
+  if (!currentNestResult) return;
+  const r = currentNestResult;
+  for (let i = 0; i < r.sheets.length; i++) {
+    exportSingleSheetDXF(i);
+  }
+}
+
+btnExportAllSheets.addEventListener('click', exportAllSheetsDXF);
 
 // Обновляем nesting canvas при resize
 const nestResizeObs = new ResizeObserver(() => {

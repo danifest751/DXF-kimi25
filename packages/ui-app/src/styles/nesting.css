@@ -322,3 +322,52 @@
   background: rgba(0, 0, 0, 0.1);
 }
 .np-advanced.hidden { display: none; }
+
+/* ─── Per-sheet download buttons ─── */
+#nest-sheet-btns {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.nest-sheet-dl {
+  position: absolute;
+  pointer-events: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: rgba(10, 14, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+  backdrop-filter: blur(4px);
+  padding: 0;
+}
+.nest-sheet-dl:hover {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+  box-shadow: var(--glow-primary);
+}
+.nest-sheet-dl svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+/* Download all sheets button */
+.np-download-all-btn {
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.np-download-all-btn:hover {
+  opacity: 1;
+}
