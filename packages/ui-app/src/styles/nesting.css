@@ -400,3 +400,17 @@
 .np-download-all-btn:hover {
   opacity: 1;
 }
+
+/* Copy all hashes button */
+.np-copy-hashes-btn {
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.8;
+  color: var(--accent-primary);
+}
+.np-copy-hashes-btn:hover {
+  opacity: 1;
+  background: var(--accent-primary);
+  color: #fff;
+}

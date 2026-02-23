@@ -92,6 +92,7 @@ const nestingCanvas = document.getElementById('nesting-canvas') as HTMLCanvasEle
 const nestClose = document.getElementById('nest-close') as HTMLButtonElement;
 const nestSheetBtns = document.getElementById('nest-sheet-btns') as HTMLDivElement;
 const btnExportAllSheets = document.getElementById('btn-export-all-sheets') as HTMLButtonElement;
+const btnCopyAllHashes = document.getElementById('btn-copy-all-hashes') as HTMLButtonElement;
 const nestZoomPopup = document.getElementById('nest-zoom-popup') as HTMLDivElement;
 const nestZoomCanvas = document.getElementById('nest-zoom-canvas') as HTMLCanvasElement;
 const nestZoomLabel = document.getElementById('nest-zoom-label') as HTMLDivElement;
@@ -792,6 +793,9 @@ function showNestResults(): void {
   // Показываем кнопки экспорта
   btnExportDXF.style.display = 'flex';
   btnExportCSV.style.display = 'flex';
+
+  // Show copy-all-hashes button only when hashes exist
+  btnCopyAllHashes.style.display = nestSheetHashes.length > 0 ? 'flex' : 'none';
 }
 
 function enterNestingMode(): void {
@@ -1055,6 +1059,16 @@ function exportAllSheetsDXF(): void {
 }
 
 btnExportAllSheets.addEventListener('click', exportAllSheetsDXF);
+
+btnCopyAllHashes.addEventListener('click', () => {
+  if (nestSheetHashes.length === 0) return;
+  const text = nestSheetHashes.join('\n');
+  void navigator.clipboard.writeText(text).then(() => {
+    const orig = btnCopyAllHashes.textContent;
+    btnCopyAllHashes.textContent = '✓ Скопировано';
+    setTimeout(() => { btnCopyAllHashes.textContent = orig; }, 1500);
+  });
+});
 
 // Обновляем nesting canvas при resize
 const nestResizeObs = new ResizeObserver(() => {
