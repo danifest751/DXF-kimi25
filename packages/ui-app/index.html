@@ -125,10 +125,6 @@
         <div class="np-section">
           <div class="np-label">Режим</div>
           <div class="np-radio-group" id="nest-mode-group">
-            <label class="np-radio active" data-value="fast">
-              <input type="radio" name="nest-mode" value="fast" />
-              <span>Быстро</span>
-            </label>
             <label class="np-radio" data-value="precise">
               <input type="radio" name="nest-mode" value="precise" checked />
               <span>Точно</span>
@@ -218,18 +214,6 @@
           <div class="np-section">
             <div class="np-label">Алгоритм</div>
             <div class="np-row">
-              <select class="np-select" id="nest-strategy">
-                <option value="blf_bbox">BLF BBox</option>
-                <option value="maxrects_bbox" selected>MaxRects BBox</option>
-              </select>
-            </div>
-            <div class="np-row" style="justify-content: space-between; margin-top:10px;">
-              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
-                <input type="checkbox" id="nest-multistart" checked />
-                Multi-start
-              </label>
-            </div>
-            <div class="np-row" style="margin-top:10px;">
               <span class="np-unit" style="min-width: 50px;">Seed</span>
               <input type="number" class="np-input np-input-sm" id="nest-seed" value="0" step="1" />
             </div>

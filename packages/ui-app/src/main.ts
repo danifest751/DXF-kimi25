@@ -71,10 +71,8 @@ const nestRotateEnabled = document.getElementById('nest-rotate-enabled') as HTML
 const nestRotateStep = document.getElementById('nest-rotate-step') as HTMLSelectElement;
 const nestModeGroup = document.getElementById('nest-mode-group') as HTMLDivElement;
 const nestModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="nest-mode"]');
-const nestStrategy = document.getElementById('nest-strategy') as HTMLSelectElement;
 const btnAdvancedToggle = document.getElementById('btn-advanced-toggle') as HTMLButtonElement;
 const nestAdvanced = document.getElementById('nest-advanced') as HTMLDivElement;
-const nestMultiStart = document.getElementById('nest-multistart') as HTMLInputElement;
 const nestSeed = document.getElementById('nest-seed') as HTMLInputElement;
 const nestCommonLineEnabled = document.getElementById('nest-commonline-enabled') as HTMLInputElement;
 const nestCommonLineStatus = document.getElementById('nest-commonline-status') as HTMLDivElement;
@@ -88,7 +86,6 @@ const nestResultCards = document.getElementById('nest-result-cards') as HTMLDivE
 const nestResultSummary = document.getElementById('nest-result-summary') as HTMLDivElement;
 const btnExportDXF = document.getElementById('btn-export-dxf') as HTMLButtonElement;
 const btnExportCSV = document.getElementById('btn-export-csv') as HTMLButtonElement;
-const btnExport = document.getElementById('btn-export') as HTMLButtonElement;
 const nestingScroll = document.getElementById('nesting-scroll') as HTMLDivElement;
 const nestingCanvas = document.getElementById('nesting-canvas') as HTMLCanvasElement;
 const nestClose = document.getElementById('nest-close') as HTMLButtonElement;
@@ -519,21 +516,9 @@ function updateCommonLineControls(): void {
 
 let applyingModePreset = false;
 
-function applyNestingModePreset(mode: 'fast' | 'precise' | 'common'): void {
+function applyNestingModePreset(mode: 'precise' | 'common'): void {
   applyingModePreset = true;
-  if (mode === 'fast') {
-    nestStrategy.value = 'blf_bbox';
-    nestMultiStart.checked = false;
-    nestCommonLineEnabled.checked = false;
-  } else if (mode === 'precise') {
-    nestStrategy.value = 'maxrects_bbox';
-    nestMultiStart.checked = true;
-    nestCommonLineEnabled.checked = false;
-  } else {
-    nestStrategy.value = 'maxrects_bbox';
-    nestMultiStart.checked = true;
-    nestCommonLineEnabled.checked = true;
-  }
+  nestCommonLineEnabled.checked = mode === 'common';
   updateCommonLineControls();
   applyingModePreset = false;
 }
@@ -549,22 +534,7 @@ function setNestModeValue(val: string): void {
 
 function syncModeByAdvancedControls(): void {
   if (applyingModePreset) return;
-  const strategy = nestStrategy.value;
-  const multiStart = nestMultiStart.checked;
-  const commonLine = nestCommonLineEnabled.checked;
-  if (strategy === 'blf_bbox' && !multiStart && !commonLine) {
-    setNestModeValue('fast');
-    return;
-  }
-  if (strategy === 'maxrects_bbox' && multiStart && !commonLine) {
-    setNestModeValue('precise');
-    return;
-  }
-  if (strategy === 'maxrects_bbox' && multiStart && commonLine) {
-    setNestModeValue('common');
-    return;
-  }
-  setNestModeValue(strategy === 'blf_bbox' ? 'fast' : 'precise');
+  setNestModeValue(nestCommonLineEnabled.checked ? 'common' : 'precise');
 }
 
 updateRotationControls();
@@ -574,8 +544,7 @@ updateCommonLineControls();
 for (const radio of nestModeRadios) {
   radio.addEventListener('change', () => {
     const val = getNestModeValue();
-    const mode = val === 'fast' || val === 'common' ? val : 'precise';
-    applyNestingModePreset(mode as 'fast' | 'precise' | 'common');
+    applyNestingModePreset(val === 'common' ? 'common' : 'precise');
     autoRerunNesting();
   });
 }
@@ -593,16 +562,6 @@ nestRotateEnabled.addEventListener('change', () => {
 });
 
 nestRotateStep.addEventListener('change', () => {
-  autoRerunNesting();
-});
-
-nestStrategy.addEventListener('change', () => {
-  syncModeByAdvancedControls();
-  autoRerunNesting();
-});
-
-nestMultiStart.addEventListener('change', () => {
-  syncModeByAdvancedControls();
   autoRerunNesting();
 });
 
@@ -652,17 +611,6 @@ btnExportCSV.addEventListener('click', () => {
   })();
 });
 
-btnExport.addEventListener('click', () => {
-  if (!currentNestResult) return;
-  void (async () => {
-    try {
-      const dxfBlob = await apiPostBlob('/api/export/dxf', { nestingResult: currentNestResult });
-      downloadBlob(dxfBlob, 'nesting.dxf');
-    } catch (err) {
-      alert(`Ошибка экспорта DXF: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  })();
-});
 
 
 function updateNestItems(): void {
@@ -707,15 +655,14 @@ function getSheetSize(): { width: number; height: number } {
 function getNestingOptions(): NestingOptions {
   const raw = Number(nestRotateStep.value);
   const rotationAngleStepDeg: 1 | 2 | 5 = raw === 1 || raw === 5 ? raw : 2;
-  const strategy = nestStrategy.value === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
   const seed = Number.isFinite(Number(nestSeed.value)) ? Math.trunc(Number(nestSeed.value)) : 0;
   const maxMergeDistanceMm = Number.isFinite(Number(nestCommonLineDist.value)) ? Number(nestCommonLineDist.value) : 0.2;
   const minSharedLenMm = Number.isFinite(Number(nestCommonLineMinLen.value)) ? Number(nestCommonLineMinLen.value) : 20;
   return {
     rotationEnabled: nestRotateEnabled.checked,
     rotationAngleStepDeg,
-    strategy,
-    multiStart: nestMultiStart.checked,
+    strategy: 'maxrects_bbox',
+    multiStart: true,
     seed,
     commonLine: {
       enabled: nestCommonLineEnabled.checked,
@@ -819,7 +766,6 @@ function showNestResults(): void {
   // Показываем кнопки экспорта
   btnExportDXF.style.display = 'flex';
   btnExportCSV.style.display = 'flex';
-  btnExport.style.display = 'flex';
 }
 
 function enterNestingMode(): void {

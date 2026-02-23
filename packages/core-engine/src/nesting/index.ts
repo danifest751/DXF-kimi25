@@ -484,9 +484,9 @@ export function nestItems(
   const minSharedLenMm = typeof options.commonLine?.minSharedLenMm === 'number'
     ? Math.max(0, options.commonLine.minSharedLenMm)
     : 20;
-  const anglesDeg: number[] = rotationEnabled
-    ? Array.from({ length: Math.floor(180 / rotationAngleStepDeg) }, (_v, i) => i * rotationAngleStepDeg)
-    : [0];
+  // For bbox-based nesting only 0° and 90° are meaningful;
+  // finer steps would cause visually illogical arbitrary rotations.
+  const anglesDeg: number[] = rotationEnabled ? [0, 90] : [0];
 
   // Разворачиваем количество в отдельные копии, сортируем по площади (убывание)
   interface CopyEntry {
