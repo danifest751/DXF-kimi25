@@ -471,8 +471,6 @@ export function nestItems(
   options: NestingOptions = {},
 ): NestingResult {
   const rotationEnabled = options.rotationEnabled ?? true;
-  const stepRaw = options.rotationAngleStepDeg ?? 2;
-  const rotationAngleStepDeg: 1 | 2 | 5 = stepRaw === 1 || stepRaw === 5 ? stepRaw : 2;
   const strategy: NestingStrategy = options.strategy === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
   const multiStart = options.multiStart ?? false;
   const seed = Number.isFinite(options.seed) ? Math.trunc(options.seed as number) : 0;
