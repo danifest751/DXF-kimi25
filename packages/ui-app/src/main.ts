@@ -5,6 +5,15 @@
  * чекбоксы для включения в расчёт резки.
  */
 
+import './styles/base.css';
+import './styles/toolbar.css';
+import './styles/sidebar.css';
+import './styles/canvas.css';
+import './styles/nesting.css';
+import './styles/statusbar.css';
+import './styles/animations.css';
+import './styles/responsive.css';
+
 import { DXFRenderer } from '../../core-engine/src/render/renderer.js';
 import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';

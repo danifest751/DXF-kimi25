@@ -1,0 +1,42 @@
+/* ═══════════════════════════════════════════════════════════════════
+   STATUS BAR - Neon Dividers
+   ═══════════════════════════════════════════════════════════════════ */
+.statusbar {
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 16px; 
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted); 
+  flex-shrink: 0; height: 28px;
+  font-family: var(--mono);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
+}
+.statusbar span { 
+  white-space: nowrap; 
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.statusbar span::before {
+  content: '●';
+  font-size: 6px;
+  color: var(--border);
+}
+.statusbar span:first-child::before {
+  display: none;
+}
+.sb-accent { 
+  color: var(--accent-success);
+  text-shadow: 0 0 6px rgba(0, 255, 157, 0.4);
+}
+.sb-accent::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent-success);
+  border-radius: 50%;
+  margin-left: 4px;
+  box-shadow: 0 0 8px var(--accent-success);
+  animation: pulse 2s infinite;
+}

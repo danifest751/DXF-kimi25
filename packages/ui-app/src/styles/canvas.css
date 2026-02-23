@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MAIN AREA & CANVAS
+   ═══════════════════════════════════════════════════════════════════ */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ─── Canvas area ─── */
+.canvas-container { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+.canvas-container canvas { display: block; width: 100%; height: 100%; }
+
+/* ─── Drop overlay ─── */
+.drop-overlay {
+  position: absolute; inset: 0; background: rgba(99,102,241,0.08);
+  border: 2px dashed var(--accent); border-radius: 12px; margin: 12px;
+  display: none; z-index: 100; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 500; color: var(--accent-hover); backdrop-filter: blur(4px);
+}
+.drop-overlay.active { display: flex; }
+
+/* ─── Welcome ─── */
+.welcome {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px; color: var(--text-dim);
+}
+.welcome.hidden { display: none; }
+.welcome-icon { width: 64px; height: 64px; color: var(--text-muted); opacity: 0.4; }
+.welcome h2 { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: -0.5px; }
+.welcome p { font-size: 13px; color: var(--text-dim); }
+.welcome button {
+  background: var(--accent); color: white; border: none; padding: 10px 32px;
+  border-radius: var(--radius); font-size: 13px; font-weight: 600; font-family: var(--font);
+  cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 12px rgba(99,102,241,0.3);
+}
+.welcome button:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(99,102,241,0.4); }
+.welcome-hint { font-size: 11px; color: var(--text-muted); margin-top: -8px; }
+
+/* ─── Progress ─── */
+.progress-bar { position: absolute; top: 0; left: 0; right: 0; height: 22px; z-index: 50; display: flex; align-items: center; }
+.progress-bar.hidden { display: none; }
+.progress-fill { position: absolute; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--cyan)); transition: width 0.2s; border-radius: 0 1px 1px 0; }
+.progress-label {
+  position: relative; z-index: 1; padding: 0 12px; font-size: 11px;
+  color: var(--accent-hover); font-family: var(--mono); white-space: nowrap;
+}
+
+/* ─── Nesting canvas overlay ─── */
+#nesting-scroll {
+  position: absolute; inset: 0; z-index: 10;
+  display: none; background: var(--bg); overflow-y: auto; overflow-x: hidden;
+}
+#nesting-scroll.visible { display: block; }
+#nesting-scroll::-webkit-scrollbar { width: 6px; }
+#nesting-scroll::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 3px; }
+#nesting-canvas { display: block; }
+.nest-close {
+  position: sticky; top: 8px; float: right; margin: 8px 12px 0 0; z-index: 11;
+  background: var(--bg-card); border: 1px solid var(--border-light); color: var(--text-dim);
+  width: 32px; height: 32px; border-radius: var(--radius); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.nest-close:hover { background: var(--bg-hover); color: var(--text); }
+.nest-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+.nest-zoom-popup {
+  position: fixed; z-index: 200;
+  background: var(--bg); border: 1px solid var(--border-light);
+  border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  padding: 8px; display: none;
+}
+.nest-zoom-popup.visible { display: block; }
+.nest-zoom-popup canvas { display: block; border-radius: 4px; cursor: grab; }
+.nest-zoom-popup canvas:active { cursor: grabbing; }
+.nest-zoom-label {
+  font-size: 11px; color: var(--text-dim); font-family: var(--mono);
+  text-align: center; margin-top: 4px; user-select: none;
+}
