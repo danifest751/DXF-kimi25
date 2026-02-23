@@ -21,73 +21,10 @@ import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { NestingResult, NestingOptions } from '../../core-engine/src/nesting/index.js';
-import type { NormalizedDocument, FlattenedEntity } from '../../core-engine/src/normalize/index.js';
+import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
-
-// ─── Типы ───────────────────────────────────────────────────────────
-
-interface LoadedFile {
-  id: number;
-  name: string;
-  doc: NormalizedDocument;
-  stats: UICuttingStats;
-  checked: boolean;
-  quantity: number;
-}
-
-interface UICuttingChain {
-  readonly piercePoint: Point3D;
-}
-
-interface UICuttingStats {
-  readonly totalPierces: number;
-  readonly totalCutLength: number;
-  readonly cuttingEntityCount: number;
-  readonly chains: readonly UICuttingChain[];
-}
-
-type ComputeMode = 'api' | 'local';
-
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
-
-async function apiPostJSON<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
-async function apiPostBlob(path: string, payload: unknown): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
-  }
-  return response.blob();
-}
+import { apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
+import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
 
 // ─── DOM элементы ───────────────────────────────────────────────────
 
@@ -117,7 +54,7 @@ const statusVersion = document.getElementById('status-version') as HTMLSpanEleme
 const statusPierces = document.getElementById('status-pierces') as HTMLSpanElement;
 const statusCutLength = document.getElementById('status-cutlength') as HTMLSpanElement;
 const chkPierces = document.getElementById('chk-pierces') as HTMLInputElement;
-const cuttingInfo = document.getElementById('cutting-info') as HTMLDivElement;
+const sidebarFooter = document.getElementById('sidebar-footer') as HTMLDivElement;
 const ciPierces = document.getElementById('ci-pierces') as HTMLElement;
 const ciLength = document.getElementById('ci-length') as HTMLElement;
 const pierceToggle = document.getElementById('pierce-toggle') as HTMLLabelElement;
@@ -132,8 +69,11 @@ const nestH = document.getElementById('nest-h') as HTMLInputElement;
 const nestGap = document.getElementById('nest-gap') as HTMLInputElement;
 const nestRotateEnabled = document.getElementById('nest-rotate-enabled') as HTMLInputElement;
 const nestRotateStep = document.getElementById('nest-rotate-step') as HTMLSelectElement;
-const nestMode = document.getElementById('nest-mode') as HTMLSelectElement;
+const nestModeGroup = document.getElementById('nest-mode-group') as HTMLDivElement;
+const nestModeRadios = document.querySelectorAll<HTMLInputElement>('input[name="nest-mode"]');
 const nestStrategy = document.getElementById('nest-strategy') as HTMLSelectElement;
+const btnAdvancedToggle = document.getElementById('btn-advanced-toggle') as HTMLButtonElement;
+const nestAdvanced = document.getElementById('nest-advanced') as HTMLDivElement;
 const nestMultiStart = document.getElementById('nest-multistart') as HTMLInputElement;
 const nestSeed = document.getElementById('nest-seed') as HTMLInputElement;
 const nestCommonLineEnabled = document.getElementById('nest-commonline-enabled') as HTMLInputElement;
@@ -336,7 +276,7 @@ function recalcTotals(): void {
 
   ciPierces.textContent = String(totalPierces);
   ciLength.textContent = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLength.toFixed(1) + ' мм';
-  cuttingInfo.classList.toggle('visible', loadedFiles.length > 0);
+  sidebarFooter.classList.toggle('visible', loadedFiles.length > 0);
 
   statusPierces.textContent = totalPierces > 0 ? `Врезок: ${totalPierces}` : '';
   statusCutLength.textContent = totalCutLength > 0 ? `Рез: ${formatCutLength(totalCutLength)}` : '';
@@ -598,34 +538,53 @@ function applyNestingModePreset(mode: 'fast' | 'precise' | 'common'): void {
   applyingModePreset = false;
 }
 
+function getNestModeValue(): string {
+  for (const r of nestModeRadios) { if (r.checked) return r.value; }
+  return 'precise';
+}
+
+function setNestModeValue(val: string): void {
+  for (const r of nestModeRadios) { r.checked = r.value === val; }
+}
+
 function syncModeByAdvancedControls(): void {
   if (applyingModePreset) return;
   const strategy = nestStrategy.value;
   const multiStart = nestMultiStart.checked;
   const commonLine = nestCommonLineEnabled.checked;
   if (strategy === 'blf_bbox' && !multiStart && !commonLine) {
-    nestMode.value = 'fast';
+    setNestModeValue('fast');
     return;
   }
   if (strategy === 'maxrects_bbox' && multiStart && !commonLine) {
-    nestMode.value = 'precise';
+    setNestModeValue('precise');
     return;
   }
   if (strategy === 'maxrects_bbox' && multiStart && commonLine) {
-    nestMode.value = 'common';
+    setNestModeValue('common');
     return;
   }
-  nestMode.value = strategy === 'blf_bbox' ? 'fast' : 'precise';
+  setNestModeValue(strategy === 'blf_bbox' ? 'fast' : 'precise');
 }
 
 updateRotationControls();
 applyNestingModePreset('precise');
 updateCommonLineControls();
 
-nestMode.addEventListener('change', () => {
-  const mode = nestMode.value === 'fast' || nestMode.value === 'common' ? nestMode.value : 'precise';
-  applyNestingModePreset(mode);
-  autoRerunNesting();
+for (const radio of nestModeRadios) {
+  radio.addEventListener('change', () => {
+    const val = getNestModeValue();
+    const mode = val === 'fast' || val === 'common' ? val : 'precise';
+    applyNestingModePreset(mode as 'fast' | 'precise' | 'common');
+    autoRerunNesting();
+  });
+}
+
+// Advanced toggle
+btnAdvancedToggle.addEventListener('click', () => {
+  const isOpen = !nestAdvanced.classList.contains('hidden');
+  nestAdvanced.classList.toggle('hidden', isOpen);
+  btnAdvancedToggle.classList.toggle('open', !isOpen);
 });
 
 nestRotateEnabled.addEventListener('change', () => {
@@ -704,17 +663,6 @@ btnExport.addEventListener('click', () => {
     }
   })();
 });
-
-function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 
 function updateNestItems(): void {
@@ -1415,15 +1363,36 @@ window.addEventListener('resize', () => {
   if (!isMobile()) closeMobilePanels();
 });
 
+// ─── Shortcuts dialog ────────────────────────────────────────────────
+
+const shortcutsOverlay = document.getElementById('shortcuts-overlay') as HTMLDivElement;
+const shortcutsClose = document.getElementById('shortcuts-close') as HTMLButtonElement;
+
+function toggleShortcutsDialog(show?: boolean): void {
+  const visible = show ?? shortcutsOverlay.classList.contains('hidden');
+  shortcutsOverlay.classList.toggle('hidden', !visible);
+}
+
+shortcutsClose.addEventListener('click', () => toggleShortcutsDialog(false));
+shortcutsOverlay.addEventListener('click', (e) => {
+  if (e.target === shortcutsOverlay) toggleShortcutsDialog(false);
+});
+
 // ─── Клавиатура ─────────────────────────────────────────────────────
 
 window.addEventListener('keydown', (e) => {
+  // Don't trigger shortcuts when typing in inputs
+  const tag = (e.target as HTMLElement).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
   if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); openFileDialog(); return; }
   if (e.key === 'f' || e.key === 'F') { renderer.zoomToFit(); updateStatusBar(); }
   if (e.key === 'Escape') {
+    if (!shortcutsOverlay.classList.contains('hidden')) { toggleShortcutsDialog(false); return; }
     if (isMobile() && mobileBackdrop.classList.contains('active')) { closeMobilePanels(); return; }
     if (nestingMode) { exitNestingMode(); }
     else { renderer.clearSelection(); clearInspector(); }
   }
   if (e.key === 'g' || e.key === 'G') { btnGrid.click(); }
+  if (e.key === '?') { toggleShortcutsDialog(); }
 });

@@ -37,34 +37,9 @@
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" fill="none"/><rect x="5" y="5" width="6" height="8" rx="0.5" fill="none"/><rect x="13" y="5" width="6" height="5" rx="0.5" fill="none"/><rect x="5" y="15" width="4" height="4" rx="0.5" fill="none"/><rect x="13" y="12" width="6" height="7" rx="0.5" fill="none"/></svg>
         Раскладка
       </button>
-      <button class="tb-btn" id="btn-export" title="Экспорт результатов" style="display:none;">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Экспорт
-      </button>
       <button class="tb-btn" id="btn-grid" title="Сетка (G)">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
-
-      <div class="tb-sep"></div>
-
-      <label class="pierce-toggle" id="pierce-toggle" title="Показать точки врезки">
-        <input type="checkbox" id="chk-pierces" />
-        <span class="pierce-dot"></span>
-        Врезки
-      </label>
-
-      <!-- Cutting info badge -->
-      <div class="cut-badge" id="cutting-info">
-        <div class="cut-item">
-          <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-          <span class="cut-val" id="ci-pierces">0</span>
-        </div>
-        <div class="cut-dot"></div>
-        <div class="cut-item">
-          <svg viewBox="0 0 24 24"><path d="M2 12h20"/><path d="M6 8l-4 4 4 4"/><path d="M18 8l4 4-4 4"/></svg>
-          <span class="cut-val" id="ci-length">0</span>
-        </div>
-      </div>
 
       <div class="tb-spacer"></div>
       <span class="tb-stats" id="stats"></span>
@@ -82,6 +57,25 @@
         </div>
         <div class="file-list" id="file-list">
           <div class="file-list-empty" id="file-list-empty">Нет файлов</div>
+        </div>
+
+        <!-- Sidebar footer: cutting stats + pierce toggle -->
+        <div class="sidebar-footer" id="sidebar-footer">
+          <div class="sidebar-stats" id="sidebar-stats">
+            <div class="sidebar-stat-row">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+              <span id="ci-pierces">0</span> врезок
+            </div>
+            <div class="sidebar-stat-row">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20"/><path d="M6 8l-4 4 4 4"/><path d="M18 8l4 4-4 4"/></svg>
+              <span id="ci-length">0</span>
+            </div>
+          </div>
+          <label class="pierce-toggle" id="pierce-toggle" title="Показать точки врезки">
+            <input type="checkbox" id="chk-pierces" />
+            <span class="pierce-dot"></span>
+            Врезки
+          </label>
         </div>
       </div>
 
@@ -127,6 +121,26 @@
       <div class="nesting-panel hidden" id="nesting-panel">
         <div class="np-header">Раскладка</div>
 
+        <!-- Mode: radio buttons -->
+        <div class="np-section">
+          <div class="np-label">Режим</div>
+          <div class="np-radio-group" id="nest-mode-group">
+            <label class="np-radio active" data-value="fast">
+              <input type="radio" name="nest-mode" value="fast" />
+              <span>Быстро</span>
+            </label>
+            <label class="np-radio" data-value="precise">
+              <input type="radio" name="nest-mode" value="precise" checked />
+              <span>Точно</span>
+            </label>
+            <label class="np-radio" data-value="common">
+              <input type="radio" name="nest-mode" value="common" />
+              <span>Общий рез</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Sheet + Gap -->
         <div class="np-section">
           <div class="np-label">Лист металла</div>
           <select class="np-select" id="nest-preset">
@@ -143,81 +157,14 @@
             <input type="number" class="np-input" id="nest-h" placeholder="Высота" min="1" value="2500" />
             <span class="np-unit">мм</span>
           </div>
-        </div>
-
-        <div class="np-section">
-          <div class="np-label">Зазор между деталями</div>
-          <div class="np-row">
+          <div class="np-row" style="margin-top: 10px;">
+            <span class="np-unit" style="min-width: 50px;">Зазор</span>
             <input type="number" class="np-input np-input-sm" id="nest-gap" min="0" value="5" step="1" />
             <span class="np-unit">мм</span>
           </div>
         </div>
 
-        <div class="np-section">
-          <div class="np-label">Поворот деталей</div>
-          <div class="np-row" style="justify-content: space-between;">
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
-              <input type="checkbox" id="nest-rotate-enabled" checked />
-              Разрешить поворот
-            </label>
-          </div>
-          <div class="np-row" style="margin-top:10px;">
-            <span class="np-unit" style="min-width: 76px;">Шаг угла</span>
-            <select class="np-select" id="nest-rotate-step" style="max-width: 120px;">
-              <option value="1">1°</option>
-              <option value="2" selected>2°</option>
-              <option value="5">5°</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="np-section">
-          <div class="np-label">Алгоритм</div>
-          <div class="np-row" style="margin-bottom:10px;">
-            <span class="np-unit" style="min-width: 76px;">Режим</span>
-            <select class="np-select" id="nest-mode">
-              <option value="fast">Быстро</option>
-              <option value="precise" selected>Точно</option>
-              <option value="common">Точно + общий рез</option>
-            </select>
-          </div>
-          <div class="np-row">
-            <select class="np-select" id="nest-strategy">
-              <option value="blf_bbox">Быстрый (BLF BBox)</option>
-              <option value="maxrects_bbox" selected>Точный (MaxRects BBox)</option>
-            </select>
-          </div>
-          <div class="np-row" style="justify-content: space-between; margin-top:10px;">
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
-              <input type="checkbox" id="nest-multistart" checked />
-              Multi-start
-            </label>
-          </div>
-          <div class="np-row" style="margin-top:10px;">
-            <span class="np-unit" style="min-width: 76px;">Seed</span>
-            <input type="number" class="np-input np-input-sm" id="nest-seed" value="0" step="1" />
-          </div>
-          <div class="np-row" style="justify-content: space-between; margin-top:10px;">
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
-              <input type="checkbox" id="nest-commonline-enabled" />
-              Совместный рез (common-line)
-            </label>
-          </div>
-          <div id="nest-commonline-status" style="margin-top:6px; font-size:11px; font-weight:600; color:#f59e0b;">
-            Status: OFF
-          </div>
-          <div class="np-row" style="margin-top:10px;">
-            <span class="np-unit" style="min-width: 76px;">Δ merge</span>
-            <input type="number" class="np-input np-input-sm" id="nest-commonline-dist" value="0.2" min="0" step="0.1" />
-            <span class="np-unit">мм</span>
-          </div>
-          <div class="np-row" style="margin-top:8px;">
-            <span class="np-unit" style="min-width: 76px;">Min len</span>
-            <input type="number" class="np-input np-input-sm" id="nest-commonline-minlen" value="20" min="0" step="1" />
-            <span class="np-unit">мм</span>
-          </div>
-        </div>
-
+        <!-- Parts -->
         <div class="np-section">
           <div class="np-label">Детали и количество</div>
           <div id="nest-items" class="np-items"></div>
@@ -226,6 +173,7 @@
 
         <button class="np-run-btn" id="btn-nest-run">Разложить</button>
 
+        <!-- Results -->
         <div class="np-results hidden" id="nest-results">
           <div class="np-label">Результат</div>
           <div class="np-result-cards" id="nest-result-cards"></div>
@@ -241,6 +189,73 @@
             </button>
           </div>
         </div>
+
+        <!-- Advanced settings (collapsed by default) -->
+        <div class="np-section np-advanced-toggle">
+          <button class="np-advanced-btn" id="btn-advanced-toggle">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Расширенные настройки
+            <svg class="np-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+
+        <div class="np-advanced hidden" id="nest-advanced">
+          <div class="np-section">
+            <div class="np-label">Поворот</div>
+            <div class="np-row" style="justify-content: space-between;">
+              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+                <input type="checkbox" id="nest-rotate-enabled" checked />
+                Разрешить
+              </label>
+              <select class="np-select" id="nest-rotate-step" style="max-width: 80px;">
+                <option value="1">1°</option>
+                <option value="2" selected>2°</option>
+                <option value="5">5°</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="np-section">
+            <div class="np-label">Алгоритм</div>
+            <div class="np-row">
+              <select class="np-select" id="nest-strategy">
+                <option value="blf_bbox">BLF BBox</option>
+                <option value="maxrects_bbox" selected>MaxRects BBox</option>
+              </select>
+            </div>
+            <div class="np-row" style="justify-content: space-between; margin-top:10px;">
+              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+                <input type="checkbox" id="nest-multistart" checked />
+                Multi-start
+              </label>
+            </div>
+            <div class="np-row" style="margin-top:10px;">
+              <span class="np-unit" style="min-width: 50px;">Seed</span>
+              <input type="number" class="np-input np-input-sm" id="nest-seed" value="0" step="1" />
+            </div>
+          </div>
+
+          <div class="np-section">
+            <div class="np-label">Совместный рез</div>
+            <div class="np-row" style="justify-content: space-between;">
+              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+                <input type="checkbox" id="nest-commonline-enabled" />
+                Включить
+              </label>
+              <span id="nest-commonline-status" style="font-size:11px; font-weight:600; color:#f59e0b;">OFF</span>
+            </div>
+            <div class="np-row" style="margin-top:10px;">
+              <span class="np-unit" style="min-width: 50px;">Δ merge</span>
+              <input type="number" class="np-input np-input-sm" id="nest-commonline-dist" value="0.2" min="0" step="0.1" />
+              <span class="np-unit">мм</span>
+            </div>
+            <div class="np-row" style="margin-top:8px;">
+              <span class="np-unit" style="min-width: 50px;">Min len</span>
+              <input type="number" class="np-input np-input-sm" id="nest-commonline-minlen" value="20" min="0" step="1" />
+              <span class="np-unit">мм</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -252,6 +267,27 @@
       <span class="sb-accent" id="status-pierces"></span>
       <span class="sb-accent" id="status-cutlength"></span>
       <span style="margin-left:auto" id="status-version"></span>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts help -->
+  <div class="shortcuts-overlay hidden" id="shortcuts-overlay">
+    <div class="shortcuts-dialog">
+      <div class="shortcuts-header">
+        <span>Горячие клавиши</span>
+        <button class="shortcuts-close" id="shortcuts-close">&times;</button>
+      </div>
+      <div class="shortcuts-body">
+        <div class="shortcut-row"><kbd>Ctrl+O</kbd><span>Открыть файл</span></div>
+        <div class="shortcut-row"><kbd>F</kbd><span>Вписать в экран</span></div>
+        <div class="shortcut-row"><kbd>G</kbd><span>Сетка вкл/выкл</span></div>
+        <div class="shortcut-row"><kbd>Escape</kbd><span>Закрыть / Сбросить</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span>Эта подсказка</span></div>
+        <div class="shortcut-divider"></div>
+        <div class="shortcut-row"><kbd>Колёсико</kbd><span>Масштаб</span></div>
+        <div class="shortcut-row"><kbd>Зажать ЛКМ</kbd><span>Перемещение</span></div>
+        <div class="shortcut-row"><kbd>Клик</kbd><span>Выбрать объект</span></div>
+      </div>
     </div>
   </div>
 

@@ -244,3 +244,81 @@
 }
 .np-nav-btn:hover { background: var(--bg-hover); color: var(--text); }
 #nest-sheet-label { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+
+/* ─── Radio Group for Mode ─── */
+.np-radio-group {
+  display: flex;
+  gap: 6px;
+}
+.np-radio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-base);
+  text-align: center;
+}
+.np-radio input { display: none; }
+.np-radio:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.np-radio:has(input:checked) {
+  border-color: var(--accent-primary);
+  background: var(--accent-glow);
+  color: var(--accent-primary);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+}
+
+/* ─── Advanced Toggle ─── */
+.np-advanced-toggle {
+  padding: 8px 16px !important;
+  border-bottom: none !important;
+}
+.np-advanced-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+.np-advanced-btn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+}
+.np-advanced-btn.open {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.np-advanced-btn svg { flex-shrink: 0; }
+.np-chevron {
+  margin-left: auto;
+  transition: transform var(--transition-base);
+}
+.np-advanced-btn.open .np-chevron {
+  transform: rotate(180deg);
+}
+.np-advanced {
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.1);
+}
+.np-advanced.hidden { display: none; }

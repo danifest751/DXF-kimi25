@@ -94,6 +94,41 @@
 .file-item:hover .file-item-remove { opacity: 0.6; }
 .file-item-remove:hover { opacity: 1 !important; background: rgba(239,68,68,0.15); }
 
+/* ─── Sidebar Footer: Cutting Stats ─── */
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.15);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sidebar-footer.visible { display: flex; }
+.sidebar-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sidebar-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+.sidebar-stat-row svg {
+  stroke: var(--accent-success);
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(0,255,157,0.4));
+}
+.sidebar-stat-row span {
+  font-weight: 700;
+  color: var(--accent-success);
+  text-shadow: 0 0 8px rgba(0,255,157,0.4);
+}
+
 /* ─── Inspector ─── */
 .inspector {
   width: 280px; min-width: 220px; background: var(--bg-panel);
