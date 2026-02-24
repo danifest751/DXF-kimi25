@@ -49,6 +49,10 @@ Set in Vercel Dashboard:
 - `SUPABASE_URL` (required for persistent shared sheet hashes)
 - `SUPABASE_SERVICE_ROLE_KEY` (required for persistent shared sheet hashes)
 - `SUPABASE_SHARED_SHEETS_TABLE=shared_sheets` (optional)
+- `TELEGRAM_BOT_TOKEN` (required for Telegram webhook)
+- `TELEGRAM_WEBHOOK_URL=https://<your-domain>/api/telegram/webhook` (recommended)
+- `TELEGRAM_WEBHOOK_SECRET=<random-secret>` (optional, recommended)
+- `TELEGRAM_WEBHOOK_AUTO_REGISTER=true` (optional, default `true`)
 
 For single-project Vercel deploy (same domain for UI/API):
 - leave `VITE_API_BASE` empty.
@@ -110,8 +114,10 @@ ALLOWED_ORIGINS=https://my-dxf-viewer.vercel.app
 
 - If API domain changes, update `VITE_API_BASE` and redeploy UI.
 - If CORS errors appear, check `ALLOWED_ORIGINS` in API env.
-- Telegram long polling (`startTelegramBotPolling`) не подходит для Vercel serverless.
-  Для Telegram-бота используйте отдельный long-running хост (Render/Railway/VPS) или webhook-архитектуру.
+- Telegram на Vercel работает через webhook endpoint: `POST /api/telegram/webhook`.
+- Зарегистрировать webhook можно через `POST /api/telegram/webhook/register`
+  (либо передать `{ "url": "https://<your-domain>/api/telegram/webhook" }`, либо задать `TELEGRAM_WEBHOOK_URL`).
+- Если задан `TELEGRAM_WEBHOOK_SECRET`, запросы без корректного заголовка `x-telegram-bot-api-secret-token` отклоняются.
 
 ---
 

@@ -13,7 +13,7 @@ import { nestItems } from '../../core-engine/src/nesting/index.js';
 import type { NestingItem, NestingResult, SheetSize } from '../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
 import { calculatePrice } from '../../pricing/src/index.js';
-import { processBotMessage } from '../../bot-service/src/index.js';
+import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
 
 const app = express();
@@ -21,6 +21,34 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
+
+const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? '';
+const telegramWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL?.trim() ?? '';
+const telegramWebhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? '';
+const telegramAutoRegisterWebhookRaw = (process.env.TELEGRAM_WEBHOOK_AUTO_REGISTER ?? '').trim().toLowerCase();
+const isLocalRuntime = process.env.VERCEL !== '1' && process.env.NODE_ENV !== 'production';
+const telegramAutoRegisterWebhook = telegramAutoRegisterWebhookRaw.length > 0
+  ? telegramAutoRegisterWebhookRaw !== 'false'
+  : !isLocalRuntime;
+let telegramWebhookRegistrationStarted = false;
+
+function ensureTelegramWebhookRegistrationOnStartup(): void {
+  if (telegramWebhookRegistrationStarted) return;
+  if (!telegramAutoRegisterWebhook) return;
+  if (telegramBotToken.length === 0 || telegramWebhookUrl.length === 0) return;
+
+  telegramWebhookRegistrationStarted = true;
+  void setTelegramWebhook(telegramBotToken, telegramWebhookUrl, telegramWebhookSecret)
+    .then(() => {
+      console.log(`[Telegram] webhook registered: ${telegramWebhookUrl}`);
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[Telegram] webhook auto-registration failed:', message);
+    });
+}
+
+ensureTelegramWebhookRegistrationOnStartup();
 
 function isDefaultAllowedOrigin(origin: string): boolean {
   return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)
@@ -396,6 +424,57 @@ app.post('/api/bot/message', async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Bot processing failed', details: message });
+  }
+});
+
+// Telegram webhook endpoint (Vercel/serverless-friendly)
+app.post('/api/telegram/webhook', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? '';
+    if (expectedSecret.length > 0) {
+      const receivedSecret = req.header('x-telegram-bot-api-secret-token')?.trim() ?? '';
+      if (receivedSecret !== expectedSecret) {
+        res.status(401).json({ error: 'Invalid webhook secret' });
+        return;
+      }
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
+      return;
+    }
+
+    await handleTelegramWebhookUpdate(req.body as TelegramUpdate, botToken);
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Telegram webhook failed', details: message });
+  }
+});
+
+// Optional helper route to register webhook URL in Telegram
+app.post('/api/telegram/webhook/register', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
+      return;
+    }
+
+    const explicitUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    const webhookUrl = explicitUrl || process.env.TELEGRAM_WEBHOOK_URL?.trim() || '';
+    if (!webhookUrl) {
+      res.status(400).json({ error: 'Provide webhook URL via body.url or TELEGRAM_WEBHOOK_URL' });
+      return;
+    }
+
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? '';
+    await setTelegramWebhook(botToken, webhookUrl, secret);
+    res.json({ success: true, webhookUrl, secretEnabled: secret.length > 0 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Telegram webhook registration failed', details: message });
   }
 });
 

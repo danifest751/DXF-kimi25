@@ -32,7 +32,7 @@ interface TelegramResponse<T> {
   readonly description?: string;
 }
 
-interface TelegramUpdate {
+export interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: {
     readonly chat: { readonly id: number };
@@ -175,6 +175,14 @@ function drawLine(pixels: Uint8Array, width: number, height: number, x0: number,
     const t = i / steps;
     setPixel(pixels, width, height, x0 + dx * t, y0 + dy * t);
   }
+}
+
+export async function handleTelegramWebhookUpdate(update: TelegramUpdate, token?: string): Promise<void> {
+  const resolvedToken = token ?? process.env.TELEGRAM_BOT_TOKEN;
+  if (!resolvedToken) {
+    throw new Error('TELEGRAM_BOT_TOKEN is required for webhook handling.');
+  }
+  await handleTelegramUpdate(resolvedToken, update);
 }
 
 function fillRect(
@@ -522,6 +530,26 @@ async function telegramAnswerCallbackQuery(token: string, callbackQueryId: strin
   await telegramGet(token, 'answerCallbackQuery', {
     callback_query_id: callbackQueryId,
   });
+}
+
+export async function setTelegramWebhook(token: string, webhookUrl: string, secretToken = ''): Promise<void> {
+  const body: { url: string; secret_token?: string } = { url: webhookUrl };
+  if (secretToken.trim().length > 0) {
+    body.secret_token = secretToken.trim();
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json() as TelegramResponse<true>;
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description ?? 'Telegram setWebhook failed');
+  }
 }
 
 function getSheetFromCallbackData(data: string): SheetSize | null {

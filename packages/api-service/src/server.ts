@@ -1,5 +1,4 @@
 import app from './index.js';
-import { startTelegramBotPolling } from '../../bot-service/src/index.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -13,17 +12,14 @@ app.listen(PORT, () => {
   console.log(`   DXF export: http://localhost:${PORT}/api/export/dxf`);
   console.log(`   CSV export: http://localhost:${PORT}/api/export/csv`);
   console.log(`   Price: http://localhost:${PORT}/api/price`);
-  console.log(`   Bot: http://localhost:${PORT}/api/bot/message`);
+  console.log(`   Bot API: http://localhost:${PORT}/api/bot/message`);
+  console.log(`   Telegram webhook: http://localhost:${PORT}/api/telegram/webhook`);
+  console.log(`   Telegram webhook register: http://localhost:${PORT}/api/telegram/webhook/register`);
 
-  // Start Telegram bot polling in the same process (shares sharedSheetStore)
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (botToken) {
-    console.log(`   🤖 Telegram bot polling started`);
-    void startTelegramBotPolling(botToken).catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[BotService] polling fatal:', msg);
-    });
+    console.log('   🤖 Telegram webhook mode enabled (set webhook in Telegram to /api/telegram/webhook)');
   } else {
-    console.log(`   ⚠️  TELEGRAM_BOT_TOKEN not set — bot polling disabled`);
+    console.log('   ⚠️  TELEGRAM_BOT_TOKEN not set — Telegram webhook handling disabled');
   }
 });
