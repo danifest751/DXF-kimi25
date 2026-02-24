@@ -52,6 +52,9 @@ Set in Vercel Dashboard:
 - `SUPABASE_TELEGRAM_AUTH_CODES_TABLE=telegram_auth_codes` (optional)
 - `SUPABASE_APP_USERS_TABLE=app_users` (optional)
 - `SUPABASE_APP_SESSIONS_TABLE=app_sessions` (optional)
+- `SUPABASE_WORKSPACE_CATALOGS_TABLE=workspace_catalogs` (optional)
+- `SUPABASE_WORKSPACE_FILES_TABLE=workspace_files` (optional)
+- `SUPABASE_DXF_FILES_BUCKET=dxf-files` (optional)
 - `TELEGRAM_BOT_TOKEN` (required for Telegram webhook)
 - `TELEGRAM_WEBHOOK_URL=https://<your-domain>/api/telegram-webhook` (recommended)
 - `TELEGRAM_WEBHOOK_SECRET=<random-secret>` (optional, recommended)
@@ -110,6 +113,47 @@ create index if not exists telegram_auth_codes_expires_at_idx
 create index if not exists app_sessions_expires_at_idx
   on public.app_sessions (expires_at);
 ```
+
+Для облачной библиотеки DXF (каталоги + файлы) нужны таблицы и bucket:
+
+```sql
+create table if not exists public.workspace_catalogs (
+  id text primary key,
+  workspace_id text not null,
+  name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.workspace_files (
+  id text primary key,
+  workspace_id text not null,
+  catalog_id text null references public.workspace_catalogs(id) on delete set null,
+  name text not null,
+  storage_path text not null,
+  size_bytes integer not null,
+  checked boolean not null default true,
+  quantity integer not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists workspace_catalogs_workspace_idx
+  on public.workspace_catalogs (workspace_id, created_at);
+
+create index if not exists workspace_files_workspace_idx
+  on public.workspace_files (workspace_id, created_at);
+
+create index if not exists workspace_files_catalog_idx
+  on public.workspace_files (catalog_id);
+```
+
+Storage bucket (private) в Supabase Storage:
+
+1. Создать bucket `dxf-files` (или имя из `SUPABASE_DXF_FILES_BUCKET`).
+2. Рекомендовано сделать bucket private.
+3. API использует service-role key и хранит объекты в пути:
+   `workspace/<workspaceId>/<fileId>.dxf`.
 
 ---
 

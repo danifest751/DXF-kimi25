@@ -17,9 +17,21 @@ export interface UICuttingStats {
   readonly chains: readonly UICuttingChain[];
 }
 
+export interface WorkspaceCatalog {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly name: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
 export interface LoadedFile {
   id: number;
+  remoteId: string;
+  workspaceId: string;
+  catalogId: string | null;
   name: string;
+  localBase64?: string;
   doc: NormalizedDocument;
   stats: UICuttingStats;
   checked: boolean;

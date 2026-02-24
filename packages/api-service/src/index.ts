@@ -16,6 +16,18 @@ import { calculatePrice } from '../../pricing/src/index.js';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
 import { exchangeTelegramLoginCode, getAuthSessionByToken } from './telegram-auth.js';
+import {
+  createWorkspaceCatalog,
+  deleteWorkspaceCatalog,
+  deleteWorkspaceFile,
+  downloadWorkspaceFile,
+  isWorkspaceLibraryEnabled,
+  listWorkspaceLibrary,
+  renameWorkspaceCatalog,
+  setWorkspaceFilesChecked,
+  updateWorkspaceFile,
+  uploadWorkspaceFile,
+} from './workspace-library.js';
 
 const app = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -96,6 +108,21 @@ function getAuthTokenFromRequest(req: Request): string {
   return alt.trim();
 }
 
+async function requireWorkspaceId(req: Request, res: Response): Promise<string | null> {
+  const token = getAuthTokenFromRequest(req);
+  if (!token) {
+    res.status(401).json({ error: 'Missing session token' });
+    return null;
+  }
+
+  const session = await getAuthSessionByToken(token);
+  if (!session) {
+    res.status(401).json({ error: 'Session not found or expired' });
+    return null;
+  }
+  return session.workspaceId;
+}
+
 // Health check
 app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -145,6 +172,200 @@ app.get(['/api/auth/me', '/api/auth-me'], async (req: Request, res: Response): P
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Auth me failed', details: message });
+  }
+});
+
+app.get(['/api/library/tree', '/api/library-tree'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const data = await listWorkspaceLibrary(workspaceId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Library tree failed', details: message });
+  }
+});
+
+app.post(['/api/library/catalogs', '/api/library-catalogs'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const catalog = await createWorkspaceCatalog(workspaceId, name);
+    res.json({ success: true, catalog });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Create catalog failed', details: message });
+  }
+});
+
+app.patch(['/api/library/catalogs/:catalogId', '/api/library-catalogs/:catalogId'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const catalogId = req.params.catalogId ?? '';
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    await renameWorkspaceCatalog(workspaceId, catalogId, name);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Rename catalog failed', details: message });
+  }
+});
+
+app.delete(['/api/library/catalogs/:catalogId', '/api/library-catalogs/:catalogId'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const catalogId = req.params.catalogId ?? '';
+    const modeRaw = typeof req.query?.mode === 'string' ? req.query.mode : '';
+    const mode = modeRaw === 'delete_files' ? 'delete_files' : 'move_to_uncategorized';
+    await deleteWorkspaceCatalog(workspaceId, catalogId, mode);
+    res.json({ success: true, mode });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Delete catalog failed', details: message });
+  }
+});
+
+app.post(['/api/library/files', '/api/library-files'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const base64 = typeof req.body?.base64 === 'string' ? req.body.base64 : '';
+    const catalogId = typeof req.body?.catalogId === 'string' ? req.body.catalogId : null;
+    const checked = typeof req.body?.checked === 'boolean' ? req.body.checked : true;
+    const quantity = typeof req.body?.quantity === 'number' ? req.body.quantity : 1;
+
+    const file = await uploadWorkspaceFile({
+      workspaceId,
+      name,
+      base64,
+      catalogId,
+      checked,
+      quantity,
+    });
+    res.json({ success: true, file });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Upload file failed', details: message });
+  }
+});
+
+app.patch(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const fileId = req.params.fileId ?? '';
+    const patch: { name?: string; catalogId?: string | null; checked?: boolean; quantity?: number } = {};
+    if (typeof req.body?.name === 'string') patch.name = req.body.name;
+    if (req.body?.catalogId === null || typeof req.body?.catalogId === 'string') patch.catalogId = req.body.catalogId;
+    if (typeof req.body?.checked === 'boolean') patch.checked = req.body.checked;
+    if (typeof req.body?.quantity === 'number') patch.quantity = req.body.quantity;
+
+    await updateWorkspaceFile(workspaceId, fileId, patch);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Update file failed', details: message });
+  }
+});
+
+app.delete(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const fileId = req.params.fileId ?? '';
+    await deleteWorkspaceFile(workspaceId, fileId);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Delete file failed', details: message });
+  }
+});
+
+app.post(['/api/library/files/check-all', '/api/library-files-check-all'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const checked = typeof req.body?.checked === 'boolean' ? req.body.checked : true;
+    const catalogIds = Array.isArray(req.body?.catalogIds)
+      ? (req.body.catalogIds.filter((id: unknown): id is string => typeof id === 'string'))
+      : undefined;
+    await setWorkspaceFilesChecked(workspaceId, checked, catalogIds);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Check-all failed', details: message });
+  }
+});
+
+app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-download'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const fileId = req.params.fileId ?? '';
+    const file = await downloadWorkspaceFile(workspaceId, fileId);
+    res.json({ success: true, ...file });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Download file failed', details: message });
   }
 });
 

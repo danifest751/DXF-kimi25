@@ -24,8 +24,8 @@ import type { NestingResult, NestingOptions, NestingSheet } from '../../core-eng
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
-import { apiGetJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
-import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
+import { apiDeleteJSON, apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
+import type { LoadedFile, UICuttingStats, ComputeMode, WorkspaceCatalog } from './types.js';
 
 // ─── DOM элементы ───────────────────────────────────────────────────
 
@@ -35,6 +35,8 @@ const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const btnOpen = document.getElementById('btn-open') as HTMLButtonElement;
 const btnWelcomeOpen = document.getElementById('btn-welcome-open') as HTMLButtonElement;
 const btnFit = document.getElementById('btn-fit') as HTMLButtonElement;
+const btnSelectAllFiles = document.getElementById('btn-select-all-files') as HTMLButtonElement;
+const btnAddCatalog = document.getElementById('btn-add-catalog') as HTMLButtonElement;
 const btnAddFiles = document.getElementById('btn-add-files') as HTMLButtonElement;
 const btnInspector = document.getElementById('btn-inspector') as HTMLButtonElement;
 const btnGrid = document.getElementById('btn-grid') as HTMLButtonElement;
@@ -48,6 +50,7 @@ const progressLabel = document.getElementById('progress-label') as HTMLSpanEleme
 const statsEl = document.getElementById('stats') as HTMLSpanElement;
 const fileListEl = document.getElementById('file-list') as HTMLDivElement;
 const fileListEmpty = document.getElementById('file-list-empty') as HTMLDivElement;
+const catalogFilter = document.getElementById('catalog-filter') as HTMLDivElement;
 const sidebarInspector = document.getElementById('sidebar-inspector') as HTMLDivElement;
 const inspectorContent = document.getElementById('inspector-content') as HTMLDivElement;
 const statusCoords = document.getElementById('status-coords') as HTMLSpanElement;
@@ -121,8 +124,43 @@ let cuttingComputeMode: ComputeMode = 'api';
 let nestingComputeMode: ComputeMode = 'api';
 let authSessionToken = '';
 let authWorkspaceId = '';
+const workspaceCatalogs: WorkspaceCatalog[] = [];
+const selectedCatalogIds = new Set<string>();
+
+interface WorkspaceFileMeta {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly catalogId: string | null;
+  readonly name: string;
+  readonly storagePath: string;
+  readonly sizeBytes: number;
+  readonly checked: boolean;
+  readonly quantity: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+interface LibraryTreeResponse {
+  readonly success: boolean;
+  readonly catalogs: WorkspaceCatalog[];
+  readonly files: WorkspaceFileMeta[];
+}
 
 const AUTH_TOKEN_STORAGE_KEY = 'dxf_viewer_auth_session_token';
+const GUEST_DRAFT_STORAGE_KEY = 'dxf_viewer_guest_draft_v1';
+
+interface GuestDraftFile {
+  readonly name: string;
+  readonly base64: string;
+  readonly checked: boolean;
+  readonly quantity: number;
+  readonly catalogId: string | null;
+}
+
+interface GuestDraftPayload {
+  readonly version: 1;
+  readonly files: GuestDraftFile[];
+}
 
 interface AuthExchangeResponse {
   readonly success: boolean;
@@ -182,16 +220,281 @@ function showAuthHint(message: string, timeoutMs = 2200): void {
   }, timeoutMs);
 }
 
-function ensureAuthorizedAccess(): boolean {
-  if (authSessionToken) return true;
-  void runTelegramLoginFlow();
-  return false;
+const UNCATEGORIZED_CATALOG_ID = '__uncategorized__';
+
+function fileCatalogKey(file: Pick<LoadedFile, 'catalogId'>): string {
+  return file.catalogId ?? UNCATEGORIZED_CATALOG_ID;
+}
+
+function getPreferredUploadCatalogId(): string | null {
+  for (const id of selectedCatalogIds) {
+    if (id !== UNCATEGORIZED_CATALOG_ID) return id;
+  }
+  return null;
+}
+
+function ensureSelectedCatalogsDefaults(): void {
+  if (selectedCatalogIds.size > 0) return;
+  for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
+  if (loadedFiles.some((f) => f.catalogId === null)) {
+    selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+  }
+}
+
+function isFileInSelectedCatalogs(file: LoadedFile): boolean {
+  ensureSelectedCatalogsDefaults();
+  return selectedCatalogIds.has(fileCatalogKey(file));
+}
+
+function renderCatalogFilter(): void {
+  catalogFilter.innerHTML = '';
+
+  const allChip = document.createElement('button');
+  allChip.className = 'catalog-chip';
+  allChip.textContent = 'Все каталоги';
+  allChip.classList.toggle('active', selectedCatalogIds.size === 0 || selectedCatalogIds.size >= workspaceCatalogs.length);
+  allChip.addEventListener('click', () => {
+    selectedCatalogIds.clear();
+    for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
+    if (loadedFiles.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+    renderCatalogFilter();
+    renderFileList();
+    recalcTotals();
+    updateNestItems();
+  });
+  catalogFilter.appendChild(allChip);
+
+  for (const catalog of workspaceCatalogs) {
+    const chip = document.createElement('button');
+    chip.className = 'catalog-chip';
+    chip.textContent = catalog.name;
+    chip.classList.toggle('active', selectedCatalogIds.has(catalog.id));
+    chip.addEventListener('click', () => {
+      if (selectedCatalogIds.has(catalog.id)) {
+        selectedCatalogIds.delete(catalog.id);
+      } else {
+        selectedCatalogIds.add(catalog.id);
+      }
+      if (selectedCatalogIds.size === 0) {
+        for (const c of workspaceCatalogs) selectedCatalogIds.add(c.id);
+      }
+      renderCatalogFilter();
+      renderFileList();
+      recalcTotals();
+      updateNestItems();
+    });
+    catalogFilter.appendChild(chip);
+  }
+
+  if (loadedFiles.some((f) => f.catalogId === null)) {
+    const uncat = document.createElement('button');
+    uncat.className = 'catalog-chip';
+    uncat.textContent = 'Без каталога';
+    uncat.classList.toggle('active', selectedCatalogIds.has(UNCATEGORIZED_CATALOG_ID));
+    uncat.addEventListener('click', () => {
+      if (selectedCatalogIds.has(UNCATEGORIZED_CATALOG_ID)) {
+        selectedCatalogIds.delete(UNCATEGORIZED_CATALOG_ID);
+      } else {
+        selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+      }
+      if (selectedCatalogIds.size === 0) {
+        for (const c of workspaceCatalogs) selectedCatalogIds.add(c.id);
+        selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+      }
+      renderCatalogFilter();
+      renderFileList();
+      recalcTotals();
+      updateNestItems();
+    });
+    catalogFilter.appendChild(uncat);
+  }
+}
+
+async function computeStatsFromBuffer(base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> {
+  try {
+    const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
+      base64,
+    });
+    cuttingComputeMode = 'api';
+    updateModeBadge();
+    return cuttingRes.data;
+  } catch {
+    const localStats = computeCuttingStats(doc);
+    cuttingComputeMode = 'local';
+    updateModeBadge();
+    return {
+      totalPierces: localStats.totalPierces,
+      totalCutLength: localStats.totalCutLength,
+      cuttingEntityCount: localStats.cuttingEntityCount,
+      chains: localStats.chains,
+    };
+  }
+}
+
+async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<LoadedFile> {
+  const dl = await apiGetJSON<{ success: boolean; name: string; base64: string; sizeBytes: number }>(
+    `/api/library-files/${meta.id}-download`,
+    getAuthHeaders(),
+  );
+  const binary = atob(dl.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const buffer = bytes.buffer;
+  const parsed = await parseDXFInWorker(buffer);
+  const stats = await computeStatsFromBuffer(dl.base64, parsed.document);
+  return {
+    id: nextFileId++,
+    remoteId: meta.id,
+    workspaceId: meta.workspaceId,
+    catalogId: meta.catalogId,
+    name: meta.name,
+    doc: parsed.document,
+    stats,
+    checked: meta.checked,
+    quantity: meta.quantity,
+  };
+}
+
+async function reloadWorkspaceLibraryFromServer(): Promise<void> {
+  if (!authSessionToken) return;
+
+  const tree = await apiGetJSON<LibraryTreeResponse>('/api/library-tree', getAuthHeaders());
+  workspaceCatalogs.splice(0, workspaceCatalogs.length, ...tree.catalogs);
+
+  loadedFiles.splice(0, loadedFiles.length);
+  for (const meta of tree.files) {
+    const loaded = await loadRemoteWorkspaceFile(meta);
+    loadedFiles.push(loaded);
+  }
+
+  selectedCatalogIds.clear();
+  for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
+  if (loadedFiles.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+
+  if (loadedFiles.length > 0) {
+    setActiveFile(loadedFiles[0]!.id);
+  } else {
+    activeFileId = -1;
+    renderer.clearDocument();
+    welcome.classList.remove('hidden');
+  }
+
+  renderCatalogFilter();
+  renderFileList();
+  recalcTotals();
+  updateNestItems();
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function saveGuestDraft(): void {
+  if (authSessionToken) return;
+  const files: GuestDraftFile[] = loadedFiles
+    .filter((f) => typeof f.localBase64 === 'string' && f.localBase64.length > 0)
+    .map((f) => ({
+      name: f.name,
+      base64: f.localBase64!,
+      checked: f.checked,
+      quantity: f.quantity,
+      catalogId: f.catalogId,
+    }));
+
+  const payload: GuestDraftPayload = {
+    version: 1,
+    files,
+  };
+  localStorage.setItem(GUEST_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function clearGuestDraft(): void {
+  localStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+}
+
+async function restoreGuestDraft(): Promise<void> {
+  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
+  if (!raw) return;
+
+  try {
+    const parsed = JSON.parse(raw) as GuestDraftPayload;
+    if (parsed.version !== 1 || !Array.isArray(parsed.files)) return;
+
+    workspaceCatalogs.splice(0, workspaceCatalogs.length);
+    selectedCatalogIds.clear();
+    loadedFiles.splice(0, loadedFiles.length);
+
+    for (const file of parsed.files) {
+      const buffer = base64ToArrayBuffer(file.base64);
+      const result = await parseDXFInWorker(buffer);
+      const stats = await computeStatsFromBuffer(file.base64, result.document);
+      loadedFiles.push({
+        id: nextFileId++,
+        remoteId: '',
+        workspaceId: '',
+        catalogId: null,
+        name: file.name,
+        localBase64: file.base64,
+        doc: result.document,
+        stats,
+        checked: Boolean(file.checked),
+        quantity: Math.max(1, Number(file.quantity) || 1),
+      });
+    }
+
+    if (loadedFiles.length > 0) {
+      selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+      setActiveFile(loadedFiles[0]!.id);
+    }
+
+    renderCatalogFilter();
+    renderFileList();
+    recalcTotals();
+    updateNestItems();
+  } catch (error) {
+    console.error('Restore guest draft failed:', error);
+  }
+}
+
+async function migrateGuestDraftToWorkspace(): Promise<void> {
+  if (!authSessionToken) return;
+  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
+  if (!raw) return;
+
+  let parsed: GuestDraftPayload;
+  try {
+    parsed = JSON.parse(raw) as GuestDraftPayload;
+  } catch {
+    return;
+  }
+  if (parsed.version !== 1 || !Array.isArray(parsed.files) || parsed.files.length === 0) {
+    clearGuestDraft();
+    return;
+  }
+
+  for (const file of parsed.files) {
+    if (!file.name.toLowerCase().endsWith('.dxf')) continue;
+    if (!file.base64) continue;
+    await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
+      name: file.name,
+      base64: file.base64,
+      catalogId: null,
+      checked: Boolean(file.checked),
+      quantity: Math.max(1, Number(file.quantity) || 1),
+    }, getAuthHeaders());
+  }
+
+  clearGuestDraft();
 }
 
 async function restoreAuthSession(): Promise<void> {
   const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '';
   if (!savedToken) {
     updateAuthUi();
+    await restoreGuestDraft();
     return;
   }
 
@@ -203,11 +506,14 @@ async function restoreAuthSession(): Promise<void> {
     }
     authWorkspaceId = me.workspaceId;
     updateAuthUi();
+    await migrateGuestDraftToWorkspace();
+    await reloadWorkspaceLibraryFromServer();
   } catch {
     authSessionToken = '';
     authWorkspaceId = '';
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     updateAuthUi();
+    await restoreGuestDraft();
   }
 }
 
@@ -221,6 +527,8 @@ async function runTelegramLoginFlow(): Promise<void> {
     authWorkspaceId = response.workspaceId;
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
     updateAuthUi();
+    await migrateGuestDraftToWorkspace();
+    await reloadWorkspaceLibraryFromServer();
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     showAuthHint('Код неверный или истек');
@@ -231,7 +539,6 @@ async function runTelegramLoginFlow(): Promise<void> {
 // ─── Загрузка файлов ────────────────────────────────────────────────
 
 function openFileDialog(): void {
-  if (!ensureAuthorizedAccess()) return;
   fileInput.click();
 }
 
@@ -244,7 +551,6 @@ fileInput.addEventListener('change', () => {
 });
 
 async function addFiles(files: File[]): Promise<void> {
-  if (!ensureAuthorizedAccess()) return;
   welcome.classList.add('hidden');
 
   for (const file of files) {
@@ -271,39 +577,51 @@ async function loadSingleFile(file: File): Promise<void> {
     progressFill.style.width = '100%';
     setTimeout(() => progressBar.classList.add('hidden'), 400);
 
-    let stats: UICuttingStats;
-    try {
-      const cuttingRes = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', {
-        base64,
-      });
-      stats = cuttingRes.data;
-      cuttingComputeMode = 'api';
-      updateModeBadge();
-    } catch {
-      const localStats = computeCuttingStats(result.document);
-      stats = {
-        totalPierces: localStats.totalPierces,
-        totalCutLength: localStats.totalCutLength,
-        cuttingEntityCount: localStats.cuttingEntityCount,
-        chains: localStats.chains,
-      };
-      cuttingComputeMode = 'local';
-      updateModeBadge();
-    }
+    const stats = await computeStatsFromBuffer(base64, result.document);
 
-    const entry: LoadedFile = {
-      id: nextFileId++,
-      name: file.name,
-      doc: result.document,
-      stats,
-      checked: true,
-      quantity: 1,
-    };
+    let entry: LoadedFile;
+    if (authSessionToken) {
+      const uploadResp = await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
+        name: file.name,
+        base64,
+        catalogId: getPreferredUploadCatalogId(),
+        checked: true,
+        quantity: 1,
+      }, getAuthHeaders());
+
+      entry = {
+        id: nextFileId++,
+        remoteId: uploadResp.file.id,
+        workspaceId: uploadResp.file.workspaceId,
+        catalogId: uploadResp.file.catalogId,
+        name: file.name,
+        doc: result.document,
+        stats,
+        checked: uploadResp.file.checked,
+        quantity: uploadResp.file.quantity,
+      };
+    } else {
+      entry = {
+        id: nextFileId++,
+        remoteId: '',
+        workspaceId: '',
+        catalogId: null,
+        name: file.name,
+        localBase64: base64,
+        doc: result.document,
+        stats,
+        checked: true,
+        quantity: 1,
+      };
+    }
     loadedFiles.push(entry);
 
     setActiveFile(entry.id);
+    renderCatalogFilter();
     renderFileList();
     recalcTotals();
+    updateNestItems();
+    saveGuestDraft();
   } catch (err) {
     progressBar.classList.add('hidden');
     const msg = err instanceof Error ? err.message : String(err);
@@ -311,9 +629,17 @@ async function loadSingleFile(file: File): Promise<void> {
   }
 }
 
-function removeFile(id: number): void {
+async function removeFile(id: number): Promise<void> {
   const idx = loadedFiles.findIndex(f => f.id === id);
   if (idx < 0) return;
+  const target = loadedFiles[idx]!;
+  if (authSessionToken && target.remoteId) {
+    try {
+      await apiDeleteJSON<{ success: boolean }>(`/api/library-files/${target.remoteId}`, getAuthHeaders());
+    } catch (error) {
+      console.error('Delete file failed:', error);
+    }
+  }
   loadedFiles.splice(idx, 1);
 
   if (loadedFiles.length === 0) {
@@ -325,8 +651,10 @@ function removeFile(id: number): void {
   } else if (activeFileId === id) {
     setActiveFile(loadedFiles[Math.min(idx, loadedFiles.length - 1)]!.id);
   }
+  renderCatalogFilter();
   renderFileList();
   recalcTotals();
+  updateNestItems();
 }
 
 function setActiveFile(id: number): void {
@@ -341,12 +669,23 @@ function setActiveFile(id: number): void {
   renderFileList();
 }
 
-function toggleFileChecked(id: number): void {
+async function toggleFileChecked(id: number): Promise<void> {
   const entry = loadedFiles.find(f => f.id === id);
   if (!entry) return;
   entry.checked = !entry.checked;
+  if (authSessionToken && entry.remoteId) {
+    try {
+      await apiPatchJSON<{ success: boolean }>(`/api/library-files/${entry.remoteId}`, {
+        checked: entry.checked,
+      }, getAuthHeaders());
+    } catch (error) {
+      console.error('Toggle file checked failed:', error);
+    }
+  }
   renderFileList();
   recalcTotals();
+  updateNestItems();
+  saveGuestDraft();
 }
 
 // ─── Пересчёт суммарной статистики ─────────────────────────────────
@@ -358,7 +697,7 @@ function recalcTotals(): void {
   const allPiercePoints: Point3D[] = [];
 
   for (const f of loadedFiles) {
-    if (!f.checked) continue;
+    if (!f.checked || !isFileInSelectedCatalogs(f)) continue;
     totalPierces += f.stats.totalPierces;
     totalCutLength += f.stats.totalCutLength;
     totalEntities += f.stats.cuttingEntityCount;
@@ -389,37 +728,93 @@ function recalcTotals(): void {
 function renderFileList(): void {
   fileListEmpty.style.display = loadedFiles.length === 0 ? '' : 'none';
 
-  const existing = fileListEl.querySelectorAll('.file-item');
-  existing.forEach(el => el.remove());
+  fileListEl.innerHTML = '';
 
-  for (const f of loadedFiles) {
+  const catalogGroups: Array<{ id: string | null; name: string }> = [
+    ...workspaceCatalogs.map((catalog) => ({ id: catalog.id, name: catalog.name })),
+    { id: null, name: 'Без каталога' },
+  ];
+
+  for (const catalog of catalogGroups) {
+    const files = loadedFiles.filter((f) => f.catalogId === catalog.id);
+    if (files.length === 0) continue;
+
+    const catalogRow = document.createElement('div');
+    catalogRow.className = 'catalog-row';
+    const selected = selectedCatalogIds.has(catalog.id ?? UNCATEGORIZED_CATALOG_ID);
+    catalogRow.innerHTML = `
+      <input type="checkbox" ${selected ? 'checked' : ''} />
+      <span class="catalog-name">${catalog.name}</span>
+      <span class="catalog-file-count">${files.length}</span>
+      <button class="catalog-btn" title="Переименовать">✎</button>
+      <button class="catalog-btn danger" title="Удалить">✕</button>
+    `;
+
+    const catalogChk = catalogRow.querySelector('input') as HTMLInputElement;
+    catalogChk.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = catalog.id ?? UNCATEGORIZED_CATALOG_ID;
+      if (catalogChk.checked) selectedCatalogIds.add(key);
+      else selectedCatalogIds.delete(key);
+      if (selectedCatalogIds.size === 0) ensureSelectedCatalogsDefaults();
+      renderCatalogFilter();
+      recalcTotals();
+      updateNestItems();
+    });
+
+    const renameBtn = catalogRow.querySelector('.catalog-btn') as HTMLButtonElement;
+    renameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!catalog.id) return;
+      const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
+      if (!nextName) return;
+      void apiPatchJSON<{ success: boolean }>(`/api/library-catalogs/${catalog.id}`, { name: nextName }, getAuthHeaders())
+        .then(() => reloadWorkspaceLibraryFromServer())
+        .catch((err) => console.error('Rename catalog failed:', err));
+    });
+
+    const deleteBtn = catalogRow.querySelector('.catalog-btn.danger') as HTMLButtonElement;
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!catalog.id) return;
+      const deleteFiles = confirm('Удалить каталог вместе с файлами? OK = удалить файлы, Cancel = перенести в "Без каталога"');
+      const mode = deleteFiles ? 'delete_files' : 'move_to_uncategorized';
+      void apiDeleteJSON<{ success: boolean }>(`/api/library-catalogs/${catalog.id}?mode=${mode}`, getAuthHeaders())
+        .then(() => reloadWorkspaceLibraryFromServer())
+        .catch((err) => console.error('Delete catalog failed:', err));
+    });
+
+    fileListEl.appendChild(catalogRow);
+
+    for (const f of files) {
     const cutLen = f.stats.totalCutLength;
     const lenStr = cutLen >= 1000
       ? (cutLen / 1000).toFixed(2) + 'м'
       : cutLen.toFixed(0) + 'мм';
     const info = `${f.stats.totalPierces}p · ${lenStr}`;
 
-    const item = document.createElement('div');
-    item.className = 'file-item' + (f.id === activeFileId ? ' active' : '');
-    item.innerHTML = `
-      <input type="checkbox" ${f.checked ? 'checked' : ''} />
-      <svg class="file-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span class="file-item-name">${f.name}</span>
-      <span class="file-item-info">${info}</span>
-      <button class="file-item-remove" title="Удалить">
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    `;
+      const item = document.createElement('div');
+      item.className = `file-item in-catalog${f.id === activeFileId ? ' active' : ''}`;
+      item.innerHTML = `
+        <input type="checkbox" ${f.checked ? 'checked' : ''} />
+        <svg class="file-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="file-item-name">${f.name}</span>
+        <span class="file-item-info">${info}</span>
+        <button class="file-item-remove" title="Удалить">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      `;
 
-    const chk = item.querySelector('input') as HTMLInputElement;
-    chk.addEventListener('click', (e) => { e.stopPropagation(); toggleFileChecked(f.id); });
+      const chk = item.querySelector('input') as HTMLInputElement;
+      chk.addEventListener('click', (e) => { e.stopPropagation(); void toggleFileChecked(f.id); });
 
-    const removeBtn = item.querySelector('.file-item-remove') as HTMLButtonElement;
-    removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeFile(f.id); });
+      const removeBtn = item.querySelector('.file-item-remove') as HTMLButtonElement;
+      removeBtn.addEventListener('click', (e) => { e.stopPropagation(); void removeFile(f.id); });
 
     item.addEventListener('click', () => setActiveFile(f.id));
 
-    fileListEl.appendChild(item);
+      fileListEl.appendChild(item);
+    }
   }
 }
 
@@ -510,6 +905,34 @@ window.addEventListener('mouseup', () => {
 btnOpen.addEventListener('click', openFileDialog);
 btnWelcomeOpen.addEventListener('click', openFileDialog);
 btnAddFiles.addEventListener('click', openFileDialog);
+btnSelectAllFiles.addEventListener('click', () => {
+  const hasUnchecked = loadedFiles.some((f) => !f.checked);
+  const nextChecked = hasUnchecked;
+  for (const file of loadedFiles) file.checked = nextChecked;
+  if (authSessionToken) {
+    void apiPostJSON<{ success: boolean }>('/api/library-files-check-all', {
+      checked: nextChecked,
+    }, getAuthHeaders()).catch((error) => {
+      console.error('Check all failed:', error);
+    });
+  }
+  renderFileList();
+  recalcTotals();
+  updateNestItems();
+  saveGuestDraft();
+});
+btnAddCatalog.addEventListener('click', () => {
+  if (!authSessionToken) return;
+  const name = prompt('Название каталога:')?.trim() ?? '';
+  if (!name) return;
+  void apiPostJSON<{ success: boolean; catalog: WorkspaceCatalog }>('/api/library-catalogs', {
+    name,
+  }, getAuthHeaders())
+    .then(() => reloadWorkspaceLibraryFromServer())
+    .catch((error) => {
+      console.error('Create catalog failed:', error);
+    });
+});
 btnAuthLogin.addEventListener('click', () => {
   void runTelegramLoginFlow();
 });
@@ -716,7 +1139,7 @@ btnExportCSV.addEventListener('click', () => {
 
 
 function updateNestItems(): void {
-  const checked = loadedFiles.filter(f => f.checked);
+  const checked = loadedFiles.filter((f) => f.checked && isFileInSelectedCatalogs(f));
   nestItemsEmpty.style.display = checked.length === 0 ? '' : 'none';
   nestItemsEl.innerHTML = '';
 
@@ -737,7 +1160,19 @@ function updateNestItems(): void {
       <button class="np-qty-rst" title="Сбросить на 1">↺</button>
     `;
     const qtyInput = row.querySelector('input') as HTMLInputElement;
-    const setQty = (v: number) => { f.quantity = Math.max(1, v); qtyInput.value = String(f.quantity); autoRerunNesting(); };
+    const setQty = (v: number) => {
+      f.quantity = Math.max(1, v);
+      qtyInput.value = String(f.quantity);
+      if (authSessionToken && f.remoteId) {
+        void apiPatchJSON<{ success: boolean }>(`/api/library-files/${f.remoteId}`, {
+          quantity: f.quantity,
+        }, getAuthHeaders()).catch((error) => {
+          console.error('Update quantity failed:', error);
+        });
+      }
+      saveGuestDraft();
+      autoRerunNesting();
+    };
     qtyInput.addEventListener('change', () => setQty(parseInt(qtyInput.value) || 1));
     row.querySelectorAll('.np-qty-btn').forEach(btn => {
       btn.addEventListener('click', () => setQty(f.quantity + Number((btn as HTMLElement).dataset.delta)));
@@ -780,7 +1215,7 @@ function getPlacedAngleDeg(p: { angleDeg?: unknown; rotated?: unknown }): number
 }
 
 async function runNesting(): Promise<void> {
-  const checked = loadedFiles.filter(f => f.checked);
+  const checked = loadedFiles.filter((f) => f.checked && isFileInSelectedCatalogs(f));
   if (checked.length === 0) return;
 
   const sheet = getSheetSize();

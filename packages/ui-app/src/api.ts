@@ -5,11 +5,19 @@
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
-export async function apiPostJSON<T>(path: string, payload: unknown, headers: Record<string, string> = {}): Promise<T> {
+async function apiRequestJSON<T>(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  payload?: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(payload),
+    method,
+    headers: {
+      ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...headers,
+    },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -18,16 +26,20 @@ export async function apiPostJSON<T>(path: string, payload: unknown, headers: Re
   return response.json() as Promise<T>;
 }
 
+export async function apiPostJSON<T>(path: string, payload: unknown, headers: Record<string, string> = {}): Promise<T> {
+  return apiRequestJSON<T>('POST', path, payload, headers);
+}
+
 export async function apiGetJSON<T>(path: string, headers: Record<string, string> = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'GET',
-    headers,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+  return apiRequestJSON<T>('GET', path, undefined, headers);
+}
+
+export async function apiPatchJSON<T>(path: string, payload: unknown, headers: Record<string, string> = {}): Promise<T> {
+  return apiRequestJSON<T>('PATCH', path, payload, headers);
+}
+
+export async function apiDeleteJSON<T>(path: string, headers: Record<string, string> = {}): Promise<T> {
+  return apiRequestJSON<T>('DELETE', path, undefined, headers);
 }
 
 export async function apiPostBlob(path: string, payload: unknown): Promise<Blob> {
