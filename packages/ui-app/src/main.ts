@@ -24,7 +24,7 @@ import type { NestingResult, NestingOptions, NestingSheet } from '../../core-eng
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
-import { apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
+import { apiGetJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
 import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
 
 // ─── DOM элементы ───────────────────────────────────────────────────
@@ -38,6 +38,8 @@ const btnFit = document.getElementById('btn-fit') as HTMLButtonElement;
 const btnAddFiles = document.getElementById('btn-add-files') as HTMLButtonElement;
 const btnInspector = document.getElementById('btn-inspector') as HTMLButtonElement;
 const btnGrid = document.getElementById('btn-grid') as HTMLButtonElement;
+const btnAuthLogin = document.getElementById('btn-auth-login') as HTMLButtonElement;
+const authWorkspace = document.getElementById('auth-workspace') as HTMLSpanElement;
 const welcome = document.getElementById('welcome') as HTMLDivElement;
 const dropOverlay = document.getElementById('drop-overlay') as HTMLDivElement;
 const progressBar = document.getElementById('progress-bar') as HTMLDivElement;
@@ -117,6 +119,24 @@ let nestSheetHashes: string[] = [];
 let nestHoveredSheet = -1;
 let cuttingComputeMode: ComputeMode = 'api';
 let nestingComputeMode: ComputeMode = 'api';
+let authSessionToken = '';
+let authWorkspaceId = '';
+
+const AUTH_TOKEN_STORAGE_KEY = 'dxf_viewer_auth_session_token';
+
+interface AuthExchangeResponse {
+  readonly success: boolean;
+  readonly sessionToken: string;
+  readonly workspaceId: string;
+  readonly expiresAt: string;
+}
+
+interface AuthMeResponse {
+  readonly authenticated: boolean;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly expiresAt: string;
+}
 
 const modeBadge = document.createElement('div');
 modeBadge.style.position = 'fixed';
@@ -138,9 +158,73 @@ function updateModeBadge(): void {
 updateModeBadge();
 document.body.appendChild(modeBadge);
 
+function getAuthHeaders(): Record<string, string> {
+  return authSessionToken ? { Authorization: `Bearer ${authSessionToken}` } : {};
+}
+
+function updateAuthUi(): void {
+  if (authWorkspaceId) {
+    authWorkspace.textContent = `Workspace: ${authWorkspaceId}`;
+    btnAuthLogin.textContent = 'Сменить вход';
+    btnAuthLogin.title = 'Сменить Telegram-сессию';
+    return;
+  }
+
+  authWorkspace.textContent = 'Гость';
+  btnAuthLogin.textContent = 'Вход Telegram';
+  btnAuthLogin.title = 'Вход через Telegram код';
+}
+
+function ensureAuthorizedAccess(): boolean {
+  if (authSessionToken) return true;
+  alert('Сначала выполните вход через Telegram (кнопка «Вход Telegram»).');
+  return false;
+}
+
+async function restoreAuthSession(): Promise<void> {
+  const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '';
+  if (!savedToken) {
+    updateAuthUi();
+    return;
+  }
+
+  try {
+    authSessionToken = savedToken;
+    const me = await apiGetJSON<AuthMeResponse>('/api/auth/me', getAuthHeaders());
+    if (!me.authenticated) {
+      throw new Error('Session rejected');
+    }
+    authWorkspaceId = me.workspaceId;
+    updateAuthUi();
+  } catch {
+    authSessionToken = '';
+    authWorkspaceId = '';
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    updateAuthUi();
+  }
+}
+
+async function runTelegramLoginFlow(): Promise<void> {
+  const code = prompt('Введите код из Telegram бота (/login):')?.trim().toUpperCase() ?? '';
+  if (!code) return;
+
+  try {
+    const response = await apiPostJSON<AuthExchangeResponse>('/api/auth/telegram/exchange-code', { code });
+    authSessionToken = response.sessionToken;
+    authWorkspaceId = response.workspaceId;
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
+    updateAuthUi();
+    alert(`Вход выполнен. Workspace: ${response.workspaceId}`);
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    alert(`Вход не выполнен: ${details}`);
+  }
+}
+
 // ─── Загрузка файлов ────────────────────────────────────────────────
 
 function openFileDialog(): void {
+  if (!ensureAuthorizedAccess()) return;
   fileInput.click();
 }
 
@@ -153,6 +237,7 @@ fileInput.addEventListener('change', () => {
 });
 
 async function addFiles(files: File[]): Promise<void> {
+  if (!ensureAuthorizedAccess()) return;
   welcome.classList.add('hidden');
 
   for (const file of files) {
@@ -418,6 +503,10 @@ window.addEventListener('mouseup', () => {
 btnOpen.addEventListener('click', openFileDialog);
 btnWelcomeOpen.addEventListener('click', openFileDialog);
 btnAddFiles.addEventListener('click', openFileDialog);
+btnAuthLogin.addEventListener('click', () => {
+  void runTelegramLoginFlow();
+});
+void restoreAuthSession();
 btnFit.addEventListener('click', () => { renderer.zoomToFit(); updateStatusBar(); });
 
 btnInspector.addEventListener('click', () => {

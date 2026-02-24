@@ -49,6 +49,9 @@ Set in Vercel Dashboard:
 - `SUPABASE_URL` (required for persistent shared sheet hashes)
 - `SUPABASE_SERVICE_ROLE_KEY` (required for persistent shared sheet hashes)
 - `SUPABASE_SHARED_SHEETS_TABLE=shared_sheets` (optional)
+- `SUPABASE_TELEGRAM_AUTH_CODES_TABLE=telegram_auth_codes` (optional)
+- `SUPABASE_APP_USERS_TABLE=app_users` (optional)
+- `SUPABASE_APP_SESSIONS_TABLE=app_sessions` (optional)
 - `TELEGRAM_BOT_TOKEN` (required for Telegram webhook)
 - `TELEGRAM_WEBHOOK_URL=https://<your-domain>/api/telegram-webhook` (recommended)
 - `TELEGRAM_WEBHOOK_SECRET=<random-secret>` (optional, recommended)
@@ -72,6 +75,40 @@ create table if not exists public.shared_sheets (
 
 create index if not exists shared_sheets_created_at_idx
   on public.shared_sheets (created_at);
+```
+
+Для входа через Telegram-код (`/login` в боте) нужны таблицы:
+
+```sql
+create table if not exists public.telegram_auth_codes (
+  code text primary key,
+  telegram_user_id text not null,
+  telegram_chat_id text not null,
+  created_at timestamptz not null,
+  expires_at timestamptz not null,
+  used_at timestamptz null
+);
+
+create table if not exists public.app_users (
+  id text primary key,
+  telegram_user_id text not null unique,
+  workspace_id text not null,
+  created_at timestamptz not null
+);
+
+create table if not exists public.app_sessions (
+  token_hash text primary key,
+  user_id text not null,
+  workspace_id text not null,
+  created_at timestamptz not null,
+  expires_at timestamptz not null
+);
+
+create index if not exists telegram_auth_codes_expires_at_idx
+  on public.telegram_auth_codes (expires_at);
+
+create index if not exists app_sessions_expires_at_idx
+  on public.app_sessions (expires_at);
 ```
 
 ---
@@ -117,6 +154,11 @@ ALLOWED_ORIGINS=https://my-dxf-viewer.vercel.app
 - Telegram на Vercel работает через webhook endpoint: `POST /api/telegram-webhook`.
 - Зарегистрировать webhook можно через `POST /api/telegram-webhook-register`
   (либо передать `{ "url": "https://<your-domain>/api/telegram-webhook" }`, либо задать `TELEGRAM_WEBHOOK_URL`).
+- Telegram login flow:
+  - пользователь пишет боту `/login`;
+  - бот выдаёт одноразовый код (TTL ~5 минут);
+  - UI кнопка «Вход Telegram» отправляет код в `POST /api/auth/telegram/exchange-code`;
+  - `GET /api/auth/me` проверяет сессию по `Authorization: Bearer <sessionToken>`.
 - Если задан `TELEGRAM_WEBHOOK_SECRET`, запросы без корректного заголовка `x-telegram-bot-api-secret-token` отклоняются.
 
 ---

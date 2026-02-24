@@ -15,6 +15,7 @@ import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from 
 import { calculatePrice } from '../../pricing/src/index.js';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
+import { exchangeTelegramLoginCode, getAuthSessionByToken } from './telegram-auth.js';
 
 const app = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -86,9 +87,65 @@ function getBufferFromRequest(req: Request): Buffer | null {
   return null;
 }
 
+function getAuthTokenFromRequest(req: Request): string {
+  const header = req.header('authorization') ?? req.header('Authorization') ?? '';
+  if (header.toLowerCase().startsWith('bearer ')) {
+    return header.slice(7).trim();
+  }
+  const alt = req.header('x-session-token') ?? '';
+  return alt.trim();
+}
+
 // Health check
 app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.post('/api/auth/telegram/exchange-code', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const code = typeof req.body?.code === 'string' ? req.body.code : '';
+    const session = await exchangeTelegramLoginCode(code);
+    if (!session) {
+      res.status(401).json({ error: 'Invalid or expired code' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      sessionToken: session.sessionToken,
+      workspaceId: session.workspaceId,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Auth code exchange failed', details: message });
+  }
+});
+
+app.get('/api/auth/me', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = getAuthTokenFromRequest(req);
+    if (!token) {
+      res.status(401).json({ authenticated: false, error: 'Missing session token' });
+      return;
+    }
+
+    const session = await getAuthSessionByToken(token);
+    if (!session) {
+      res.status(401).json({ authenticated: false, error: 'Session not found or expired' });
+      return;
+    }
+
+    res.json({
+      authenticated: true,
+      userId: session.userId,
+      workspaceId: session.workspaceId,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Auth me failed', details: message });
+  }
 });
 
 // Parse DXF file

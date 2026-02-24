@@ -12,6 +12,7 @@ import { nestItems, SHEET_PRESETS, type NestingItem, type NestingOptions, type N
 import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
+import { createTelegramLoginCode } from '../../api-service/src/telegram-auth.js';
 import { getSharedSheet } from '../../api-service/src/shared-sheets.js';
 
 export interface BotMessage {
@@ -36,6 +37,7 @@ export interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: {
     readonly chat: { readonly id: number };
+    readonly from?: { readonly id: number; readonly username?: string };
     readonly text?: string;
     readonly document?: {
       readonly file_id: string;
@@ -1164,6 +1166,23 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
   }
 
   if (message.text !== undefined) {
+    if (message.text === '/login' || message.text === '/auth') {
+      try {
+        const telegramUserId = message.from?.id ?? chatId;
+        const { code, expiresAt } = await createTelegramLoginCode(telegramUserId, chatId);
+        const ttlMinutes = Math.max(1, Math.round((expiresAt - Date.now()) / 60000));
+        await telegramSendMessage(
+          token,
+          chatId,
+          `Код входа: ${code}\n\nВведите его в программе DXF Viewer (кнопка «Вход Telegram»).\nКод действует ~${ttlMinutes} мин.`,
+        );
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        await telegramSendMessage(token, chatId, `Не удалось выдать код входа: ${details}`);
+      }
+      return;
+    }
+
     const pending = chatNestingContext.get(chatId);
     if (pending !== undefined && pending.awaitingInput === 'quantity') {
       if (!isPositiveIntegerText(message.text)) {
@@ -1211,7 +1230,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         await telegramSendMessage(
           token,
           chatId,
-          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.\n\nТакже можно отправить код листа (8 символов) для получения DXF раскладки.',
+          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.\n\nТакже можно отправить код листа (8 символов) для получения DXF раскладки.\nДля входа в программу по Telegram используйте /login.',
         );
       }
       return;
