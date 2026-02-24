@@ -434,25 +434,33 @@ async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<LoadedF
 async function reloadWorkspaceLibraryFromServer(): Promise<void> {
   if (!authSessionToken) return;
 
-  const tree = await apiGetJSON<LibraryTreeResponse>('/api/library-tree', getAuthHeaders());
-  workspaceCatalogs.splice(0, workspaceCatalogs.length, ...tree.catalogs);
+  try {
+    const tree = await apiGetJSON<LibraryTreeResponse>('/api/library-tree', getAuthHeaders());
+    workspaceCatalogs.splice(0, workspaceCatalogs.length, ...tree.catalogs);
 
-  loadedFiles.splice(0, loadedFiles.length);
-  for (const meta of tree.files) {
-    const loaded = await loadRemoteWorkspaceFile(meta);
-    loadedFiles.push(loaded);
-  }
+    loadedFiles.splice(0, loadedFiles.length);
+    for (const meta of tree.files) {
+      try {
+        const loaded = await loadRemoteWorkspaceFile(meta);
+        loadedFiles.push(loaded);
+      } catch (fileErr) {
+        console.warn(`Failed to load file "${meta.name}":`, fileErr);
+      }
+    }
 
-  selectedCatalogIds.clear();
-  for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
-  if (loadedFiles.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+    selectedCatalogIds.clear();
+    for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
+    if (loadedFiles.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
 
-  if (loadedFiles.length > 0) {
-    setActiveFile(loadedFiles[0]!.id);
-  } else {
-    activeFileId = -1;
-    renderer.clearDocument();
-    syncWelcomeVisibility();
+    if (loadedFiles.length > 0) {
+      setActiveFile(loadedFiles[0]!.id);
+    } else {
+      activeFileId = -1;
+      renderer.clearDocument();
+      syncWelcomeVisibility();
+    }
+  } catch (err) {
+    console.error('reloadWorkspaceLibraryFromServer failed:', err);
   }
 
   renderCatalogFilter();
@@ -809,11 +817,13 @@ function recalcTotals(): void {
 
 function renderFileList(): void {
   syncWelcomeVisibility();
-  fileListEmpty.style.display = loadedFiles.length === 0 ? '' : 'none';
 
   fileListEl.innerHTML = '';
+  fileListEmpty.style.display = loadedFiles.length === 0 ? '' : 'none';
+  fileListEl.appendChild(fileListEmpty);
 
   const isGuest = !authSessionToken;
+  console.debug('[renderFileList]', { isGuest, files: loadedFiles.length, catalogs: workspaceCatalogs.length, selectedCatalogs: selectedCatalogIds.size });
   const catalogGroups: Array<{ id: string | null; name: string }> = isGuest
     ? [{ id: null, name: '' }]
     : [
