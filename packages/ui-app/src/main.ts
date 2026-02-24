@@ -222,7 +222,8 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 function updateAuthUi(): void {
-  if (authWorkspaceId) {
+  const isAuthenticated = authSessionToken.length > 0 && authWorkspaceId.length > 0;
+  if (isAuthenticated) {
     authWorkspace.textContent = `Workspace: ${authWorkspaceId}`;
     btnAuthLogin.textContent = 'Сменить Telegram';
     btnAuthLogin.title = 'Сменить Telegram-сессию';
@@ -1077,6 +1078,11 @@ function updateStatusBar(): void {
   statusZoom.textContent = `${(renderer.camera.zoom * 100).toFixed(0)}%`;
 }
 
+function updateNestingButtonState(): void {
+  const panelOpen = !nestingPanel.classList.contains('hidden') || nestingPanel.classList.contains('mobile-open');
+  btnNesting.classList.toggle('active', panelOpen || nestingMode);
+}
+
 // ─── Раскладка (Nesting) ────────────────────────────────────────────
 
 btnNesting.addEventListener('click', () => {
@@ -1084,6 +1090,7 @@ btnNesting.addEventListener('click', () => {
   if (!nestingPanel.classList.contains('hidden')) {
     updateNestItems();
   }
+  updateNestingButtonState();
   renderer.resizeToContainer();
 });
 
@@ -1410,6 +1417,7 @@ function showNestResults(): void {
 function enterNestingMode(): void {
   nestingMode = true;
   nestingScroll.classList.add('visible');
+  updateNestingButtonState();
   renderAllNestingSheets();
 }
 
@@ -1417,6 +1425,7 @@ function exitNestingMode(): void {
   nestingMode = false;
   nestingScroll.classList.remove('visible');
   currentNestResult = null;
+  updateNestingButtonState();
 }
 
 nestClose.addEventListener('click', exitNestingMode);
@@ -1998,12 +2007,14 @@ function closeMobilePanels(): void {
   sidebarInspector.classList.remove('mobile-open');
   nestingPanel.classList.remove('mobile-open');
   mobileBackdrop.classList.remove('active');
+  updateNestingButtonState();
 }
 
 function openMobilePanel(panel: HTMLElement): void {
   closeMobilePanels();
   panel.classList.add('mobile-open');
   mobileBackdrop.classList.add('active');
+  updateNestingButtonState();
 }
 
 mobileBackdrop.addEventListener('click', closeMobilePanels);
@@ -2023,6 +2034,7 @@ btnNesting.addEventListener('click', () => {
     closeMobilePanels();
     if (!isOpen) openMobilePanel(nestingPanel);
   }
+  updateNestingButtonState();
 });
 
 // Тап по логотипу — открыть/закрыть sidebar файлов на мобильных
@@ -2071,3 +2083,5 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'g' || e.key === 'G') { btnGrid.click(); }
   if (e.key === '?') { toggleShortcutsDialog(); }
 });
+
+updateNestingButtonState();
