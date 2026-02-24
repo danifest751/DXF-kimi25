@@ -931,7 +931,11 @@ btnSelectAllFiles.addEventListener('click', () => {
   saveGuestDraft();
 });
 btnAddCatalog.addEventListener('click', () => {
-  if (!authSessionToken) return;
+  if (!authSessionToken) {
+    showAuthHint('Нужен вход для каталогов');
+    void runTelegramLoginFlow();
+    return;
+  }
   const name = prompt('Название каталога:')?.trim() ?? '';
   if (!name) return;
   void apiPostJSON<{ success: boolean; catalog: WorkspaceCatalog }>('/api/library-catalogs', {
@@ -940,6 +944,7 @@ btnAddCatalog.addEventListener('click', () => {
     .then(() => reloadWorkspaceLibraryFromServer())
     .catch((error) => {
       console.error('Create catalog failed:', error);
+      alert(`Не удалось создать каталог: ${error instanceof Error ? error.message : String(error)}`);
     });
 });
 btnAuthLogin.addEventListener('click', () => {
