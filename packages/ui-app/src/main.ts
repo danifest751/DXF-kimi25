@@ -175,9 +175,16 @@ function updateAuthUi(): void {
   btnAuthLogin.title = 'Вход через Telegram код';
 }
 
+function showAuthHint(message: string, timeoutMs = 2200): void {
+  authWorkspace.textContent = message;
+  window.setTimeout(() => {
+    updateAuthUi();
+  }, timeoutMs);
+}
+
 function ensureAuthorizedAccess(): boolean {
   if (authSessionToken) return true;
-  alert('Сначала выполните вход через Telegram (кнопка «Вход Telegram»).');
+  void runTelegramLoginFlow();
   return false;
 }
 
@@ -214,10 +221,10 @@ async function runTelegramLoginFlow(): Promise<void> {
     authWorkspaceId = response.workspaceId;
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
     updateAuthUi();
-    alert(`Вход выполнен. Workspace: ${response.workspaceId}`);
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
-    alert(`Вход не выполнен: ${details}`);
+    showAuthHint('Код неверный или истек');
+    console.error('Telegram login failed:', details);
   }
 }
 
