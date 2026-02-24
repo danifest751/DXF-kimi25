@@ -101,7 +101,7 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.post('/api/auth/telegram/exchange-code', async (req: Request, res: Response): Promise<void> => {
+app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'], async (req: Request, res: Response): Promise<void> => {
   try {
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
     const session = await exchangeTelegramLoginCode(code);
@@ -122,7 +122,7 @@ app.post('/api/auth/telegram/exchange-code', async (req: Request, res: Response)
   }
 });
 
-app.get('/api/auth/me', async (req: Request, res: Response): Promise<void> => {
+app.get(['/api/auth/me', '/api/auth-me'], async (req: Request, res: Response): Promise<void> => {
   try {
     const token = getAuthTokenFromRequest(req);
     if (!token) {

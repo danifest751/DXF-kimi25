@@ -157,8 +157,8 @@ ALLOWED_ORIGINS=https://my-dxf-viewer.vercel.app
 - Telegram login flow:
   - пользователь пишет боту `/login`;
   - бот выдаёт одноразовый код (TTL ~5 минут);
-  - UI кнопка «Вход Telegram» отправляет код в `POST /api/auth/telegram/exchange-code`;
-  - `GET /api/auth/me` проверяет сессию по `Authorization: Bearer <sessionToken>`.
+  - UI кнопка «Вход Telegram» отправляет код в `POST /api/auth-telegram-exchange-code`;
+  - `GET /api/auth-me` проверяет сессию по `Authorization: Bearer <sessionToken>`.
 - Если задан `TELEGRAM_WEBHOOK_SECRET`, запросы без корректного заголовка `x-telegram-bot-api-secret-token` отклоняются.
 
 ---

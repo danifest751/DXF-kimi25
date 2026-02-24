@@ -190,7 +190,7 @@ async function restoreAuthSession(): Promise<void> {
 
   try {
     authSessionToken = savedToken;
-    const me = await apiGetJSON<AuthMeResponse>('/api/auth/me', getAuthHeaders());
+    const me = await apiGetJSON<AuthMeResponse>('/api/auth-me', getAuthHeaders());
     if (!me.authenticated) {
       throw new Error('Session rejected');
     }
@@ -209,7 +209,7 @@ async function runTelegramLoginFlow(): Promise<void> {
   if (!code) return;
 
   try {
-    const response = await apiPostJSON<AuthExchangeResponse>('/api/auth/telegram/exchange-code', { code });
+    const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
     authSessionToken = response.sessionToken;
     authWorkspaceId = response.workspaceId;
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
