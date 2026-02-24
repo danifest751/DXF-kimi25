@@ -20,28 +20,37 @@
   display: flex; align-items: center; justify-content: space-between;
   background: rgba(0, 0, 0, 0.2);
 }
-.sidebar-add-btn {
-  background: transparent; 
-  border: 1px solid var(--border); 
-  color: var(--text-secondary);
-  width: 24px; height: 24px; 
-  border-radius: var(--radius-sm); 
-  cursor: pointer; 
-  display: flex;
-  align-items: center; justify-content: center; 
-  transition: var(--transition-base);
-}
-.sidebar-add-btn:hover { 
-  background: var(--bg-hover); 
-  color: var(--accent-primary); 
-  border-color: var(--accent-primary);
-  box-shadow: var(--glow-primary);
-}
 
 .sidebar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sidebar-action-btn {
+  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.sidebar-action-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.sidebar-action-btn.primary {
+  border-color: rgba(0, 212, 255, 0.5);
+  color: var(--accent-primary);
 }
 
 .catalog-filter {
@@ -160,8 +169,8 @@
 }
 
 .catalog-btn {
-  width: 18px;
-  height: 18px;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 4px;
   border: 1px solid var(--border-light);
   background: transparent;
@@ -170,6 +179,8 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .catalog-btn:hover {

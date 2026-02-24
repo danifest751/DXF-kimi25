@@ -41,6 +41,7 @@ const btnAddFiles = document.getElementById('btn-add-files') as HTMLButtonElemen
 const btnInspector = document.getElementById('btn-inspector') as HTMLButtonElement;
 const btnGrid = document.getElementById('btn-grid') as HTMLButtonElement;
 const btnAuthLogin = document.getElementById('btn-auth-login') as HTMLButtonElement;
+const btnAuthLogout = document.getElementById('btn-auth-logout') as HTMLButtonElement;
 const authWorkspace = document.getElementById('auth-workspace') as HTMLSpanElement;
 const welcome = document.getElementById('welcome') as HTMLDivElement;
 const dropOverlay = document.getElementById('drop-overlay') as HTMLDivElement;
@@ -140,6 +141,26 @@ interface WorkspaceFileMeta {
   readonly updatedAt: number;
 }
 
+async function logoutWorkspace(): Promise<void> {
+  authSessionToken = '';
+  authWorkspaceId = '';
+  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  updateAuthUi();
+
+  workspaceCatalogs.splice(0, workspaceCatalogs.length);
+  selectedCatalogIds.clear();
+  loadedFiles.splice(0, loadedFiles.length);
+  activeFileId = -1;
+  renderer.clearDocument();
+  welcome.classList.remove('hidden');
+
+  await restoreGuestDraft();
+  renderCatalogFilter();
+  renderFileList();
+  recalcTotals();
+  updateNestItems();
+}
+
 interface LibraryTreeResponse {
   readonly success: boolean;
   readonly catalogs: WorkspaceCatalog[];
@@ -203,14 +224,22 @@ function getAuthHeaders(): Record<string, string> {
 function updateAuthUi(): void {
   if (authWorkspaceId) {
     authWorkspace.textContent = `Workspace: ${authWorkspaceId}`;
-    btnAuthLogin.textContent = 'Сменить вход';
+    btnAuthLogin.textContent = 'Сменить Telegram';
     btnAuthLogin.title = 'Сменить Telegram-сессию';
+    btnAuthLogout.hidden = false;
     return;
   }
 
   authWorkspace.textContent = 'Гость';
   btnAuthLogin.textContent = 'Вход Telegram';
   btnAuthLogin.title = 'Вход через Telegram код';
+  btnAuthLogout.hidden = true;
+}
+
+function updateBulkControlsUi(): void {
+  const hasUnchecked = loadedFiles.some((f) => !f.checked);
+  btnSelectAllFiles.textContent = hasUnchecked ? 'Выделить все' : 'Снять выделение';
+  btnSelectAllFiles.title = hasUnchecked ? 'Выделить все файлы' : 'Снять выделение со всех файлов';
 }
 
 function showAuthHint(message: string, timeoutMs = 2200): void {
@@ -723,6 +752,8 @@ function recalcTotals(): void {
     ? `${checkedCount}/${loadedFiles.length} файлов`
     : '';
 
+  updateBulkControlsUi();
+
   renderer.setPiercePoints(allPiercePoints);
 }
 
@@ -749,8 +780,8 @@ function renderFileList(): void {
       <input type="checkbox" ${selected ? 'checked' : ''} />
       <span class="catalog-name">${catalog.name}</span>
       <span class="catalog-file-count">${files.length}</span>
-      <button class="catalog-btn" title="Переименовать">✎</button>
-      <button class="catalog-btn danger" title="Удалить">✕</button>
+      <button class="catalog-btn" title="Переименовать каталог">Переим.</button>
+      <button class="catalog-btn danger" title="Удалить каталог">Удалить</button>
     `;
 
     const catalogChk = catalogRow.querySelector('input') as HTMLInputElement;
@@ -949,6 +980,9 @@ btnAddCatalog.addEventListener('click', () => {
 });
 btnAuthLogin.addEventListener('click', () => {
   void runTelegramLoginFlow();
+});
+btnAuthLogout.addEventListener('click', () => {
+  void logoutWorkspace();
 });
 void restoreAuthSession();
 btnFit.addEventListener('click', () => { renderer.zoomToFit(); updateStatusBar(); });

@@ -69,6 +69,17 @@
   box-shadow: var(--glow-primary);
 }
 
+.tb-btn-ghost {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.tb-btn-ghost:hover {
+  border-color: #ef4444;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+}
+
 .tb-btn svg { 
   width: 15px; height: 15px; 
   stroke: currentColor; 
