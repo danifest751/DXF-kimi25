@@ -461,21 +461,38 @@ async function reloadWorkspaceLibraryFromServer(): Promise<void> {
     renderFileList();
     syncWelcomeVisibility();
 
-    for (const meta of tree.files) {
-      try {
-        const loaded = await loadRemoteWorkspaceFile(meta);
-        loadedFiles.push(loaded);
+    const CONCURRENCY = 3;
+    let pending = 0;
+    let nextIdx = 0;
+    const metas = tree.files;
 
-        if (loadedFiles.length === 1) setActiveFile(loaded.id);
-
-        renderCatalogFilter();
-        renderFileList();
-        recalcTotals();
-        updateNestItems();
-      } catch (fileErr) {
-        console.warn(`Failed to load file "${meta.name}":`, fileErr);
+    await new Promise<void>((resolve) => {
+      function onFileReady(loaded: LoadedFile | null): void {
+        pending--;
+        if (loaded) {
+          loadedFiles.push(loaded);
+          if (loadedFiles.length === 1) setActiveFile(loaded.id);
+          renderCatalogFilter();
+          renderFileList();
+          recalcTotals();
+          updateNestItems();
+        }
+        scheduleNext();
       }
-    }
+
+      function scheduleNext(): void {
+        while (pending < CONCURRENCY && nextIdx < metas.length) {
+          const meta = metas[nextIdx++]!;
+          pending++;
+          loadRemoteWorkspaceFile(meta)
+            .then((loaded) => onFileReady(loaded))
+            .catch((err) => { console.warn(`Failed to load file "${meta.name}":`, err); onFileReady(null); });
+        }
+        if (pending === 0) resolve();
+      }
+
+      scheduleNext();
+    });
 
     if (loadedFiles.length === 0) {
       activeFileId = -1;
