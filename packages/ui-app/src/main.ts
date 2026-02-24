@@ -106,6 +106,35 @@ const nestZoomLabel = document.getElementById('nest-zoom-label') as HTMLDivEleme
 const mobileBackdrop = document.getElementById('mobile-backdrop') as HTMLDivElement;
 const sidebarFiles = document.getElementById('sidebar-files') as HTMLDivElement;
 
+// Delete catalog modal
+const deleteCatalogModal = document.getElementById('delete-catalog-modal') as HTMLDivElement;
+const dcmName = document.getElementById('dcm-name') as HTMLSpanElement;
+const dcmMove = document.getElementById('dcm-move') as HTMLButtonElement;
+const dcmDelete = document.getElementById('dcm-delete') as HTMLButtonElement;
+const dcmCancel = document.getElementById('dcm-cancel') as HTMLButtonElement;
+
+function showDeleteCatalogModal(catalogName: string): Promise<'move_to_uncategorized' | 'delete_files' | null> {
+  dcmName.textContent = catalogName;
+  deleteCatalogModal.classList.remove('hidden');
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      deleteCatalogModal.classList.add('hidden');
+      dcmMove.removeEventListener('click', onMove);
+      dcmDelete.removeEventListener('click', onDelete);
+      dcmCancel.removeEventListener('click', onCancel);
+      deleteCatalogModal.removeEventListener('click', onOverlay);
+    };
+    const onMove = () => { cleanup(); resolve('move_to_uncategorized'); };
+    const onDelete = () => { cleanup(); resolve('delete_files'); };
+    const onCancel = () => { cleanup(); resolve(null); };
+    const onOverlay = (e: MouseEvent) => { if (e.target === deleteCatalogModal) { cleanup(); resolve(null); } };
+    dcmMove.addEventListener('click', onMove);
+    dcmDelete.addEventListener('click', onDelete);
+    dcmCancel.addEventListener('click', onCancel);
+    deleteCatalogModal.addEventListener('click', onOverlay);
+  });
+}
+
 // ─── Состояние ──────────────────────────────────────────────────────
 
 const renderer = new DXFRenderer();
@@ -228,6 +257,7 @@ function updateAuthUi(): void {
     btnAuthLogin.textContent = 'Сменить Telegram';
     btnAuthLogin.title = 'Сменить Telegram-сессию';
     btnAuthLogout.hidden = false;
+    btnAddCatalog.hidden = false;
     return;
   }
 
@@ -235,10 +265,12 @@ function updateAuthUi(): void {
   btnAuthLogin.textContent = 'Вход Telegram';
   btnAuthLogin.title = 'Вход через Telegram код';
   btnAuthLogout.hidden = true;
+  btnAddCatalog.hidden = true;
 }
 
 function updateBulkControlsUi(): void {
-  const hasUnchecked = loadedFiles.some((f) => !f.checked);
+  const visibleFiles = loadedFiles.filter((f) => isFileInSelectedCatalogs(f));
+  const hasUnchecked = visibleFiles.some((f) => !f.checked);
   btnSelectAllFiles.textContent = hasUnchecked ? 'Выделить все' : 'Снять выделение';
   btnSelectAllFiles.title = hasUnchecked ? 'Выделить все файлы' : 'Снять выделение со всех файлов';
 }
@@ -294,6 +326,13 @@ function isFileInSelectedCatalogs(file: LoadedFile): boolean {
 
 function renderCatalogFilter(): void {
   catalogFilter.innerHTML = '';
+
+  const isGuest = !authSessionToken;
+  if (isGuest || workspaceCatalogs.length === 0) {
+    catalogFilter.style.display = 'none';
+    return;
+  }
+  catalogFilter.style.display = '';
 
   const hasUncategorized = loadedFiles.some((f) => f.catalogId === null);
   const totalCatalogsCount = workspaceCatalogs.length + (hasUncategorized ? 1 : 0);
@@ -774,15 +813,20 @@ function renderFileList(): void {
 
   fileListEl.innerHTML = '';
 
-  const catalogGroups: Array<{ id: string | null; name: string }> = [
-    ...workspaceCatalogs.map((catalog) => ({ id: catalog.id, name: catalog.name })),
-    { id: null, name: 'Без каталога' },
-  ];
+  const isGuest = !authSessionToken;
+  const catalogGroups: Array<{ id: string | null; name: string }> = isGuest
+    ? [{ id: null, name: '' }]
+    : [
+        ...workspaceCatalogs.map((catalog) => ({ id: catalog.id, name: catalog.name })),
+        { id: null, name: 'Без каталога' },
+      ];
 
   for (const catalog of catalogGroups) {
-    const files = loadedFiles.filter((f) => f.catalogId === catalog.id);
+    const files = loadedFiles.filter((f) => isGuest ? true : f.catalogId === catalog.id);
     if (files.length === 0) continue;
 
+    // Skip catalog row header for guests — show flat file list
+    if (!isGuest) {
     const catalogRow = document.createElement('div');
     catalogRow.className = 'catalog-row';
     const catalogKey = catalog.id ?? UNCATEGORIZED_CATALOG_ID;
@@ -824,14 +868,20 @@ function renderFileList(): void {
       renameBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
-        if (!nextName) return;
+        if (!nextName || nextName === catalog.name) return;
+        const cat = workspaceCatalogs.find(c => c.id === catalog.id);
+        if (cat) (cat as { name: string }).name = nextName;
+        renderCatalogFilter();
+        renderFileList();
         void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
           catalogId: catalog.id,
           name: nextName,
         }, getAuthHeaders())
-          .then(() => reloadWorkspaceLibraryFromServer())
           .catch((err) => {
             console.error('Rename catalog failed:', err);
+            if (cat) (cat as { name: string }).name = catalog.name;
+            renderCatalogFilter();
+            renderFileList();
             alert(`Не удалось переименовать каталог: ${err instanceof Error ? err.message : String(err)}`);
           });
       });
@@ -841,23 +891,68 @@ function renderFileList(): void {
     if (deleteBtn && catalog.id) {
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const approved = confirm(`Удалить каталог "${catalog.name}"?`);
-        if (!approved) return;
-        const deleteFiles = confirm('OK — удалить каталог вместе с файлами.\nCancel — удалить каталог, файлы перенести в "Без каталога".');
-        const mode = deleteFiles ? 'delete_files' : 'move_to_uncategorized';
-        void apiPostJSON<{ success: boolean }>('/api/library-catalogs-delete', {
-          catalogId: catalog.id,
-          mode,
-        }, getAuthHeaders())
-          .then(() => reloadWorkspaceLibraryFromServer())
-          .catch((err) => {
-            console.error('Delete catalog failed:', err);
-            alert(`Не удалось удалить каталог: ${err instanceof Error ? err.message : String(err)}`);
-          });
+        void showDeleteCatalogModal(catalog.name).then((mode) => {
+          if (!mode) return;
+
+          const catIdx = workspaceCatalogs.findIndex(c => c.id === catalog.id);
+          const removedCat = catIdx >= 0 ? workspaceCatalogs.splice(catIdx, 1)[0] : null;
+          const affectedFiles: Array<{ file: LoadedFile; oldCatalogId: string | null }> = [];
+
+          if (mode === 'move_to_uncategorized') {
+            for (const f of loadedFiles) {
+              if (f.catalogId === catalog.id) {
+                affectedFiles.push({ file: f, oldCatalogId: f.catalogId });
+                f.catalogId = null;
+              }
+            }
+          } else {
+            for (let i = loadedFiles.length - 1; i >= 0; i--) {
+              if (loadedFiles[i]!.catalogId === catalog.id) {
+                affectedFiles.push({ file: loadedFiles[i]!, oldCatalogId: loadedFiles[i]!.catalogId });
+                loadedFiles.splice(i, 1);
+              }
+            }
+          }
+
+          selectedCatalogIds.delete(catalog.id!);
+          if (selectedCatalogIds.size === 0) ensureSelectedCatalogsDefaults();
+
+          if (loadedFiles.length === 0) {
+            activeFileId = -1;
+            renderer.clearDocument();
+            syncWelcomeVisibility();
+          } else if (activeFileId >= 0 && !loadedFiles.find(f => f.id === activeFileId)) {
+            setActiveFile(loadedFiles[0]!.id);
+          }
+
+          renderCatalogFilter();
+          renderFileList();
+          recalcTotals();
+          updateNestItems();
+
+          void apiPostJSON<{ success: boolean }>('/api/library-catalogs-delete', {
+            catalogId: catalog.id,
+            mode,
+          }, getAuthHeaders())
+            .catch((err) => {
+              console.error('Delete catalog failed:', err);
+              if (removedCat && catIdx >= 0) workspaceCatalogs.splice(catIdx, 0, removedCat);
+              for (const { file, oldCatalogId } of affectedFiles) {
+                file.catalogId = oldCatalogId;
+                if (mode === 'delete_files' && !loadedFiles.includes(file)) loadedFiles.push(file);
+              }
+              renderCatalogFilter();
+              renderFileList();
+              recalcTotals();
+              updateNestItems();
+              alert(`Не удалось удалить каталог: ${err instanceof Error ? err.message : String(err)}`);
+            });
+        });
       });
     }
 
     fileListEl.appendChild(catalogRow);
+    } // end if (!isGuest)
 
     for (const f of files) {
     const cutLen = f.stats.totalCutLength;
@@ -867,7 +962,7 @@ function renderFileList(): void {
     const info = `${f.stats.totalPierces}p · ${lenStr}`;
 
       const item = document.createElement('div');
-      item.className = `file-item in-catalog${f.id === activeFileId ? ' active' : ''}`;
+      item.className = `file-item${isGuest ? '' : ' in-catalog'}${f.id === activeFileId ? ' active' : ''}`;
       item.innerHTML = `
         <input type="checkbox" ${f.checked ? 'checked' : ''} />
         <svg class="file-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -979,12 +1074,16 @@ btnOpen.addEventListener('click', openFileDialog);
 btnWelcomeOpen.addEventListener('click', openFileDialog);
 btnAddFiles.addEventListener('click', openFileDialog);
 btnSelectAllFiles.addEventListener('click', () => {
-  const hasUnchecked = loadedFiles.some((f) => !f.checked);
+  const visibleFiles = loadedFiles.filter((f) => isFileInSelectedCatalogs(f));
+  const hasUnchecked = visibleFiles.some((f) => !f.checked);
   const nextChecked = hasUnchecked;
-  for (const file of loadedFiles) file.checked = nextChecked;
+  for (const file of visibleFiles) file.checked = nextChecked;
   if (authSessionToken) {
+    const catalogIds = [...selectedCatalogIds].filter(id => id !== UNCATEGORIZED_CATALOG_ID);
+    const includeUncategorized = selectedCatalogIds.has(UNCATEGORIZED_CATALOG_ID);
     void apiPostJSON<{ success: boolean }>('/api/library-files-check-all', {
       checked: nextChecked,
+      catalogIds: catalogIds.length > 0 || includeUncategorized ? catalogIds : undefined,
     }, getAuthHeaders()).catch((error) => {
       console.error('Check all failed:', error);
     });
@@ -997,7 +1096,6 @@ btnSelectAllFiles.addEventListener('click', () => {
 btnAddCatalog.addEventListener('click', () => {
   if (!authSessionToken) {
     showAuthHint('Нужен вход для каталогов');
-    void runTelegramLoginFlow();
     return;
   }
   const name = prompt('Название каталога:')?.trim() ?? '';
@@ -1005,7 +1103,12 @@ btnAddCatalog.addEventListener('click', () => {
   void apiPostJSON<{ success: boolean; catalog: WorkspaceCatalog }>('/api/library-catalogs', {
     name,
   }, getAuthHeaders())
-    .then(() => reloadWorkspaceLibraryFromServer())
+    .then((resp) => {
+      workspaceCatalogs.push(resp.catalog);
+      selectedCatalogIds.add(resp.catalog.id);
+      renderCatalogFilter();
+      renderFileList();
+    })
     .catch((error) => {
       console.error('Create catalog failed:', error);
       alert(`Не удалось создать каталог: ${error instanceof Error ? error.message : String(error)}`);

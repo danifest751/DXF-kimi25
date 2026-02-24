@@ -61,7 +61,7 @@
           <span>Файлы и каталоги</span>
           <div class="sidebar-actions">
             <button class="sidebar-action-btn" id="btn-select-all-files" title="Выделить все файлы">Выделить все</button>
-            <button class="sidebar-action-btn" id="btn-add-catalog" title="Добавить каталог">+ Каталог</button>
+            <button class="sidebar-action-btn" id="btn-add-catalog" title="Добавить каталог" hidden>+ Каталог</button>
             <button class="sidebar-action-btn primary" id="btn-add-files" title="Добавить файлы">+ DXF</button>
           </div>
         </div>
@@ -295,6 +295,17 @@
         <div class="shortcut-row"><kbd>Зажать ЛКМ</kbd><span>Перемещение</span></div>
         <div class="shortcut-row"><kbd>Клик</kbd><span>Выбрать объект</span></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Delete catalog modal -->
+  <div class="modal-overlay hidden" id="delete-catalog-modal">
+    <div class="modal-card">
+      <h3>Удалить каталог «<span id="dcm-name"></span>»?</h3>
+      <p>Выберите, что сделать с файлами:</p>
+      <button class="modal-btn" id="dcm-move">Перенести в «Без каталога»</button>
+      <button class="modal-btn danger" id="dcm-delete">Удалить вместе с файлами</button>
+      <button class="modal-btn ghost" id="dcm-cancel">Отмена</button>
     </div>
   </div>
 
