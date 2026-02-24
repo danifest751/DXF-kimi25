@@ -38,6 +38,10 @@
   overflow: hidden;
 }
 
+.tb-btn[hidden] {
+  display: none !important;
+}
+
 .tb-btn::before {
   content: '';
   position: absolute;
