@@ -12,6 +12,7 @@ const deleteWorkspaceCatalogMock = vi.fn();
 const updateWorkspaceFileMock = vi.fn();
 const deleteWorkspaceFileMock = vi.fn();
 const setWorkspaceFilesCheckedMock = vi.fn();
+const downloadWorkspaceFileMock = vi.fn();
 
 vi.mock('../../packages/core-engine/src/dxf/reader/index.js', () => ({
   parseDXF: vi.fn(),
@@ -62,7 +63,7 @@ vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
   createWorkspaceCatalog: createWorkspaceCatalogMock,
   deleteWorkspaceCatalog: deleteWorkspaceCatalogMock,
   deleteWorkspaceFile: deleteWorkspaceFileMock,
-  downloadWorkspaceFile: vi.fn(),
+  downloadWorkspaceFile: downloadWorkspaceFileMock,
   isWorkspaceLibraryEnabled: isWorkspaceLibraryEnabledMock,
   listWorkspaceLibrary: vi.fn(),
   renameWorkspaceCatalog: renameWorkspaceCatalogMock,
@@ -190,6 +191,20 @@ describe('workspace library routes', () => {
     expect(response.status).toBe(200);
     expect(setWorkspaceFilesCheckedMock).toHaveBeenCalledWith('ws-1', false, ['cat-1', 'cat-2']);
     expect(response.json).toEqual({ success: true });
+  });
+
+  it('downloads file through flat alias route with query fileId', async () => {
+    downloadWorkspaceFileMock.mockResolvedValue({
+      name: 'part.dxf',
+      base64: 'QUJD',
+      sizeBytes: 3,
+    });
+
+    const response = await requestJson('GET', '/api/library-files-download?fileId=file-42', undefined, 'token-1');
+
+    expect(response.status).toBe(200);
+    expect(downloadWorkspaceFileMock).toHaveBeenCalledWith('ws-1', 'file-42');
+    expect(response.json).toEqual({ success: true, name: 'part.dxf', base64: 'QUJD', sizeBytes: 3 });
   });
 
   it('returns 503 when library storage is disabled', async () => {

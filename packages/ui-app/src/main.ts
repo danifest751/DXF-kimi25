@@ -333,7 +333,7 @@ async function computeStatsFromBuffer(base64: string, doc: LoadedFile['doc']): P
 
 async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<LoadedFile> {
   const dl = await apiGetJSON<{ success: boolean; name: string; base64: string; sizeBytes: number }>(
-    `/api/library-files/${meta.id}-download`,
+    `/api/library-files-download?fileId=${encodeURIComponent(meta.id)}`,
     getAuthHeaders(),
   );
   const binary = atob(dl.base64);

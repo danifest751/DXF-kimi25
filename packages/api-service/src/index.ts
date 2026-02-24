@@ -340,7 +340,9 @@ app.delete(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (
     const workspaceId = await requireWorkspaceId(req, res);
     if (!workspaceId) return;
 
-    const fileId = req.params.fileId ?? '';
+    const fileId = req.params.fileId
+      ?? (typeof req.query?.fileId === 'string' ? req.query.fileId : '')
+      ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
     await deleteWorkspaceFile(workspaceId, fileId);
     res.json({ success: true });
   } catch (error) {
@@ -390,7 +392,7 @@ app.post(['/api/library/files/check-all', '/api/library-files-check-all'], async
   }
 });
 
-app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-download'], async (req: Request, res: Response): Promise<void> => {
+app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-download', '/api/library-files-download'], async (req: Request, res: Response): Promise<void> => {
   try {
     if (!isWorkspaceLibraryEnabled()) {
       res.status(503).json({ error: 'Workspace library storage is not configured' });
@@ -400,7 +402,9 @@ app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-down
     const workspaceId = await requireWorkspaceId(req, res);
     if (!workspaceId) return;
 
-    const fileId = req.params.fileId ?? '';
+    const fileId = req.params.fileId
+      ?? (typeof req.query?.fileId === 'string' ? req.query.fileId : '')
+      ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
     const file = await downloadWorkspaceFile(workspaceId, fileId);
     res.json({ success: true, ...file });
   } catch (error) {
