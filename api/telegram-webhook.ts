@@ -1,4 +1,20 @@
-import { handleTelegramWebhookUpdate, type TelegramUpdate } from '../packages/bot-service/src/index.ts';
+type ExpressLikeHandler = (req: any, res: any) => void;
+
+let cachedApp: ExpressLikeHandler | null = null;
+
+async function loadApp(): Promise<ExpressLikeHandler> {
+  if (cachedApp) return cachedApp;
+
+  try {
+    const mod = await import('../packages/api-service/src/index.ts');
+    cachedApp = mod.default as ExpressLikeHandler;
+    return cachedApp;
+  } catch {
+    const mod = await import('../packages/api-service/src/index.js');
+    cachedApp = mod.default as ExpressLikeHandler;
+    return cachedApp;
+  }
+}
 
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'POST') {
@@ -7,25 +23,12 @@ export default async function handler(req: any, res: any): Promise<void> {
   }
 
   try {
-    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? '';
-    if (expectedSecret.length > 0) {
-      const receivedSecret = String(req.headers?.['x-telegram-bot-api-secret-token'] ?? '').trim();
-      if (receivedSecret !== expectedSecret) {
-        res.status(401).json({ error: 'Invalid webhook secret' });
-        return;
-      }
-    }
-
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) {
-      res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
-      return;
-    }
-
-    await handleTelegramWebhookUpdate(req.body as TelegramUpdate, botToken);
-    res.status(200).json({ ok: true });
+    const app = await loadApp();
+    req.url = '/api/telegram/webhook';
+    req.originalUrl = '/api/telegram/webhook';
+    app(req, res);
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: 'Telegram webhook failed', details });
+    res.status(500).json({ error: 'Telegram webhook bootstrap failed', details });
   }
 }
