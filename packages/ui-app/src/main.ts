@@ -263,6 +263,10 @@ function getPreferredUploadCatalogId(): string | null {
   return null;
 }
 
+function syncWelcomeVisibility(): void {
+  welcome.classList.toggle('hidden', loadedFiles.length > 0);
+}
+
 function selectAllCatalogsForCurrentData(): void {
   selectedCatalogIds.clear();
   for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
@@ -409,7 +413,7 @@ async function reloadWorkspaceLibraryFromServer(): Promise<void> {
   } else {
     activeFileId = -1;
     renderer.clearDocument();
-    welcome.classList.remove('hidden');
+    syncWelcomeVisibility();
   }
 
   renderCatalogFilter();
@@ -584,7 +588,7 @@ fileInput.addEventListener('change', () => {
 });
 
 async function addFiles(files: File[]): Promise<void> {
-  welcome.classList.add('hidden');
+  syncWelcomeVisibility();
 
   for (const file of files) {
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
@@ -682,7 +686,7 @@ async function removeFile(id: number): Promise<void> {
     renderer.clearDocument();
     statusEntities.textContent = '';
     statusVersion.textContent = '';
-    welcome.classList.remove('hidden');
+    syncWelcomeVisibility();
   } else if (activeFileId === id) {
     setActiveFile(loadedFiles[Math.min(idx, loadedFiles.length - 1)]!.id);
   }
@@ -697,6 +701,7 @@ function setActiveFile(id: number): void {
   const entry = loadedFiles.find(f => f.id === id);
   if (!entry) return;
 
+  syncWelcomeVisibility();
   renderer.setDocument(entry.doc);
   updateStatusBar();
   statusEntities.textContent = `${entry.doc.entityCount} obj`;
@@ -764,6 +769,7 @@ function recalcTotals(): void {
 // ─── Рендеринг списка файлов ────────────────────────────────────────
 
 function renderFileList(): void {
+  syncWelcomeVisibility();
   fileListEmpty.style.display = loadedFiles.length === 0 ? '' : 'none';
 
   fileListEl.innerHTML = '';
