@@ -266,6 +266,7 @@ function updateAuthUi(): void {
   btnAuthLogin.title = 'Вход через Telegram код';
   btnAuthLogout.hidden = true;
   btnAddCatalog.hidden = true;
+  updateUploadTargetHint();
 }
 
 function updateBulkControlsUi(): void {
@@ -295,6 +296,18 @@ function getPreferredUploadCatalogId(): string | null {
   return null;
 }
 
+function updateUploadTargetHint(): void {
+  if (!authSessionToken) {
+    btnAddFiles.title = 'Добавить DXF файлы';
+    return;
+  }
+  const catId = getPreferredUploadCatalogId();
+  const cat = catId ? workspaceCatalogs.find(c => c.id === catId) : null;
+  btnAddFiles.title = cat
+    ? `Добавить DXF → ${cat.name}`
+    : 'Добавить DXF → Без каталога';
+}
+
 function syncWelcomeVisibility(): void {
   welcome.classList.toggle('hidden', loadedFiles.length > 0);
 }
@@ -312,6 +325,7 @@ function refreshCatalogSelectionViews(): void {
   renderFileList();
   recalcTotals();
   updateNestItems();
+  updateUploadTargetHint();
 }
 
 function ensureSelectedCatalogsDefaults(): void {
@@ -852,8 +866,8 @@ function renderFileList(): void {
     catalogRow.classList.toggle('active', selected);
     catalogRow.title = 'Клик: показать только этот каталог. Чекбокс: добавить/убрать каталог из выборки.';
     const catalogActions = catalog.id
-      ? '<button class="catalog-btn" title="Переименовать каталог">Переим.</button><button class="catalog-btn danger" title="Удалить каталог">Удалить</button>'
-      : '<span class="catalog-system-label">Системный</span>';
+      ? '<button class="catalog-btn" title="Переименовать каталог"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button><button class="catalog-btn danger" title="Удалить каталог"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+      : '';
     catalogRow.innerHTML = `
       <input type="checkbox" ${selected ? 'checked' : ''} />
       <span class="catalog-name">${catalog.name}</span>

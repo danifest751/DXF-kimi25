@@ -199,28 +199,33 @@
 }
 
 .catalog-btn {
+  width: 22px;
   height: 20px;
-  padding: 0 6px;
+  padding: 0;
   border-radius: 4px;
-  border: 1px solid var(--border-light);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-dim);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 10px;
-  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.catalog-row:hover .catalog-btn {
+  opacity: 1;
 }
 
 .catalog-btn:hover {
   color: var(--text-primary);
-  border-color: var(--accent-primary);
+  border-color: var(--border-light);
 }
 
 .catalog-btn.danger:hover {
-  border-color: var(--red);
-  color: var(--red);
+  border-color: rgba(248,113,113,0.4);
+  color: #f87171;
 }
 
 .catalog-system-label {
