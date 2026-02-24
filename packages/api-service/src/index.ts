@@ -6,6 +6,9 @@
 
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
@@ -393,5 +396,21 @@ app.post('/api/bot/message', async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ error: 'Bot processing failed', details: message });
   }
 });
+
+const currentDir = dirname(fileURLToPath(import.meta.url));
+const uiDistDir = resolve(currentDir, '../../ui-app/dist');
+
+if (existsSync(uiDistDir)) {
+  app.use(express.static(uiDistDir, { index: false }));
+
+  // SPA fallback for non-API routes
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') {
+      next();
+      return;
+    }
+    res.sendFile(resolve(uiDistDir, 'index.html'));
+  });
+}
 
 export default app;
