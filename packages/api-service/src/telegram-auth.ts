@@ -82,8 +82,16 @@ function createSessionToken(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
-function createWorkspaceId(): string {
-  return `ws_${crypto.randomBytes(6).toString('hex')}`;
+function stableHex(input: string, length: number): string {
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, length);
+}
+
+function createStableUserId(telegramUserId: string): string {
+  return `u_${stableHex(`user:${telegramUserId}`, 20)}`;
+}
+
+function createStableWorkspaceId(telegramUserId: string): string {
+  return `ws_${stableHex(`workspace:${telegramUserId}`, 16)}`;
 }
 
 function toLoginCodeRow(entry: LoginCodeEntry): LoginCodeRow {
@@ -242,9 +250,9 @@ async function getOrCreateUserByTelegramId(telegramUserId: string): Promise<AppU
   }
 
   const newUser: AppUserEntry = {
-    id: crypto.randomUUID(),
+    id: createStableUserId(telegramUserId),
     telegramUserId,
-    workspaceId: createWorkspaceId(),
+    workspaceId: createStableWorkspaceId(telegramUserId),
     createdAt: Date.now(),
   };
   usersByTelegram.set(telegramUserId, newUser);
@@ -252,11 +260,26 @@ async function getOrCreateUserByTelegramId(telegramUserId: string): Promise<AppU
   if (supabaseEnabled) {
     const response = await supabaseRequest(`/${APP_USERS_TABLE}?on_conflict=telegram_user_id`, {
       method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
       body: JSON.stringify([toUserRow(newUser)]),
     });
     if (!response?.ok) {
       console.error('[telegram-auth] failed to create user');
+    } else {
+      const params = new URLSearchParams({
+        select: 'id,telegram_user_id,workspace_id,created_at',
+        telegram_user_id: `eq.${telegramUserId}`,
+        limit: '1',
+      });
+      const reread = await supabaseRequest(`/${APP_USERS_TABLE}?${params.toString()}`);
+      if (reread?.ok) {
+        const rows = await reread.json() as AppUserRow[];
+        if (Array.isArray(rows) && rows.length > 0) {
+          const persisted = fromUserRow(rows[0]!);
+          usersByTelegram.set(telegramUserId, persisted);
+          return persisted;
+        }
+      }
     }
   }
 
