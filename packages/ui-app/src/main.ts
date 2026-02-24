@@ -867,23 +867,65 @@ function renderFileList(): void {
     if (renameBtn && catalog.id) {
       renameBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
-        if (!nextName || nextName === catalog.name) return;
-        const cat = workspaceCatalogs.find(c => c.id === catalog.id);
-        if (cat) (cat as { name: string }).name = nextName;
-        renderCatalogFilter();
-        renderFileList();
-        void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
-          catalogId: catalog.id,
-          name: nextName,
-        }, getAuthHeaders())
-          .catch((err) => {
-            console.error('Rename catalog failed:', err);
-            if (cat) (cat as { name: string }).name = catalog.name;
-            renderCatalogFilter();
-            renderFileList();
-            alert(`Не удалось переименовать каталог: ${err instanceof Error ? err.message : String(err)}`);
-          });
+        const nameSpan = catalogRow.querySelector('.catalog-name') as HTMLSpanElement | null;
+        if (!nameSpan || catalogRow.querySelector('.catalog-name-input')) return;
+
+        const input = document.createElement('input');
+        input.className = 'catalog-name-input';
+        input.value = catalog.name;
+        nameSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let committed = false;
+        const commit = () => {
+          if (committed) return;
+          committed = true;
+          const nextName = input.value.trim();
+          const span = document.createElement('span');
+          span.className = 'catalog-name';
+
+          if (!nextName || nextName === catalog.name) {
+            span.textContent = catalog.name;
+            input.replaceWith(span);
+            return;
+          }
+
+          const cat = workspaceCatalogs.find(c => c.id === catalog.id);
+          if (cat) (cat as { name: string }).name = nextName;
+          span.textContent = nextName;
+          input.replaceWith(span);
+          renderCatalogFilter();
+
+          void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
+            catalogId: catalog.id,
+            name: nextName,
+          }, getAuthHeaders())
+            .catch((err) => {
+              console.error('Rename catalog failed:', err);
+              if (cat) (cat as { name: string }).name = catalog.name;
+              renderCatalogFilter();
+              renderFileList();
+              alert(`Не удалось переименовать каталог: ${err instanceof Error ? err.message : String(err)}`);
+            });
+        };
+
+        const revert = () => {
+          if (committed) return;
+          committed = true;
+          const span = document.createElement('span');
+          span.className = 'catalog-name';
+          span.textContent = catalog.name;
+          input.replaceWith(span);
+        };
+
+        input.addEventListener('keydown', (ke) => {
+          ke.stopPropagation();
+          if (ke.key === 'Enter') { ke.preventDefault(); commit(); }
+          if (ke.key === 'Escape') { ke.preventDefault(); revert(); }
+        });
+        input.addEventListener('blur', () => commit());
+        input.addEventListener('click', (ce) => ce.stopPropagation());
       });
     }
 
