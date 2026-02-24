@@ -143,6 +143,19 @@
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   background: rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.catalog-row:hover {
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.08);
+}
+
+.catalog-row.active {
+  border-color: var(--accent-primary);
+  background: rgba(0, 212, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.2) inset;
 }
 
 .catalog-row:first-child {
@@ -153,6 +166,7 @@
   width: 14px;
   height: 14px;
   accent-color: var(--accent-primary);
+  cursor: pointer;
 }
 
 .catalog-name {
@@ -191,6 +205,14 @@
 .catalog-btn.danger:hover {
   border-color: var(--red);
   color: var(--red);
+}
+
+.catalog-system-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-light);
+  border-radius: 999px;
+  padding: 1px 6px;
 }
 
 .file-item.in-catalog {

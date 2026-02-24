@@ -262,12 +262,24 @@ function getPreferredUploadCatalogId(): string | null {
   return null;
 }
 
-function ensureSelectedCatalogsDefaults(): void {
-  if (selectedCatalogIds.size > 0) return;
+function selectAllCatalogsForCurrentData(): void {
+  selectedCatalogIds.clear();
   for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
   if (loadedFiles.some((f) => f.catalogId === null)) {
     selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
   }
+}
+
+function refreshCatalogSelectionViews(): void {
+  renderCatalogFilter();
+  renderFileList();
+  recalcTotals();
+  updateNestItems();
+}
+
+function ensureSelectedCatalogsDefaults(): void {
+  if (selectedCatalogIds.size > 0) return;
+  selectAllCatalogsForCurrentData();
 }
 
 function isFileInSelectedCatalogs(file: LoadedFile): boolean {
@@ -278,18 +290,16 @@ function isFileInSelectedCatalogs(file: LoadedFile): boolean {
 function renderCatalogFilter(): void {
   catalogFilter.innerHTML = '';
 
+  const hasUncategorized = loadedFiles.some((f) => f.catalogId === null);
+  const totalCatalogsCount = workspaceCatalogs.length + (hasUncategorized ? 1 : 0);
+
   const allChip = document.createElement('button');
   allChip.className = 'catalog-chip';
   allChip.textContent = 'Все каталоги';
-  allChip.classList.toggle('active', selectedCatalogIds.size === 0 || selectedCatalogIds.size >= workspaceCatalogs.length);
+  allChip.classList.toggle('active', totalCatalogsCount > 0 && selectedCatalogIds.size >= totalCatalogsCount);
   allChip.addEventListener('click', () => {
-    selectedCatalogIds.clear();
-    for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
-    if (loadedFiles.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
-    renderCatalogFilter();
-    renderFileList();
-    recalcTotals();
-    updateNestItems();
+    selectAllCatalogsForCurrentData();
+    refreshCatalogSelectionViews();
   });
   catalogFilter.appendChild(allChip);
 
@@ -305,17 +315,14 @@ function renderCatalogFilter(): void {
         selectedCatalogIds.add(catalog.id);
       }
       if (selectedCatalogIds.size === 0) {
-        for (const c of workspaceCatalogs) selectedCatalogIds.add(c.id);
+        selectAllCatalogsForCurrentData();
       }
-      renderCatalogFilter();
-      renderFileList();
-      recalcTotals();
-      updateNestItems();
+      refreshCatalogSelectionViews();
     });
     catalogFilter.appendChild(chip);
   }
 
-  if (loadedFiles.some((f) => f.catalogId === null)) {
+  if (hasUncategorized) {
     const uncat = document.createElement('button');
     uncat.className = 'catalog-chip';
     uncat.textContent = 'Без каталога';
@@ -327,13 +334,9 @@ function renderCatalogFilter(): void {
         selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
       }
       if (selectedCatalogIds.size === 0) {
-        for (const c of workspaceCatalogs) selectedCatalogIds.add(c.id);
-        selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+        selectAllCatalogsForCurrentData();
       }
-      renderCatalogFilter();
-      renderFileList();
-      recalcTotals();
-      updateNestItems();
+      refreshCatalogSelectionViews();
     });
     catalogFilter.appendChild(uncat);
   }
@@ -775,54 +778,77 @@ function renderFileList(): void {
 
     const catalogRow = document.createElement('div');
     catalogRow.className = 'catalog-row';
-    const selected = selectedCatalogIds.has(catalog.id ?? UNCATEGORIZED_CATALOG_ID);
+    const catalogKey = catalog.id ?? UNCATEGORIZED_CATALOG_ID;
+    const selected = selectedCatalogIds.has(catalogKey);
+    catalogRow.classList.toggle('active', selected);
+    catalogRow.title = 'Клик: показать только этот каталог. Чекбокс: добавить/убрать каталог из выборки.';
+    const catalogActions = catalog.id
+      ? '<button class="catalog-btn" title="Переименовать каталог">Переим.</button><button class="catalog-btn danger" title="Удалить каталог">Удалить</button>'
+      : '<span class="catalog-system-label">Системный</span>';
     catalogRow.innerHTML = `
       <input type="checkbox" ${selected ? 'checked' : ''} />
       <span class="catalog-name">${catalog.name}</span>
       <span class="catalog-file-count">${files.length}</span>
-      <button class="catalog-btn" title="Переименовать каталог">Переим.</button>
-      <button class="catalog-btn danger" title="Удалить каталог">Удалить</button>
+      ${catalogActions}
     `;
+
+    catalogRow.addEventListener('click', () => {
+      const alreadyFocusedOnlyThis = selectedCatalogIds.size === 1 && selectedCatalogIds.has(catalogKey);
+      if (alreadyFocusedOnlyThis) {
+        selectAllCatalogsForCurrentData();
+      } else {
+        selectedCatalogIds.clear();
+        selectedCatalogIds.add(catalogKey);
+      }
+      refreshCatalogSelectionViews();
+    });
 
     const catalogChk = catalogRow.querySelector('input') as HTMLInputElement;
     catalogChk.addEventListener('click', (e) => {
       e.stopPropagation();
-      const key = catalog.id ?? UNCATEGORIZED_CATALOG_ID;
-      if (catalogChk.checked) selectedCatalogIds.add(key);
-      else selectedCatalogIds.delete(key);
+      if (catalogChk.checked) selectedCatalogIds.add(catalogKey);
+      else selectedCatalogIds.delete(catalogKey);
       if (selectedCatalogIds.size === 0) ensureSelectedCatalogsDefaults();
-      renderCatalogFilter();
-      recalcTotals();
-      updateNestItems();
+      refreshCatalogSelectionViews();
     });
 
-    const renameBtn = catalogRow.querySelector('.catalog-btn') as HTMLButtonElement;
-    renameBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!catalog.id) return;
-      const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
-      if (!nextName) return;
-      void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
-        catalogId: catalog.id,
-        name: nextName,
-      }, getAuthHeaders())
-        .then(() => reloadWorkspaceLibraryFromServer())
-        .catch((err) => console.error('Rename catalog failed:', err));
-    });
+    const renameBtn = catalogRow.querySelector('.catalog-btn:not(.danger)') as HTMLButtonElement | null;
+    if (renameBtn && catalog.id) {
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
+        if (!nextName) return;
+        void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
+          catalogId: catalog.id,
+          name: nextName,
+        }, getAuthHeaders())
+          .then(() => reloadWorkspaceLibraryFromServer())
+          .catch((err) => {
+            console.error('Rename catalog failed:', err);
+            alert(`Не удалось переименовать каталог: ${err instanceof Error ? err.message : String(err)}`);
+          });
+      });
+    }
 
-    const deleteBtn = catalogRow.querySelector('.catalog-btn.danger') as HTMLButtonElement;
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!catalog.id) return;
-      const deleteFiles = confirm('Удалить каталог вместе с файлами? OK = удалить файлы, Cancel = перенести в "Без каталога"');
-      const mode = deleteFiles ? 'delete_files' : 'move_to_uncategorized';
-      void apiPostJSON<{ success: boolean }>('/api/library-catalogs-delete', {
-        catalogId: catalog.id,
-        mode,
-      }, getAuthHeaders())
-        .then(() => reloadWorkspaceLibraryFromServer())
-        .catch((err) => console.error('Delete catalog failed:', err));
-    });
+    const deleteBtn = catalogRow.querySelector('.catalog-btn.danger') as HTMLButtonElement | null;
+    if (deleteBtn && catalog.id) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const approved = confirm(`Удалить каталог "${catalog.name}"?`);
+        if (!approved) return;
+        const deleteFiles = confirm('OK — удалить каталог вместе с файлами.\nCancel — удалить каталог, файлы перенести в "Без каталога".');
+        const mode = deleteFiles ? 'delete_files' : 'move_to_uncategorized';
+        void apiPostJSON<{ success: boolean }>('/api/library-catalogs-delete', {
+          catalogId: catalog.id,
+          mode,
+        }, getAuthHeaders())
+          .then(() => reloadWorkspaceLibraryFromServer())
+          .catch((err) => {
+            console.error('Delete catalog failed:', err);
+            alert(`Не удалось удалить каталог: ${err instanceof Error ? err.message : String(err)}`);
+          });
+      });
+    }
 
     fileListEl.appendChild(catalogRow);
 
