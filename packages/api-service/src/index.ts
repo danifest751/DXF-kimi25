@@ -428,7 +428,7 @@ app.post('/api/bot/message', async (req: Request, res: Response): Promise<void> 
 });
 
 // Telegram webhook endpoint (Vercel/serverless-friendly)
-app.post('/api/telegram/webhook', async (req: Request, res: Response): Promise<void> => {
+app.post(['/api/telegram/webhook', '/telegram/webhook'], async (req: Request, res: Response): Promise<void> => {
   try {
     const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? '';
     if (expectedSecret.length > 0) {
@@ -454,7 +454,7 @@ app.post('/api/telegram/webhook', async (req: Request, res: Response): Promise<v
 });
 
 // Optional helper route to register webhook URL in Telegram
-app.post('/api/telegram/webhook/register', async (req: Request, res: Response): Promise<void> => {
+app.post(['/api/telegram/webhook/register', '/telegram/webhook/register'], async (req: Request, res: Response): Promise<void> => {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
