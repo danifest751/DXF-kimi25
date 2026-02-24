@@ -824,7 +824,7 @@ async function runNesting(): Promise<void> {
   nestSheetHashes = [];
   if (currentNestResult) {
     try {
-      const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting/share', {
+      const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting-share', {
         nestingResult: currentNestResult,
       });
       nestSheetHashes = shareResp.hashes;

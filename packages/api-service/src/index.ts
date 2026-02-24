@@ -377,7 +377,7 @@ app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> =
 
 // ─── Share nesting sheets (generate hashes) ─────────────────────────
 
-app.post('/api/nesting/share', async (req: Request, res: Response): Promise<void> => {
+app.post(['/api/nesting/share', '/api/nesting-share'], async (req: Request, res: Response): Promise<void> => {
   try {
     await pruneExpiredSheets();
     const { nestingResult } = req.body as { nestingResult?: NestingResult };
