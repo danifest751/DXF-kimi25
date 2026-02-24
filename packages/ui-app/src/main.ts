@@ -808,7 +808,7 @@ function recalcTotals(): void {
   const allPiercePoints: Point3D[] = [];
 
   for (const f of loadedFiles) {
-    if (!f.checked || !isFileInSelectedCatalogs(f)) continue;
+    if (!f.checked) continue;
     totalPierces += f.stats.totalPierces;
     totalCutLength += f.stats.totalCutLength;
     totalEntities += f.stats.cuttingEntityCount;
@@ -1403,7 +1403,7 @@ btnExportCSV.addEventListener('click', () => {
 
 
 function updateNestItems(): void {
-  const checked = loadedFiles.filter((f) => f.checked && isFileInSelectedCatalogs(f));
+  const checked = loadedFiles.filter((f) => f.checked);
   nestItemsEmpty.style.display = checked.length === 0 ? '' : 'none';
   nestItemsEl.innerHTML = '';
 
@@ -1480,7 +1480,7 @@ function getPlacedAngleDeg(p: { angleDeg?: unknown; rotated?: unknown }): number
 }
 
 async function runNesting(): Promise<void> {
-  const checked = loadedFiles.filter((f) => f.checked && isFileInSelectedCatalogs(f));
+  const checked = loadedFiles.filter((f) => f.checked);
   if (checked.length === 0) return;
 
   const sheet = getSheetSize();
