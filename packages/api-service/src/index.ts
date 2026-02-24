@@ -149,6 +149,27 @@ app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'
   }
 });
 
+app.post('/api/library-catalogs-delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const catalogId = typeof req.body?.catalogId === 'string' ? req.body.catalogId : '';
+    const modeRaw = typeof req.body?.mode === 'string' ? req.body.mode : '';
+    const mode = modeRaw === 'delete_files' ? 'delete_files' : 'move_to_uncategorized';
+    await deleteWorkspaceCatalog(workspaceId, catalogId, mode);
+    res.json({ success: true, mode });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Delete catalog failed', details: message });
+  }
+});
+
 app.get(['/api/auth/me', '/api/auth-me'], async (req: Request, res: Response): Promise<void> => {
   try {
     const token = getAuthTokenFromRequest(req);
@@ -212,7 +233,7 @@ app.post(['/api/library/catalogs', '/api/library-catalogs'], async (req: Request
   }
 });
 
-app.patch(['/api/library/catalogs/:catalogId', '/api/library-catalogs/:catalogId'], async (req: Request, res: Response): Promise<void> => {
+app.patch(['/api/library/catalogs/:catalogId', '/api/library-catalogs/:catalogId', '/api/library-catalogs-update'], async (req: Request, res: Response): Promise<void> => {
   try {
     if (!isWorkspaceLibraryEnabled()) {
       res.status(503).json({ error: 'Workspace library storage is not configured' });
@@ -222,7 +243,7 @@ app.patch(['/api/library/catalogs/:catalogId', '/api/library-catalogs/:catalogId
     const workspaceId = await requireWorkspaceId(req, res);
     if (!workspaceId) return;
 
-    const catalogId = req.params.catalogId ?? '';
+    const catalogId = req.params.catalogId ?? (typeof req.body?.catalogId === 'string' ? req.body.catalogId : '');
     const name = typeof req.body?.name === 'string' ? req.body.name : '';
     await renameWorkspaceCatalog(workspaceId, catalogId, name);
     res.json({ success: true });
@@ -284,7 +305,7 @@ app.post(['/api/library/files', '/api/library-files'], async (req: Request, res:
   }
 });
 
-app.patch(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (req: Request, res: Response): Promise<void> => {
+app.patch(['/api/library/files/:fileId', '/api/library-files/:fileId', '/api/library-files-update'], async (req: Request, res: Response): Promise<void> => {
   try {
     if (!isWorkspaceLibraryEnabled()) {
       res.status(503).json({ error: 'Workspace library storage is not configured' });
@@ -294,7 +315,7 @@ app.patch(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (r
     const workspaceId = await requireWorkspaceId(req, res);
     if (!workspaceId) return;
 
-    const fileId = req.params.fileId ?? '';
+    const fileId = req.params.fileId ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
     const patch: { name?: string; catalogId?: string | null; checked?: boolean; quantity?: number } = {};
     if (typeof req.body?.name === 'string') patch.name = req.body.name;
     if (req.body?.catalogId === null || typeof req.body?.catalogId === 'string') patch.catalogId = req.body.catalogId;
@@ -320,6 +341,25 @@ app.delete(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (
     if (!workspaceId) return;
 
     const fileId = req.params.fileId ?? '';
+    await deleteWorkspaceFile(workspaceId, fileId);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Delete file failed', details: message });
+  }
+});
+
+app.post('/api/library-files-delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId : '';
     await deleteWorkspaceFile(workspaceId, fileId);
     res.json({ success: true });
   } catch (error) {

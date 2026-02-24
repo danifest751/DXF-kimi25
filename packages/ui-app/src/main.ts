@@ -24,7 +24,7 @@ import type { NestingResult, NestingOptions, NestingSheet } from '../../core-eng
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color, Point3D } from '../../core-engine/src/types/index.js';
-import { apiDeleteJSON, apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
+import { apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
 import type { LoadedFile, UICuttingStats, ComputeMode, WorkspaceCatalog } from './types.js';
 
 // ─── DOM элементы ───────────────────────────────────────────────────
@@ -635,7 +635,9 @@ async function removeFile(id: number): Promise<void> {
   const target = loadedFiles[idx]!;
   if (authSessionToken && target.remoteId) {
     try {
-      await apiDeleteJSON<{ success: boolean }>(`/api/library-files/${target.remoteId}`, getAuthHeaders());
+      await apiPostJSON<{ success: boolean }>('/api/library-files-delete', {
+        fileId: target.remoteId,
+      }, getAuthHeaders());
     } catch (error) {
       console.error('Delete file failed:', error);
     }
@@ -675,7 +677,8 @@ async function toggleFileChecked(id: number): Promise<void> {
   entry.checked = !entry.checked;
   if (authSessionToken && entry.remoteId) {
     try {
-      await apiPatchJSON<{ success: boolean }>(`/api/library-files/${entry.remoteId}`, {
+      await apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
+        fileId: entry.remoteId,
         checked: entry.checked,
       }, getAuthHeaders());
     } catch (error) {
@@ -768,7 +771,10 @@ function renderFileList(): void {
       if (!catalog.id) return;
       const nextName = prompt('Новое имя каталога:', catalog.name)?.trim() ?? '';
       if (!nextName) return;
-      void apiPatchJSON<{ success: boolean }>(`/api/library-catalogs/${catalog.id}`, { name: nextName }, getAuthHeaders())
+      void apiPatchJSON<{ success: boolean }>('/api/library-catalogs-update', {
+        catalogId: catalog.id,
+        name: nextName,
+      }, getAuthHeaders())
         .then(() => reloadWorkspaceLibraryFromServer())
         .catch((err) => console.error('Rename catalog failed:', err));
     });
@@ -779,7 +785,10 @@ function renderFileList(): void {
       if (!catalog.id) return;
       const deleteFiles = confirm('Удалить каталог вместе с файлами? OK = удалить файлы, Cancel = перенести в "Без каталога"');
       const mode = deleteFiles ? 'delete_files' : 'move_to_uncategorized';
-      void apiDeleteJSON<{ success: boolean }>(`/api/library-catalogs/${catalog.id}?mode=${mode}`, getAuthHeaders())
+      void apiPostJSON<{ success: boolean }>('/api/library-catalogs-delete', {
+        catalogId: catalog.id,
+        mode,
+      }, getAuthHeaders())
         .then(() => reloadWorkspaceLibraryFromServer())
         .catch((err) => console.error('Delete catalog failed:', err));
     });
@@ -1164,7 +1173,8 @@ function updateNestItems(): void {
       f.quantity = Math.max(1, v);
       qtyInput.value = String(f.quantity);
       if (authSessionToken && f.remoteId) {
-        void apiPatchJSON<{ success: boolean }>(`/api/library-files/${f.remoteId}`, {
+        void apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
+          fileId: f.remoteId,
           quantity: f.quantity,
         }, getAuthHeaders()).catch((error) => {
           console.error('Update quantity failed:', error);
