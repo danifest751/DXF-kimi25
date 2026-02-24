@@ -6,9 +6,6 @@
 
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
@@ -17,7 +14,7 @@ import type { NestingItem, NestingResult, SheetSize } from '../../core-engine/sr
 import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
 import { calculatePrice } from '../../pricing/src/index.js';
 import { processBotMessage } from '../../bot-service/src/index.js';
-import { sharedSheetStore, generateShortHash, pruneExpiredSheets } from './shared-sheets.js';
+import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
 
 const app = express();
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -295,9 +292,9 @@ app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> =
 
 // ─── Share nesting sheets (generate hashes) ─────────────────────────
 
-app.post('/api/nesting/share', (req: Request, res: Response): void => {
+app.post('/api/nesting/share', async (req: Request, res: Response): Promise<void> => {
   try {
-    pruneExpiredSheets();
+    await pruneExpiredSheets();
     const { nestingResult } = req.body as { nestingResult?: NestingResult };
     if (!nestingResult || !nestingResult.sheets) {
       res.status(400).json({ error: 'nestingResult is required' });
@@ -308,7 +305,7 @@ app.post('/api/nesting/share', (req: Request, res: Response): void => {
     for (let i = 0; i < nestingResult.sheets.length; i++) {
       const sheet = nestingResult.sheets[i]!;
       let hash = generateShortHash();
-      while (sharedSheetStore.has(hash)) hash = generateShortHash();
+      while (await hasSharedSheet(hash)) hash = generateShortHash();
 
       const singleResult: NestingResult = {
         sheet: nestingResult.sheet,
@@ -325,7 +322,7 @@ app.post('/api/nesting/share', (req: Request, res: Response): void => {
         pierceDelta: 0,
       };
 
-      sharedSheetStore.set(hash, {
+      await saveSharedSheet({
         hash,
         sheetIndex: i,
         singleResult,
@@ -342,10 +339,10 @@ app.post('/api/nesting/share', (req: Request, res: Response): void => {
 });
 
 // Get shared sheet DXF by hash
-app.get('/api/nesting/sheet/:hash', (req: Request, res: Response): void => {
+app.get('/api/nesting/sheet/:hash', async (req: Request, res: Response): Promise<void> => {
   try {
     const { hash } = req.params;
-    const entry = sharedSheetStore.get(hash!);
+    const entry = await getSharedSheet(hash!);
     if (!entry) {
       res.status(404).json({ error: 'Sheet not found or expired' });
       return;
@@ -362,21 +359,26 @@ app.get('/api/nesting/sheet/:hash', (req: Request, res: Response): void => {
 });
 
 // Get shared sheet info (JSON) by hash
-app.get('/api/nesting/sheet/:hash/info', (req: Request, res: Response): void => {
-  const { hash } = req.params;
-  const entry = sharedSheetStore.get(hash!);
-  if (!entry) {
-    res.status(404).json({ error: 'Sheet not found or expired' });
-    return;
+app.get('/api/nesting/sheet/:hash/info', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { hash } = req.params;
+    const entry = await getSharedSheet(hash!);
+    if (!entry) {
+      res.status(404).json({ error: 'Sheet not found or expired' });
+      return;
+    }
+    const s = entry.singleResult;
+    res.json({
+      hash,
+      sheetIndex: entry.sheetIndex,
+      sheetSize: s.sheet,
+      placedCount: s.totalPlaced,
+      fillPercent: s.avgFillPercent,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Sheet info failed', details: message });
   }
-  const s = entry.singleResult;
-  res.json({
-    hash,
-    sheetIndex: entry.sheetIndex,
-    sheetSize: s.sheet,
-    placedCount: s.totalPlaced,
-    fillPercent: s.avgFillPercent,
-  });
 });
 
 // Bot message handler (stub)
@@ -396,21 +398,5 @@ app.post('/api/bot/message', async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ error: 'Bot processing failed', details: message });
   }
 });
-
-const currentDir = dirname(fileURLToPath(import.meta.url));
-const uiDistDir = resolve(currentDir, '../../ui-app/dist');
-
-if (existsSync(uiDistDir)) {
-  app.use(express.static(uiDistDir, { index: false }));
-
-  // SPA fallback for non-API routes
-  app.get('*', (req: Request, res: Response, next) => {
-    if (req.path.startsWith('/api') || req.path === '/health') {
-      next();
-      return;
-    }
-    res.sendFile(resolve(uiDistDir, 'index.html'));
-  });
-}
 
 export default app;

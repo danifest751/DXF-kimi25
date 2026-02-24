@@ -46,12 +46,29 @@ Optional alternative:
 Set in Vercel Dashboard:
 
 - `VITE_API_BASE` (optional)
+- `SUPABASE_URL` (required for persistent shared sheet hashes)
+- `SUPABASE_SERVICE_ROLE_KEY` (required for persistent shared sheet hashes)
+- `SUPABASE_SHARED_SHEETS_TABLE=shared_sheets` (optional)
 
 For single-project Vercel deploy (same domain for UI/API):
 - leave `VITE_API_BASE` empty.
 
 If API is external:
 - `VITE_API_BASE=https://<your-api-domain>`
+
+Для hash-кодов листов (share by hash) нужна таблица Supabase:
+
+```sql
+create table if not exists public.shared_sheets (
+  hash text primary key,
+  sheet_index integer not null,
+  single_result jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists shared_sheets_created_at_idx
+  on public.shared_sheets (created_at);
+```
 
 ---
 
@@ -93,6 +110,8 @@ ALLOWED_ORIGINS=https://my-dxf-viewer.vercel.app
 
 - If API domain changes, update `VITE_API_BASE` and redeploy UI.
 - If CORS errors appear, check `ALLOWED_ORIGINS` in API env.
+- Telegram long polling (`startTelegramBotPolling`) не подходит для Vercel serverless.
+  Для Telegram-бота используйте отдельный long-running хост (Render/Railway/VPS) или webhook-архитектуру.
 
 ---
 

@@ -12,7 +12,7 @@ import { nestItems, SHEET_PRESETS, type NestingItem, type NestingOptions, type N
 import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
-import { sharedSheetStore } from '../../api-service/src/shared-sheets.js';
+import { getSharedSheet } from '../../api-service/src/shared-sheets.js';
 
 export interface BotMessage {
   readonly chatId: string;
@@ -1197,7 +1197,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       let found = 0;
       let notFound = 0;
       for (const hash of uniqueHashes) {
-        const entry = sharedSheetStore.get(hash);
+        const entry = await getSharedSheet(hash);
         if (entry) {
           const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
           const s = entry.singleResult;
