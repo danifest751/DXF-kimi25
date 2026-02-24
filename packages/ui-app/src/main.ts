@@ -875,6 +875,46 @@ function renderFileList(): void {
       ${catalogActions}
     `;
 
+    catalogRow.addEventListener('dragover', (de) => {
+      if (!de.dataTransfer?.types.includes('application/x-file-id')) return;
+      de.preventDefault();
+      de.dataTransfer!.dropEffect = 'move';
+      catalogRow.classList.add('drag-over');
+    });
+    catalogRow.addEventListener('dragleave', () => catalogRow.classList.remove('drag-over'));
+    catalogRow.addEventListener('drop', (de) => {
+      de.preventDefault();
+      catalogRow.classList.remove('drag-over');
+      const fileIdStr = de.dataTransfer?.getData('application/x-file-id');
+      const remoteId = de.dataTransfer?.getData('application/x-file-remote-id') ?? '';
+      if (!fileIdStr) return;
+      const fileId = Number(fileIdStr);
+      const file = loadedFiles.find(lf => lf.id === fileId);
+      if (!file) return;
+      const targetCatalogId = catalog.id;
+      if (file.catalogId === targetCatalogId) return;
+
+      const oldCatalogId = file.catalogId;
+      file.catalogId = targetCatalogId;
+      renderCatalogFilter();
+      renderFileList();
+      recalcTotals();
+
+      if (remoteId && authSessionToken) {
+        void apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
+          fileId: remoteId,
+          catalogId: targetCatalogId,
+        }, getAuthHeaders())
+          .catch((err) => {
+            console.error('Move file to catalog failed:', err);
+            file.catalogId = oldCatalogId;
+            renderCatalogFilter();
+            renderFileList();
+            recalcTotals();
+          });
+      }
+    });
+
     catalogRow.addEventListener('click', () => {
       const alreadyFocusedOnlyThis = selectedCatalogIds.size === 1 && selectedCatalogIds.has(catalogKey);
       if (alreadyFocusedOnlyThis) {
@@ -1037,6 +1077,16 @@ function renderFileList(): void {
 
       const item = document.createElement('div');
       item.className = `file-item${isGuest ? '' : ' in-catalog'}${f.id === activeFileId ? ' active' : ''}`;
+      if (!isGuest) {
+        item.draggable = true;
+        item.addEventListener('dragstart', (de) => {
+          de.dataTransfer!.effectAllowed = 'move';
+          de.dataTransfer!.setData('application/x-file-id', String(f.id));
+          de.dataTransfer!.setData('application/x-file-remote-id', f.remoteId);
+          item.classList.add('dragging');
+        });
+        item.addEventListener('dragend', () => item.classList.remove('dragging'));
+      }
       item.innerHTML = `
         <input type="checkbox" ${f.checked ? 'checked' : ''} />
         <svg class="file-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>

@@ -228,6 +228,16 @@
   color: #f87171;
 }
 
+.catalog-row.drag-over {
+  background: rgba(99,102,241,0.15);
+  outline: 1.5px dashed var(--accent-primary);
+  outline-offset: -1.5px;
+}
+
+.file-item.dragging {
+  opacity: 0.4;
+}
+
 .catalog-system-label {
   font-size: 10px;
   color: var(--text-muted);
