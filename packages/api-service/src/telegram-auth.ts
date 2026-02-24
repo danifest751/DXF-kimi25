@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 
 interface LoginCodeEntry {
   readonly code: string;
@@ -55,10 +56,6 @@ const LOGIN_CODES_TABLE = process.env.SUPABASE_TELEGRAM_AUTH_CODES_TABLE?.trim()
 const APP_USERS_TABLE = process.env.SUPABASE_APP_USERS_TABLE?.trim() || 'app_users';
 const APP_SESSIONS_TABLE = process.env.SUPABASE_APP_SESSIONS_TABLE?.trim() || 'app_sessions';
 
-const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
-const supabaseEnabled = supabaseUrl.length > 0 && supabaseServiceRoleKey.length > 0;
-const supabaseRestBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
 
 const loginCodes = new Map<string, LoginCodeEntry>();
 const usersByTelegram = new Map<string, AppUserEntry>();
@@ -154,24 +151,6 @@ function fromSessionRow(row: AppSessionRow): AppSessionEntry {
   };
 }
 
-async function supabaseRequest(pathWithQuery: string, init: RequestInit = {}): Promise<Response | null> {
-  if (!supabaseEnabled) return null;
-  try {
-    return await fetch(`${supabaseRestBaseUrl}${pathWithQuery}`, {
-      ...init,
-      headers: {
-        apikey: supabaseServiceRoleKey,
-        Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        'Content-Type': 'application/json',
-        ...(init.headers ?? {}),
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[telegram-auth] supabase request failed:', message);
-    return null;
-  }
-}
 
 async function saveLoginCode(entry: LoginCodeEntry): Promise<void> {
   loginCodes.set(entry.code, entry);
@@ -323,6 +302,9 @@ async function loadSessionByTokenHash(tokenHash: string): Promise<AppSessionEntr
   return entry;
 }
 
+let lastSupabasePruneAt = 0;
+const SUPABASE_PRUNE_INTERVAL_MS = 10 * 60 * 1000;
+
 function pruneLocalMaps(now = Date.now()): void {
   for (const [code, entry] of loginCodes) {
     if (entry.expiresAt <= now || entry.usedAt !== null) {
@@ -333,6 +315,21 @@ function pruneLocalMaps(now = Date.now()): void {
     if (entry.expiresAt <= now) {
       sessionsByTokenHash.delete(tokenHash);
     }
+  }
+
+  if (supabaseEnabled && now - lastSupabasePruneAt > SUPABASE_PRUNE_INTERVAL_MS) {
+    lastSupabasePruneAt = now;
+    void pruneSupabaseExpired(now);
+  }
+}
+
+async function pruneSupabaseExpired(now: number): Promise<void> {
+  const nowIso = new Date(now).toISOString();
+  try {
+    await supabaseRequest(`/${LOGIN_CODES_TABLE}?expires_at=lt.${nowIso}`, { method: 'DELETE' });
+    await supabaseRequest(`/${APP_SESSIONS_TABLE}?expires_at=lt.${nowIso}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('[telegram-auth] prune expired rows failed:', err);
   }
 }
 

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { supabaseEnabled, supabaseRequest, supabaseStorageRequest } from './supabase-client.js';
 
 export interface WorkspaceCatalog {
   readonly id: string;
@@ -46,14 +47,27 @@ const WORKSPACE_CATALOGS_TABLE = process.env.SUPABASE_WORKSPACE_CATALOGS_TABLE?.
 const WORKSPACE_FILES_TABLE = process.env.SUPABASE_WORKSPACE_FILES_TABLE?.trim() || 'workspace_files';
 const DXF_FILES_BUCKET = process.env.SUPABASE_DXF_FILES_BUCKET?.trim() || 'dxf-files';
 
-const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
-const supabaseEnabled = supabaseUrl.length > 0 && supabaseServiceRoleKey.length > 0;
-const supabaseRestBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
-const supabaseStorageBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1`;
+
+const MAX_FILES_PER_WORKSPACE = 200;
+const MAX_CATALOGS_PER_WORKSPACE = 20;
 
 export function isWorkspaceLibraryEnabled(): boolean {
   return supabaseEnabled;
+}
+
+async function countRows(table: string, workspaceId: string): Promise<number> {
+  const params = new URLSearchParams({
+    select: 'id',
+    workspace_id: `eq.${workspaceId}`,
+  });
+  const resp = await supabaseRequest(`/${table}?${params.toString()}`, {
+    method: 'HEAD',
+    headers: { Prefer: 'count=exact' },
+  });
+  if (!resp) return 0;
+  const countHeader = resp.headers.get('content-range') ?? '';
+  const match = countHeader.match(/\/(\d+)$/);
+  return match ? Number(match[1]) : 0;
 }
 
 function toCatalog(row: WorkspaceCatalogRow): WorkspaceCatalog {
@@ -88,42 +102,6 @@ function encodeStoragePath(path: string): string {
     .join('/');
 }
 
-async function supabaseRequest(pathWithQuery: string, init: RequestInit = {}): Promise<Response | null> {
-  if (!supabaseEnabled) return null;
-  try {
-    return await fetch(`${supabaseRestBaseUrl}${pathWithQuery}`, {
-      ...init,
-      headers: {
-        apikey: supabaseServiceRoleKey,
-        Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        'Content-Type': 'application/json',
-        ...(init.headers ?? {}),
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[workspace-library] supabase request failed:', message);
-    return null;
-  }
-}
-
-async function supabaseStorageRequest(path: string, init: RequestInit = {}): Promise<Response | null> {
-  if (!supabaseEnabled) return null;
-  try {
-    return await fetch(`${supabaseStorageBaseUrl}${path}`, {
-      ...init,
-      headers: {
-        apikey: supabaseServiceRoleKey,
-        Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        ...(init.headers ?? {}),
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[workspace-library] supabase storage request failed:', message);
-    return null;
-  }
-}
 
 export async function listWorkspaceLibrary(workspaceId: string): Promise<{ catalogs: WorkspaceCatalog[]; files: WorkspaceFileMeta[] }> {
   if (!supabaseEnabled) return { catalogs: [], files: [] };
@@ -163,6 +141,11 @@ export async function createWorkspaceCatalog(workspaceId: string, nameInput: str
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
   const name = nameInput.trim();
   if (name.length < 1) throw new Error('Catalog name is required');
+
+  const count = await countRows(WORKSPACE_CATALOGS_TABLE, workspaceId);
+  if (count >= MAX_CATALOGS_PER_WORKSPACE) {
+    throw new Error(`Лимит: максимум ${MAX_CATALOGS_PER_WORKSPACE} каталогов на workspace`);
+  }
 
   const nowIso = new Date().toISOString();
   const row: WorkspaceCatalogRow = {
@@ -228,8 +211,9 @@ export async function deleteWorkspaceCatalog(
 
     const fileRows = await fileResp.json() as WorkspaceFileRow[];
     const files = Array.isArray(fileRows) ? fileRows : [];
-    for (const file of files) {
-      await deleteStorageByPath(file.storage_path);
+    const BATCH = 5;
+    for (let i = 0; i < files.length; i += BATCH) {
+      await Promise.allSettled(files.slice(i, i + BATCH).map(f => deleteStorageByPath(f.storage_path)));
     }
 
     const deleteFilesParams = new URLSearchParams({
@@ -275,6 +259,11 @@ export async function uploadWorkspaceFile(input: {
   const { workspaceId } = input;
   const name = input.name.trim();
   if (name.length < 1) throw new Error('File name is required');
+
+  const fileCount = await countRows(WORKSPACE_FILES_TABLE, workspaceId);
+  if (fileCount >= MAX_FILES_PER_WORKSPACE) {
+    throw new Error(`Лимит: максимум ${MAX_FILES_PER_WORKSPACE} файлов на workspace`);
+  }
 
   const bodyBuffer = Buffer.from(input.base64, 'base64');
   if (bodyBuffer.byteLength === 0) throw new Error('File content is empty');
@@ -382,13 +371,16 @@ export async function deleteWorkspaceFile(workspaceId: string, fileId: string): 
   if (!deleteResp?.ok) throw new Error('Failed to delete file metadata');
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function setWorkspaceFilesChecked(workspaceId: string, checked: boolean, catalogIds?: string[]): Promise<void> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
 
   const params = new URLSearchParams({ workspace_id: `eq.${workspaceId}` });
   if (Array.isArray(catalogIds)) {
-    if (catalogIds.length === 0) return;
-    params.set('catalog_id', `in.(${catalogIds.join(',')})`);
+    const valid = catalogIds.filter(id => UUID_RE.test(id));
+    if (valid.length === 0) return;
+    params.set('catalog_id', `in.(${valid.join(',')})`);
   }
 
   const response = await supabaseRequest(`/${WORKSPACE_FILES_TABLE}?${params.toString()}`, {
