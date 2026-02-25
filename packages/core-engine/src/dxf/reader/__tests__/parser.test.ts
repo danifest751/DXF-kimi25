@@ -413,9 +413,9 @@ describe('aciToColor – full 256-entry table', () => {
     const c = aciToColor(300);
     expect(c).toEqual({ r: 200, g: 200, b: 200 });
   });
-  it('clamps negative index to 0', () => {
+  it('returns white for negative index (BYLAYER fallback)', () => {
     const c = aciToColor(-5);
-    expect(c).toEqual({ r: 0, g: 0, b: 0 });
+    expect(c).toEqual({ r: 255, g: 255, b: 255 });
   });
   it('all 256 entries produce valid RGB values', () => {
     for (let i = 0; i < 256; i++) {

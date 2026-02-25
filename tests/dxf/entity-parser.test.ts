@@ -64,12 +64,12 @@ describe('aciToColor', () => {
     expect(color).toEqual({ r: 255, g: 255, b: 255 });
   });
 
-  it('возвращает серый для неизвестных индексов', () => {
+  it('конвертирует ACI 50 (жёлтый) по официальной таблице AutoCAD', () => {
     const color = aciToColor(50);
-    expect(color).toEqual({ r: 102, g: 102, b: 0 });
+    expect(color).toEqual({ r: 255, g: 255, b: 0 });
   });
 
-  it('возвращает белый для отрицательных индексов', () => {
+  it('возвращает белый для отрицательных индексов (BYLAYER fallback)', () => {
     const color = aciToColor(-1);
     expect(color).toEqual({ r: 255, g: 255, b: 255 });
   });

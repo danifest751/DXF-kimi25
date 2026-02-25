@@ -366,7 +366,10 @@ const ACI_TABLE: readonly [number, number, number][] = [
  * @returns RGB цвет
  */
 export function aciToColor(index: number): Color {
-  const i = Math.max(0, Math.min(255, Math.trunc(index)));
+  const trunc = Math.trunc(index);
+  // Отрицательный индекс = BYLAYER/BYBLOCK — возвращаем белый как нейтральный fallback
+  if (trunc < 0) return { r: 255, g: 255, b: 255 };
+  const i = Math.min(255, trunc);
   const entry = ACI_TABLE[i]!;
   return { r: entry[0], g: entry[1], b: entry[2] };
 }
