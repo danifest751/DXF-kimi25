@@ -64,9 +64,11 @@ function ensureTelegramWebhookRegistrationOnStartup(): void {
 ensureTelegramWebhookRegistrationOnStartup();
 
 function isDefaultAllowedOrigin(origin: string): boolean {
-  return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)
-    || /^http:\/\/localhost(?::\d+)?$/i.test(origin)
-    || /^http:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
+  if (/^http:\/\/localhost(?::\d+)?$/i.test(origin)) return true;
+  if (/^http:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin)) return true;
+  // Allow *.vercel.app only in non-production when no explicit list is set
+  if (!isLocalRuntime) return false;
+  return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
 }
 
 app.use(cors({
@@ -75,14 +77,19 @@ app.use(cors({
       callback(null, true);
       return;
     }
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isDefaultAllowedOrigin(origin)) {
+    if (allowedOrigins.includes(origin) || isDefaultAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
     callback(null, false);
   },
 }));
-app.use(express.json({ limit: '50mb' }));
+// Default body limit 1 MB; DXF endpoints override with 50 MB via dedicated middleware
+app.use((req, _res, next) => {
+  const dxfRoutes = ['/api/parse', '/api/normalize', '/api/cutting-stats', '/api/library/files', '/api/library-files'];
+  const isDxf = dxfRoutes.some(r => req.path.startsWith(r));
+  express.json({ limit: isDxf ? '50mb' : '1mb' })(req, _res, next);
+});
 
 // ─── In-memory rate limiter ───────────────────────────────────────────
 
@@ -92,6 +99,7 @@ interface RateLimitState {
 }
 
 const rateLimitStore = new Map<string, RateLimitState>();
+const RATE_LIMIT_MAX_ENTRIES = 10_000; // защита от DDoS с уникальных IP
 
 /**
  * Простой rate limiter (sliding window по IP).
@@ -101,6 +109,11 @@ function checkRateLimit(key: string, maxRequests: number, windowMs: number): boo
   const now = Date.now();
   const state = rateLimitStore.get(key);
   if (state === undefined || now - state.windowStart > windowMs) {
+    if (state === undefined && rateLimitStore.size >= RATE_LIMIT_MAX_ENTRIES) {
+      // При переполнении удаляем первую запись
+      const firstKey = rateLimitStore.keys().next().value;
+      if (firstKey !== undefined) rateLimitStore.delete(firstKey);
+    }
     rateLimitStore.set(key, { windowStart: now, count: 1 });
     return true;
   }
@@ -679,7 +692,7 @@ app.post('/api/price', heavyRateLimit, async (req: Request, res: Response): Prom
 });
 
 // Export nesting to DXF
-app.post('/api/export/dxf', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/export/dxf', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const { nestingResult } = req.body as { nestingResult?: unknown };
     if (!nestingResult) {
@@ -698,7 +711,7 @@ app.post('/api/export/dxf', async (req: Request, res: Response): Promise<void> =
 });
 
 // Export CSV (nesting or cutting stats)
-app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/export/csv', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const { nestingResult, cuttingStats, fileName = 'export' } = req.body as {
       nestingResult?: unknown;
@@ -716,8 +729,12 @@ app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    // S1: sanitize fileName to prevent header injection
+    const safeFileName = (typeof fileName === 'string' ? fileName : 'export')
+      .replace(/["\\/\r\n]/g, '_')
+      .slice(0, 100);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}.csv"`);
     res.send(csv);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -774,7 +791,7 @@ app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (re
 });
 
 // Get shared sheet DXF by hash
-app.get('/api/nesting/sheet/:hash', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/nesting/sheet/:hash', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const { hash } = req.params;
     const entry = await getSharedSheet(hash!);
@@ -794,7 +811,7 @@ app.get('/api/nesting/sheet/:hash', async (req: Request, res: Response): Promise
 });
 
 // Get shared sheet info (JSON) by hash
-app.get('/api/nesting/sheet/:hash/info', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/nesting/sheet/:hash/info', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const { hash } = req.params;
     const entry = await getSharedSheet(hash!);
@@ -816,8 +833,18 @@ app.get('/api/nesting/sheet/:hash/info', async (req: Request, res: Response): Pr
   }
 });
 
-// Bot message handler (stub)
-app.post('/api/bot/message', async (req: Request, res: Response): Promise<void> => {
+// Bot message handler — internal only, protected by shared secret
+app.post('/api/bot/message', (req: Request, res: Response, next: () => void): void => {
+  const internalSecret = process.env.INTERNAL_API_SECRET?.trim() ?? '';
+  if (internalSecret.length > 0) {
+    const provided = req.header('x-internal-secret')?.trim() ?? '';
+    if (provided !== internalSecret) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+  }
+  next();
+}, async (req: Request, res: Response): Promise<void> => {
   try {
     const { chatId, text, attachments } = req.body;
 
@@ -860,8 +887,18 @@ app.post(['/api/telegram/webhook', '/telegram/webhook', '/api/telegram-webhook']
   }
 });
 
-// Optional helper route to register webhook URL in Telegram
-app.post(['/api/telegram/webhook/register', '/telegram/webhook/register', '/api/telegram-webhook-register'], async (req: Request, res: Response): Promise<void> => {
+// Optional helper route to register webhook URL — internal only
+app.post(['/api/telegram/webhook/register', '/telegram/webhook/register', '/api/telegram-webhook-register'], (req: Request, res: Response, next: () => void): void => {
+  const internalSecret = process.env.INTERNAL_API_SECRET?.trim() ?? '';
+  if (internalSecret.length > 0) {
+    const provided = req.header('x-internal-secret')?.trim() ?? '';
+    if (provided !== internalSecret) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+  }
+  next();
+}, async (req: Request, res: Response): Promise<void> => {
   try {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {

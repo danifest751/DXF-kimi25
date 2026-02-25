@@ -213,10 +213,11 @@ function buildCatalogRow(
 
   catalogRow.innerHTML = `
     <input type="checkbox" ${selected ? 'checked' : ''} />
-    <span class="catalog-name">${catalog.name}</span>
+    <span class="catalog-name"></span>
     <span class="catalog-file-count">${files.length}</span>
     ${catalogActions}
   `;
+  (catalogRow.querySelector('.catalog-name') as HTMLSpanElement).textContent = catalog.name;
 
   // Drag-over drop target
   catalogRow.addEventListener('dragover', (de) => {

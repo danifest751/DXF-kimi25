@@ -148,7 +148,9 @@ export async function restoreGuestDraft(): Promise<void> {
     selectedCatalogIds.clear();
     loadedFiles.splice(0, loadedFiles.length);
 
-    for (const file of parsed.files) {
+    const MAX_GUEST_FILE_SIZE_B64 = 270_000_000; // ~200 MB
+  for (const file of parsed.files) {
+      if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
       const buffer = base64ToArrayBuffer(file.base64);
       const result = await parseDXFInWorker(buffer);
       const stats = await _computeStats(file.base64, result.document);
@@ -196,9 +198,13 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
     return;
   }
 
+  const MAX_MIGRATE_FILES = 50;
+  let migrated = 0;
   for (const file of parsed.files) {
+    if (migrated >= MAX_MIGRATE_FILES) break;
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
     if (!file.base64) continue;
+    migrated++;
     await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
       name: file.name,
       base64: file.base64,
@@ -277,7 +283,8 @@ export async function runTelegramLoginFlow(): Promise<void> {
 export function applyAuthUiState(updateUploadTargetHint: VoidFn): void {
   const isAuthenticated = authSessionToken.length > 0 && authWorkspaceId.length > 0;
   if (isAuthenticated) {
-    authWorkspace.textContent = `Workspace: ${authWorkspaceId}`;
+    const shortId = authWorkspaceId.length > 12 ? authWorkspaceId.slice(0, 12) + '…' : authWorkspaceId;
+    authWorkspace.textContent = `WS: ${shortId}`;
     btnAuthLogin.textContent  = 'Сменить Telegram';
     btnAuthLogin.title        = 'Сменить Telegram-сессию';
     btnAuthLogout.hidden      = false;
