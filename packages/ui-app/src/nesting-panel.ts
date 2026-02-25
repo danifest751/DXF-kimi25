@@ -65,13 +65,14 @@ export function updateNestItems(): void {
     const row = document.createElement('div');
     row.className = 'np-item-row';
     row.innerHTML = `
-      <span class="np-item-name">${f.name}</span>
+      <span class="np-item-name"></span>
       <span class="np-item-size">${w.toFixed(0)}×${h.toFixed(0)}</span>
       <button class="np-qty-btn" data-delta="-10">−10</button>
       <input type="number" class="np-item-qty" min="1" value="${f.quantity}" />
       <button class="np-qty-btn" data-delta="10">+10</button>
       <button class="np-qty-rst" title="Сбросить на 1">↺</button>
     `;
+    (row.querySelector('.np-item-name') as HTMLSpanElement).textContent = f.name;
     const qtyInput = row.querySelector('input') as HTMLInputElement;
     const setQty = (v: number) => {
       f.quantity = Math.max(1, v);

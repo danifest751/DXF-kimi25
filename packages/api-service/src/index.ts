@@ -643,22 +643,29 @@ app.post('/api/nest', nestingRateLimit, async (req: Request, res: Response): Pro
 });
 
 // Calculate price
-app.post('/api/price', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/price', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
-    const params = req.body;
+    const params = req.body as Record<string, unknown>;
+    const cutLength = typeof params.cutLength === 'number' ? params.cutLength : NaN;
+    const pierces = typeof params.pierces === 'number' ? params.pierces : NaN;
 
-    if (!params.cutLength || !params.pierces) {
-      res.status(400).json({ error: 'Invalid params: cutLength and pierces are required' });
+    if (!Number.isFinite(cutLength) || !Number.isFinite(pierces) || cutLength < 0 || pierces < 0) {
+      res.status(400).json({ error: 'Invalid params: cutLength and pierces must be finite non-negative numbers' });
       return;
     }
 
+    const sheets = typeof params.sheets === 'number' && Number.isFinite(params.sheets) ? params.sheets : 1;
+    const thickness = typeof params.thickness === 'number' && Number.isFinite(params.thickness) ? params.thickness : 1;
+    const complexity = typeof params.complexity === 'number' && Number.isFinite(params.complexity) ? params.complexity : 1.0;
+    const material = typeof params.material === 'string' ? params.material : 'steel';
+
     const result = calculatePrice({
-      cutLength: params.cutLength,
-      pierces: params.pierces,
-      sheets: params.sheets || 1,
-      material: params.material || 'steel',
-      thickness: params.thickness || 1,
-      complexity: params.complexity || 1.0,
+      cutLength,
+      pierces,
+      sheets,
+      material,
+      thickness,
+      complexity,
     });
 
     res.json({
@@ -720,7 +727,7 @@ app.post('/api/export/csv', async (req: Request, res: Response): Promise<void> =
 
 // ─── Share nesting sheets (generate hashes) ─────────────────────────
 
-app.post(['/api/nesting/share', '/api/nesting-share'], async (req: Request, res: Response): Promise<void> => {
+app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     await pruneExpiredSheets();
     const { nestingResult } = req.body as { nestingResult?: NestingResult };

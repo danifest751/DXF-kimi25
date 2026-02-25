@@ -43,6 +43,7 @@ export interface TelegramUpdate {
       readonly file_id: string;
       readonly file_name?: string;
       readonly mime_type?: string;
+      readonly file_size?: number;
     };
   };
   readonly callback_query?: {
@@ -100,6 +101,25 @@ const ACTION_CALLBACK_PREFIX = 'act:';
 const QUANTITY_CALLBACK_PREFIX = 'qty:';
 const VARIANT_CALLBACK_PREFIX = 'var:';
 const chatNestingContext = new Map<number, PendingNestingContext>();
+const chatNestingContextLastUsed = new Map<number, number>();
+const CONTEXT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const BOT_MAX_DXF_BYTES = 20 * 1024 * 1024; // 20 MB (Telegram bot limit)
+
+function setNestingContext(chatId: number, ctx: PendingNestingContext): void {
+  chatNestingContext.set(chatId, ctx);
+  chatNestingContextLastUsed.set(chatId, Date.now());
+}
+
+// Очищаем неиспользуемые контексты каждые 3 часа
+setInterval(() => {
+  const cutoff = Date.now() - CONTEXT_TTL_MS;
+  for (const [chatId, ts] of chatNestingContextLastUsed) {
+    if (ts < cutoff) {
+      chatNestingContext.delete(chatId);
+      chatNestingContextLastUsed.delete(chatId);
+    }
+  }
+}, 3 * 60 * 60 * 1000).unref();
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
@@ -873,7 +893,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         activeVariantIndex: idx,
         lastNesting: context.variants[idx]!.nesting,
       };
-      chatNestingContext.set(chatId, nextContext);
+      setNestingContext(chatId, nextContext);
       await sendDashboard(token, chatId, nextContext);
       return;
     }
@@ -893,7 +913,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         quantity,
         awaitingInput: 'none',
       };
-      chatNestingContext.set(chatId, nextContext);
+      setNestingContext(chatId, nextContext);
       await sendDashboard(token, chatId, nextContext);
       return;
     }
@@ -935,7 +955,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       // ── Параметры (подэкраны настроек) ──
 
       if (action === 'set_qty') {
-        chatNestingContext.set(chatId, { ...context, awaitingInput: 'quantity' });
+        setNestingContext(chatId, { ...context, awaitingInput: 'quantity' });
         await telegramSendMessageWithKeyboard(
           token, chatId,
           'Количество копий каждой детали:',
@@ -954,7 +974,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       }
 
       if (action === 'sheet_custom') {
-        chatNestingContext.set(chatId, { ...context, awaitingInput: 'custom_sheet' });
+        setNestingContext(chatId, { ...context, awaitingInput: 'custom_sheet' });
         await telegramSendMessage(token, chatId, 'Введите размер листа, например: 1500x3000');
         return;
       }
@@ -975,7 +995,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           return;
         }
         const next: PendingNestingContext = { ...context, gap, awaitingInput: 'none' };
-        chatNestingContext.set(chatId, next);
+        setNestingContext(chatId, next);
         await sendSettings(token, chatId, next);
         return;
       }
@@ -984,7 +1004,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         const mode: PendingNestingContext['mode'] =
           action === 'mode_fast' ? 'fast' : action === 'mode_precise' ? 'precise' : 'common';
         const next: PendingNestingContext = { ...context, mode, awaitingInput: 'none' };
-        chatNestingContext.set(chatId, next);
+        setNestingContext(chatId, next);
         await sendSettings(token, chatId, next);
         return;
       }
@@ -1020,7 +1040,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           activeVariantIndex: variants.length - 1,
           awaitingInput: 'none',
         };
-        chatNestingContext.set(chatId, next);
+        setNestingContext(chatId, next);
         await telegramSendMessageWithKeyboard(token, chatId, 'Что дальше?', buildResultButtons(next), 'HTML');
         return;
       }
@@ -1100,7 +1120,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       sheet,
       awaitingInput: 'none',
     };
-    chatNestingContext.set(chatId, nextContext);
+    setNestingContext(chatId, nextContext);
     await sendSettings(token, chatId, nextContext);
     return;
   }
@@ -1120,6 +1140,12 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     }
 
     await telegramSendMessage(token, chatId, 'Файл получен, обрабатываю...');
+
+    const fileSize = message.document.file_size ?? 0;
+    if (fileSize > BOT_MAX_DXF_BYTES) {
+      await telegramSendMessage(token, chatId, `Файл слишком большой (${(fileSize / 1024 / 1024).toFixed(1)} MB). Максимум: 20 MB.`);
+      return;
+    }
 
     try {
       const dxfBuffer = await downloadTelegramFile(token, message.document.file_id);
@@ -1144,7 +1170,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           }
         : appendAnalysisToContext(current, fileName, result);
 
-      chatNestingContext.set(chatId, context);
+      setNestingContext(chatId, context);
 
       const caption = [
         `Файл: ${fileName}`,
@@ -1196,7 +1222,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
-      chatNestingContext.set(chatId, {
+      setNestingContext(chatId, {
         ...pending,
         quantity,
         awaitingInput: 'none',
@@ -1213,7 +1239,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
-      chatNestingContext.set(chatId, {
+      setNestingContext(chatId, {
         ...pending,
         sheet,
         awaitingInput: 'none',

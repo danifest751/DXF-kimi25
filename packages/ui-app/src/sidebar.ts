@@ -441,12 +441,14 @@ function buildFileItem(f: LoadedFile, isGuest: boolean): HTMLDivElement {
   item.innerHTML = `
     <input type="checkbox" ${f.checked ? 'checked' : ''} />
     <svg class="file-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-    <span class="file-item-name">${f.name}</span>
-    <span class="file-item-info">${info}</span>
+    <span class="file-item-name"></span>
+    <span class="file-item-info"></span>
     <button class="file-item-remove" title="Удалить">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   `;
+  (item.querySelector('.file-item-name') as HTMLSpanElement).textContent = f.name;
+  (item.querySelector('.file-item-info') as HTMLSpanElement).textContent = info;
 
   const chk = item.querySelector('input') as HTMLInputElement;
   chk.addEventListener('click', (e) => { e.stopPropagation(); void _toggleFileChecked(f.id); });
