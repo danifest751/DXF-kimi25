@@ -35,7 +35,7 @@ import type {
   DXFUnderlayEntity,
 } from '../types/index.js';
 import { DXFEntityType } from '../types/index.js';
-import { tessellateArc, tessellateEllipse, tessellateSpline } from './curves.js';
+import { tessellateArc, tessellateEllipse, tessellateSpline, tessellateLWPolyline } from './curves.js';
 import { DEG2RAD } from './math.js';
 
 // ─── Хелперы ────────────────────────────────────────────────────────
@@ -136,8 +136,11 @@ function bboxPolyline(e: DXFPolylineEntity): BoundingBox | null {
 }
 
 function bboxLWPolyline(e: DXFLWPolylineEntity): BoundingBox | null {
-  // Для bulge-сегментов bbox может быть больше, но для приближения берём вершины
-  // TODO: учесть bulge при вычислении bbox
+  // Тесселируем с учётом bulge-дуг для точного bbox
+  if (e.bulges && e.bulges.some((b) => b !== 0)) {
+    const pts = tessellateLWPolyline(e.vertices, e.bulges, e.closed, 32);
+    if (pts.length > 0) return bboxFromPoints2D(pts);
+  }
   return bboxFromPoints2D(e.vertices);
 }
 

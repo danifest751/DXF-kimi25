@@ -268,29 +268,33 @@ export function tessellateBulge(
   const mx = (p1.x + p2.x) / 2;
   const my = (p1.y + p2.y) / 2;
 
-  // Нормаль к хорде (единичная)
-  const nx = -dy / chord;
-  const ny = dx / chord;
+  // Единичный вектор вдоль хорды p1→p2
+  const ux = dx / chord;
+  const uy = dy / chord;
+  // Левый перпендикуляр к p1→p2 (поворот +90°): bulge>0 → дуга изгибается влево → центр слева
+  const nx = -uy;
+  const ny = ux;
 
-  // Расстояние от середины хорды до центра
-  const sagitta = radius * (1 - Math.cos(theta / 2));
-  const d = radius - sagitta;
+  // Расстояние от середины хорды до центра = radius * cos(theta/2)
+  const d = radius * Math.cos(theta / 2);
+  // bulge>0 → центр слева (sign=+1); bulge<0 → центр справа (sign=-1)
   const sign = bulge > 0 ? 1 : -1;
 
   // Центр дуги
   const cx = mx + sign * d * nx;
   const cy = my + sign * d * ny;
 
-  // Начальный и конечный углы
+  // Начальный и конечный углы (от центра к вершинам)
   const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
   let endAngle = Math.atan2(p2.y - cy, p2.x - cx);
 
-  // Направление обхода
+  // Направление обхода: bulge>0 → дуга изгибается влево → sweep отрицательный (CW в матем.)
+  // т.к. центр слева, обход от p1 к p2 идёт по часовой стрелке (sweep < 0)
   let sweep = endAngle - startAngle;
   if (bulge > 0) {
-    if (sweep < 0) sweep += Math.PI * 2;
+    if (sweep > 0) sweep -= Math.PI * 2; // обеспечиваем CW (отрицательный sweep)
   } else {
-    if (sweep > 0) sweep -= Math.PI * 2;
+    if (sweep < 0) sweep += Math.PI * 2; // обеспечиваем CCW (положительный sweep)
   }
 
   const n = Math.max(1, Math.ceil(segments * Math.abs(sweep) / (Math.PI * 2)));
