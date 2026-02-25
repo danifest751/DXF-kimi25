@@ -41,6 +41,10 @@ export class DXFRenderer {
   readonly camera: Camera;
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
+  // Overlay canvas для selection/hover — не перерисовывает основную геометрию
+  private overlayCanvas: HTMLCanvasElement | null = null;
+  private overlayCtx: CanvasRenderingContext2D | null = null;
+  private needsOverlayRedraw: boolean = false;
   private doc: NormalizedDocument | null = null;
   private rtree: RTree<number> = new RTree(config.rendering.hitTesting.rTreeMaxChildren);
   private layerVisibility: LayerVisibilityMap = new Map();
@@ -52,6 +56,15 @@ export class DXFRenderer {
   private piercePoints: readonly Point3D[] = [];
   private _showPiercePoints: boolean = false;
   private tessCache: TessellationCache = new TessellationCache();
+  // Переиспользуемый объект opts для hot loop (без spread на каждую итерацию)
+  private readonly _batchOpts: BatchRenderOptions = {
+    arcSegments: config.geometry.discretization.arcSegments,
+    splineSegments: config.geometry.discretization.splineSegments,
+    ellipseSegments: config.geometry.discretization.ellipseSegments,
+    pixelSize: 1,
+    viewExtent: 1000,
+    tessCache: this.tessCache,
+  };
 
   constructor(options?: Partial<RendererOptions>) {
     this.camera = new Camera();
@@ -64,6 +77,22 @@ export class DXFRenderer {
   attach(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false })!;
+
+    // Создаём overlay canvas поверх основного
+    this.overlayCanvas = document.createElement('canvas');
+    this.overlayCanvas.style.position = 'absolute';
+    this.overlayCanvas.style.top = '0';
+    this.overlayCanvas.style.left = '0';
+    this.overlayCanvas.style.pointerEvents = 'none';
+    this.overlayCtx = this.overlayCanvas.getContext('2d', { alpha: true })!;
+    // Вставляем overlay сразу после основного canvas
+    canvas.parentElement?.appendChild(this.overlayCanvas);
+    // Убеждаемся что родитель имеет position для overlay
+    if (canvas.parentElement) {
+      const pos = window.getComputedStyle(canvas.parentElement).position;
+      if (pos === 'static') canvas.parentElement.style.position = 'relative';
+    }
+
     this.resizeToContainer();
     this.startRenderLoop();
   }
@@ -76,6 +105,9 @@ export class DXFRenderer {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = 0;
     }
+    this.overlayCanvas?.parentElement?.removeChild(this.overlayCanvas);
+    this.overlayCanvas = null;
+    this.overlayCtx = null;
     this.canvas = null;
     this.ctx = null;
   }
@@ -148,10 +180,19 @@ export class DXFRenderer {
     const parent = this.canvas.parentElement;
     if (parent !== null) {
       const rect = parent.getBoundingClientRect();
-      this.canvas.width = rect.width * devicePixelRatio;
-      this.canvas.height = rect.height * devicePixelRatio;
+      const w = rect.width * devicePixelRatio;
+      const h = rect.height * devicePixelRatio;
+      this.canvas.width = w;
+      this.canvas.height = h;
       this.canvas.style.width = `${rect.width}px`;
       this.canvas.style.height = `${rect.height}px`;
+      // Синхронизируем overlay
+      if (this.overlayCanvas !== null) {
+        this.overlayCanvas.width = w;
+        this.overlayCanvas.height = h;
+        this.overlayCanvas.style.width = `${rect.width}px`;
+        this.overlayCanvas.style.height = `${rect.height}px`;
+      }
     }
     this.camera.setViewport(this.canvas.width, this.canvas.height);
     this.requestRedraw();
@@ -164,6 +205,10 @@ export class DXFRenderer {
     this.needsRedraw = true;
   }
 
+  private requestOverlayRedraw(): void {
+    this.needsOverlayRedraw = true;
+  }
+
   /**
    * Главный цикл рендеринга.
    */
@@ -172,6 +217,12 @@ export class DXFRenderer {
       if (this.needsRedraw) {
         this.needsRedraw = false;
         this.render();
+        // После перерисовки основного canvas overlay тоже обновляем
+        this.needsOverlayRedraw = true;
+      }
+      if (this.needsOverlayRedraw) {
+        this.needsOverlayRedraw = false;
+        this.renderOverlay();
       }
       this.animFrameId = requestAnimationFrame(loop);
     };
@@ -215,39 +266,26 @@ export class DXFRenderer {
       visibleBounds.max.y - visibleBounds.min.y,
     ) * 2;
 
-    const batchOpts: BatchRenderOptions = {
-      arcSegments: config.geometry.discretization.arcSegments,
-      splineSegments: config.geometry.discretization.splineSegments,
-      ellipseSegments: config.geometry.discretization.ellipseSegments,
-      pixelSize,
-      viewExtent,
-      tessCache: this.tessCache,
-    };
-
-    // Опции для fallback рендера (highlight, text, hatch, fill-сущности)
-    const fallbackOpts: Omit<EntityRenderOptions, 'entityIndex'> = { ...batchOpts };
+    // Обновляем переиспользуемый объект opts (без аллокации)
+    (this._batchOpts as { pixelSize: number }).pixelSize = pixelSize;
+    (this._batchOpts as { viewExtent: number }).viewExtent = viewExtent;
+    (this._batchOpts as { tessCache: TessellationCache }).tessCache = this.tessCache;
+    const batchOpts = this._batchOpts;
 
     // Получаем индексы видимых сущностей из R-tree
     const visibleIndices = this.rtree.search(visibleBounds);
 
     // ─── Группируем по batch key (цвет + толщина) ────────────────────
-    // batch key → массив [entityIndex, fe]
     const batches = new Map<string, Array<[number, FlattenedEntity]>>();
-    // Сущности которые не батчатся (text, hatch, fill, highlight)
-    const nonBatchable: Array<[number, FlattenedEntity, boolean]> = [];
+    const fallbackOpts = batchOpts as unknown as Omit<EntityRenderOptions, 'entityIndex'>;
 
     for (const idx of visibleIndices) {
       const fe = this.doc.flatEntities[idx]!;
       if (!this.isLayerVisible(fe.effectiveLayer)) continue;
       if (!fe.entity.visible) continue;
-
-      const isSelected = this.selectedHandles.has(fe.entity.handle);
-      const isHovered = idx === this.hoveredIndex;
-
-      if (isSelected || isHovered) {
-        nonBatchable.push([idx, fe, true]);
-        continue;
-      }
+      // Выделенные/hovered рендерятся в overlay — пропускаем здесь
+      if (this.selectedHandles.has(fe.entity.handle)) continue;
+      if (idx === this.hoveredIndex) continue;
 
       const key = entityBatchKey(fe, pixelSize);
       let batch = batches.get(key);
@@ -262,13 +300,11 @@ export class DXFRenderer {
     for (const batch of batches.values()) {
       if (batch.length === 0) continue;
 
-      // Применяем стиль один раз для всей группы
       const style = entityBatchStyle(batch[0]![1], pixelSize);
       ctx.strokeStyle = style.strokeStyle;
       ctx.lineWidth = style.lineWidth;
       ctx.fillStyle = style.strokeStyle;
 
-      // Сначала пробуем батч-рендер (stroke-only сущности)
       const fallbackQueue: Array<[number, FlattenedEntity]> = [];
       ctx.beginPath();
       for (const [idx, fe] of batch) {
@@ -277,31 +313,101 @@ export class DXFRenderer {
       }
       ctx.stroke();
 
-      // Fallback для fill/text/hatch сущностей в этой группе
       for (const [idx, fe] of fallbackQueue) {
         const opts: EntityRenderOptions = { ...fallbackOpts, entityIndex: idx };
         renderEntity(ctx, fe, opts);
       }
     }
 
-    // ─── Highlighted (selected/hovered) — поверх остальных ──────────
-    for (const [idx, fe] of nonBatchable) {
-      ctx.save();
-      const isSelected = this.selectedHandles.has(fe.entity.handle);
-      const color = isSelected ? this.options.selectionColor : this.options.hoverColor;
-      const highlighted: FlattenedEntity = {
-        ...fe,
-        effectiveColor: color,
-        effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50),
-      };
-      const opts: EntityRenderOptions = { ...fallbackOpts, entityIndex: idx };
-      renderEntity(ctx, highlighted, opts);
-      ctx.restore();
-    }
-
-    // Маркеры врезок
+    // Маркеры врезок рисуем на основном canvas
     if (this._showPiercePoints) {
       this.renderPierceMarkers(ctx);
+    }
+  }
+
+  /**
+   * Рендер overlay — только selection/hover поверх основного canvas.
+   * Вызывается отдельно, не перерисовывает геометрию.
+   */
+  private renderOverlay(): void {
+    const ctx = this.overlayCtx;
+    const canvas = this.overlayCanvas;
+    if (ctx === null || canvas === null || this.doc === null) return;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const hasSelection = this.selectedHandles.size > 0;
+    const hasHover = this.hoveredIndex >= 0;
+    if (!hasSelection && !hasHover) return;
+
+    this.camera.applyToContext(ctx);
+
+    const pixelSize = 1 / this.camera.zoom;
+    const visibleBounds = this.camera.getVisibleBounds();
+    const viewExtent = Math.max(
+      visibleBounds.max.x - visibleBounds.min.x,
+      visibleBounds.max.y - visibleBounds.min.y,
+    ) * 2;
+
+    const batchOpts: BatchRenderOptions = {
+      arcSegments: config.geometry.discretization.arcSegments,
+      splineSegments: config.geometry.discretization.splineSegments,
+      ellipseSegments: config.geometry.discretization.ellipseSegments,
+      pixelSize,
+      viewExtent,
+      tessCache: this.tessCache,
+    };
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Hover
+    if (hasHover) {
+      const fe = this.doc.flatEntities[this.hoveredIndex];
+      if (fe !== undefined && this.isLayerVisible(fe.effectiveLayer) && fe.entity.visible) {
+        const hovered: FlattenedEntity = {
+          ...fe,
+          effectiveColor: this.options.hoverColor,
+          effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50),
+        };
+        ctx.strokeStyle = `rgb(${this.options.hoverColor.r},${this.options.hoverColor.g},${this.options.hoverColor.b})`;
+        ctx.lineWidth = hovered.effectiveLineWeight > 0
+          ? Math.max(pixelSize, hovered.effectiveLineWeight / 100) : pixelSize;
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.beginPath();
+        const added = addEntityPath(ctx, hovered, this.hoveredIndex, batchOpts);
+        ctx.stroke();
+        if (!added) {
+          const opts: EntityRenderOptions = { ...batchOpts, entityIndex: this.hoveredIndex };
+          renderEntity(ctx, hovered, opts);
+        }
+      }
+    }
+
+    // Selection
+    if (hasSelection) {
+      const selColor = this.options.selectionColor;
+      const visibleIndices = this.rtree.search(visibleBounds);
+      // Батч selected сущностей одним цветом
+      ctx.strokeStyle = `rgb(${selColor.r},${selColor.g},${selColor.b})`;
+      ctx.lineWidth = pixelSize * 2;
+      ctx.fillStyle = ctx.strokeStyle;
+      const fallbackQueue: Array<[number, FlattenedEntity]> = [];
+      ctx.beginPath();
+      for (const idx of visibleIndices) {
+        const fe = this.doc.flatEntities[idx]!;
+        if (!this.selectedHandles.has(fe.entity.handle)) continue;
+        if (!this.isLayerVisible(fe.effectiveLayer) || !fe.entity.visible) continue;
+        const sel: FlattenedEntity = { ...fe, effectiveColor: selColor };
+        const added = addEntityPath(ctx, sel, idx, batchOpts);
+        if (!added) fallbackQueue.push([idx, sel]);
+      }
+      ctx.stroke();
+      for (const [idx, fe] of fallbackQueue) {
+        const opts: EntityRenderOptions = { ...batchOpts, entityIndex: idx };
+        renderEntity(ctx, fe, opts);
+      }
     }
   }
 
@@ -357,17 +463,17 @@ export class DXFRenderer {
 
   select(handle: string): void {
     this.selectedHandles.add(handle);
-    this.requestRedraw();
+    this.requestOverlayRedraw();
   }
 
   deselect(handle: string): void {
     this.selectedHandles.delete(handle);
-    this.requestRedraw();
+    this.requestOverlayRedraw();
   }
 
   clearSelection(): void {
     this.selectedHandles.clear();
-    this.requestRedraw();
+    this.requestOverlayRedraw();
   }
 
   getSelectedHandles(): Set<string> {
@@ -401,7 +507,7 @@ export class DXFRenderer {
   setHovered(index: number): void {
     if (this.hoveredIndex !== index) {
       this.hoveredIndex = index;
-      this.requestRedraw();
+      this.requestOverlayRedraw();
     }
   }
 
