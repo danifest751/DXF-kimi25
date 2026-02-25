@@ -65,6 +65,13 @@ export class DXFRenderer {
     viewExtent: 1000,
     tessCache: this.tessCache,
   };
+  // Кэш последней viewport-трансформации для skip-rebuild оптимизации
+  private _lastRenderZoom: number = 0;
+  private _lastRenderPanX: number = 0;
+  private _lastRenderPanY: number = 0;
+  private _cachedVisibleIndices: number[] = [];
+  // Кэш devicePixelRatio
+  private _dpr: number = typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1;
 
   constructor(options?: Partial<RendererOptions>) {
     this.camera = new Camera();
@@ -139,13 +146,21 @@ export class DXFRenderer {
     // Строим R-tree
     this.buildRTree();
 
-    // Строим кэш тесселяции кривых
-    this.tessCache.build(
-      doc.flatEntities,
-      config.geometry.discretization.arcSegments,
-      config.geometry.discretization.splineSegments,
-      config.geometry.discretization.ellipseSegments,
-    );
+    // Строим кэш тесселяции кривых через requestIdleCallback чтобы не блокировать UI
+    const buildCache = (): void => {
+      this.tessCache.build(
+        doc.flatEntities,
+        config.geometry.discretization.arcSegments,
+        config.geometry.discretization.splineSegments,
+        config.geometry.discretization.ellipseSegments,
+      );
+      this.requestRedraw();
+    };
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(buildCache, { timeout: 500 });
+    } else {
+      buildCache();
+    }
 
     // Подгоняем камеру
     if (doc.totalBBox !== null) {
@@ -177,11 +192,12 @@ export class DXFRenderer {
    */
   resizeToContainer(): void {
     if (this.canvas === null) return;
+    this._dpr = typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1;
     const parent = this.canvas.parentElement;
     if (parent !== null) {
       const rect = parent.getBoundingClientRect();
-      const w = rect.width * devicePixelRatio;
-      const h = rect.height * devicePixelRatio;
+      const w = rect.width * this._dpr;
+      const h = rect.height * this._dpr;
       this.canvas.width = w;
       this.canvas.height = h;
       this.canvas.style.width = `${rect.width}px`;
@@ -195,6 +211,8 @@ export class DXFRenderer {
       }
     }
     this.camera.setViewport(this.canvas.width, this.canvas.height);
+    // Сбрасываем кэш трансформации при resize
+    this._lastRenderZoom = 0;
     this.requestRedraw();
   }
 
@@ -272,8 +290,22 @@ export class DXFRenderer {
     (this._batchOpts as { tessCache: TessellationCache }).tessCache = this.tessCache;
     const batchOpts = this._batchOpts;
 
-    // Получаем индексы видимых сущностей из R-tree
-    const visibleIndices = this.rtree.search(visibleBounds);
+    // R-tree search: используем кэш если камера не двигалась
+    const camZoom = this.camera.zoom;
+    const camPanX = this.camera.panX;
+    const camPanY = this.camera.panY;
+    const cameraUnchanged = (
+      camZoom === this._lastRenderZoom &&
+      camPanX === this._lastRenderPanX &&
+      camPanY === this._lastRenderPanY
+    );
+    if (!cameraUnchanged) {
+      this._cachedVisibleIndices = this.rtree.search(visibleBounds);
+      this._lastRenderZoom = camZoom;
+      this._lastRenderPanX = camPanX;
+      this._lastRenderPanY = camPanY;
+    }
+    const visibleIndices = this._cachedVisibleIndices;
 
     // ─── Группируем по batch key (цвет + толщина) ────────────────────
     const batches = new Map<string, Array<[number, FlattenedEntity]>>();
