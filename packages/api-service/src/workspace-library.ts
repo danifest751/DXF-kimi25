@@ -139,7 +139,7 @@ export async function listWorkspaceLibrary(workspaceId: string): Promise<{ catal
 
 export async function createWorkspaceCatalog(workspaceId: string, nameInput: string): Promise<WorkspaceCatalog> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
-  const name = nameInput.trim();
+  const name = nameInput.trim().slice(0, MAX_NAME_LENGTH);
   if (name.length < 1) throw new Error('Catalog name is required');
 
   const count = await countRows(WORKSPACE_CATALOGS_TABLE, workspaceId);
@@ -170,7 +170,7 @@ export async function createWorkspaceCatalog(workspaceId: string, nameInput: str
 
 export async function renameWorkspaceCatalog(workspaceId: string, catalogId: string, nameInput: string): Promise<void> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
-  const name = nameInput.trim();
+  const name = nameInput.trim().slice(0, MAX_NAME_LENGTH);
   if (name.length < 1) throw new Error('Catalog name is required');
 
   const params = new URLSearchParams({
@@ -257,8 +257,13 @@ export async function uploadWorkspaceFile(input: {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
 
   const { workspaceId } = input;
-  const name = input.name.trim();
+  const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
   if (name.length < 1) throw new Error('File name is required');
+
+  // P3: validate catalogId is a proper UUID to prevent injection
+  if (input.catalogId !== null && input.catalogId !== undefined && !UUID_RE.test(input.catalogId)) {
+    throw new Error('Invalid catalogId: must be a UUID');
+  }
 
   const fileCount = await countRows(WORKSPACE_FILES_TABLE, workspaceId);
   if (fileCount >= MAX_FILES_PER_WORKSPACE) {
@@ -318,9 +323,13 @@ export async function updateWorkspaceFile(
 
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof patch.name === 'string') {
-    const name = patch.name.trim();
+    const name = patch.name.trim().slice(0, MAX_NAME_LENGTH);
     if (name.length < 1) throw new Error('File name is required');
     payload.name = name;
+  }
+  // P3: validate catalogId is a proper UUID
+  if (patch.catalogId !== null && patch.catalogId !== undefined && !UUID_RE.test(patch.catalogId)) {
+    throw new Error('Invalid catalogId: must be a UUID');
   }
   if (patch.catalogId !== undefined) {
     payload.catalog_id = patch.catalogId;
@@ -372,6 +381,7 @@ export async function deleteWorkspaceFile(workspaceId: string, fileId: string): 
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_NAME_LENGTH = 255;
 
 export async function setWorkspaceFilesChecked(workspaceId: string, checked: boolean, catalogIds?: string[]): Promise<void> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');

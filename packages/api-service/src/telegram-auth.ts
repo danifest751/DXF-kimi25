@@ -61,6 +61,31 @@ const loginCodes = new Map<string, LoginCodeEntry>();
 const usersByTelegram = new Map<string, AppUserEntry>();
 const sessionsByTokenHash = new Map<string, AppSessionEntry>();
 
+// P1: caps to prevent OOM under DDoS with unique codes/tokens
+const LOGIN_CODES_MAX = 5_000;
+const SESSIONS_MAX = 20_000;
+const USERS_MAX = 50_000;
+
+// P2: brute-force protection for code exchange (per IP)
+const codeExchangeAttempts = new Map<string, { count: number; windowStart: number }>();
+const CODE_EXCHANGE_MAX = 10; // per 5 min per IP
+const CODE_EXCHANGE_WINDOW_MS = 5 * 60 * 1000;
+
+export function checkCodeExchangeRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const state = codeExchangeAttempts.get(ip);
+  if (!state || now - state.windowStart > CODE_EXCHANGE_WINDOW_MS) {
+    if (!state && codeExchangeAttempts.size >= 10_000) {
+      const first = codeExchangeAttempts.keys().next().value;
+      if (first !== undefined) codeExchangeAttempts.delete(first);
+    }
+    codeExchangeAttempts.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  state.count++;
+  return state.count <= CODE_EXCHANGE_MAX;
+}
+
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -153,6 +178,11 @@ function fromSessionRow(row: AppSessionRow): AppSessionEntry {
 
 
 async function saveLoginCode(entry: LoginCodeEntry): Promise<void> {
+  // P1: evict oldest if at capacity
+  if (!loginCodes.has(entry.code) && loginCodes.size >= LOGIN_CODES_MAX) {
+    const first = loginCodes.keys().next().value;
+    if (first !== undefined) loginCodes.delete(first);
+  }
   loginCodes.set(entry.code, entry);
   if (!supabaseEnabled) return;
 
@@ -234,6 +264,11 @@ async function getOrCreateUserByTelegramId(telegramUserId: string): Promise<AppU
     workspaceId: createStableWorkspaceId(telegramUserId),
     createdAt: Date.now(),
   };
+  // P1: evict oldest if at capacity
+  if (!usersByTelegram.has(telegramUserId) && usersByTelegram.size >= USERS_MAX) {
+    const first = usersByTelegram.keys().next().value;
+    if (first !== undefined) usersByTelegram.delete(first);
+  }
   usersByTelegram.set(telegramUserId, newUser);
 
   if (supabaseEnabled) {
@@ -266,6 +301,11 @@ async function getOrCreateUserByTelegramId(telegramUserId: string): Promise<AppU
 }
 
 async function saveSession(entry: AppSessionEntry): Promise<void> {
+  // P1: evict oldest if at capacity
+  if (!sessionsByTokenHash.has(entry.tokenHash) && sessionsByTokenHash.size >= SESSIONS_MAX) {
+    const first = sessionsByTokenHash.keys().next().value;
+    if (first !== undefined) sessionsByTokenHash.delete(first);
+  }
   sessionsByTokenHash.set(entry.tokenHash, entry);
   if (!supabaseEnabled) return;
 

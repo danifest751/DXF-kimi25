@@ -1035,7 +1035,17 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
             ? { strategy: 'maxrects_bbox', multiStart: true, commonLine: { enabled: false }, rotationEnabled: true, rotationAngleStepDeg: 2 }
             : { strategy: 'maxrects_bbox', multiStart: true, commonLine: { enabled: true, maxMergeDistanceMm: 0.2, minSharedLenMm: 20 }, rotationEnabled: true, rotationAngleStepDeg: 2 };
 
-        const nesting = nestItems(itemsWithQuantity, context.sheet, context.gap, nestingOptions);
+        // P5: protect event loop — reject if nesting takes >25s
+        const BOT_NESTING_TIMEOUT_MS = 25_000;
+        const nestPromise = new Promise<NestingResult>((resolve) => {
+          resolve(nestItems(itemsWithQuantity, context.sheet, context.gap, nestingOptions));
+        });
+        const nesting = await Promise.race([
+          nestPromise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Nesting timeout (25s)')), BOT_NESTING_TIMEOUT_MS),
+          ),
+        ]);
         const variantName = `V${context.variants.length + 1}`;
 
         await telegramSendPhoto(token, chatId, renderNestingPreview(nesting), composeResultCaption(context, variantName, nesting));

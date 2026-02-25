@@ -15,7 +15,7 @@ import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from 
 import { calculatePrice } from '../../pricing/src/index.js';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
-import { exchangeTelegramLoginCode, getAuthSessionByToken } from './telegram-auth.js';
+import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit } from './telegram-auth.js';
 import {
   createWorkspaceCatalog,
   deleteWorkspaceCatalog,
@@ -220,6 +220,13 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
 
 app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'], async (req: Request, res: Response): Promise<void> => {
   try {
+    // P2: brute-force protection — 10 attempts per IP per 5 min
+    const ip = getClientIp(req);
+    if (!checkCodeExchangeRateLimit(ip)) {
+      res.status(429).json({ error: 'Too many code exchange attempts. Try again in 5 minutes.' });
+      return;
+    }
+
     const code = typeof req.body?.code === 'string' ? req.body.code : '';
     const session = await exchangeTelegramLoginCode(code);
     if (!session) {
@@ -782,6 +789,13 @@ app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (re
     const { nestingResult } = req.body as { nestingResult?: NestingResult };
     if (!nestingResult || !nestingResult.sheets) {
       res.status(400).json({ error: 'nestingResult is required' });
+      return;
+    }
+
+    // P6: limit sheets to prevent loop/store abuse
+    const MAX_SHAREABLE_SHEETS = 50;
+    if (nestingResult.sheets.length > MAX_SHAREABLE_SHEETS) {
+      res.status(400).json({ error: `Too many sheets: maximum ${MAX_SHAREABLE_SHEETS}` });
       return;
     }
 
