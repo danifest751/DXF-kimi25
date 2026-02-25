@@ -6,6 +6,7 @@
 
 import crypto from 'node:crypto';
 import type { NestingResult } from '../../core-engine/src/nesting/index.js';
+import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 
 export interface SharedSheet {
   readonly hash: string;
@@ -23,11 +24,6 @@ interface SharedSheetRow {
 
 const SHARED_SHEET_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SHARED_SHEETS_TABLE = process.env.SUPABASE_SHARED_SHEETS_TABLE?.trim() || 'shared_sheets';
-
-const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
-const supabaseEnabled = supabaseUrl.length > 0 && supabaseServiceRoleKey.length > 0;
-const supabaseRestBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
 
 export const sharedSheetStore = new Map<string, SharedSheet>();
 
@@ -65,25 +61,6 @@ async function removeFromDb(hash: string): Promise<void> {
   });
   if (!response?.ok) {
     console.error('[shared-sheets] supabase delete failed');
-  }
-}
-
-async function supabaseRequest(pathWithQuery: string, init: RequestInit = {}): Promise<Response | null> {
-  if (!supabaseEnabled) return null;
-  try {
-    return await fetch(`${supabaseRestBaseUrl}${pathWithQuery}`, {
-      ...init,
-      headers: {
-        apikey: supabaseServiceRoleKey,
-        Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        'Content-Type': 'application/json',
-        ...(init.headers ?? {}),
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[shared-sheets] supabase request failed:', message);
-    return null;
   }
 }
 
