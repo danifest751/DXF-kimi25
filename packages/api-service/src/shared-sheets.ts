@@ -26,6 +26,7 @@ const SHARED_SHEET_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SHARED_SHEETS_TABLE = process.env.SUPABASE_SHARED_SHEETS_TABLE?.trim() || 'shared_sheets';
 
 export const sharedSheetStore = new Map<string, SharedSheet>();
+const SHARED_SHEET_MAX_ENTRIES = 2_000;
 
 export function generateShortHash(): string {
   return crypto.randomBytes(4).toString('hex'); // 8 hex chars
@@ -131,6 +132,11 @@ export async function saveSharedSheet(entry: SharedSheet): Promise<void> {
     ...entry,
     hash: entry.hash.toLowerCase(),
   };
+  // N6: evict oldest entry if store is at capacity
+  if (!sharedSheetStore.has(normalizedEntry.hash) && sharedSheetStore.size >= SHARED_SHEET_MAX_ENTRIES) {
+    const firstKey = sharedSheetStore.keys().next().value;
+    if (firstKey !== undefined) sharedSheetStore.delete(firstKey);
+  }
   sharedSheetStore.set(normalizedEntry.hash, normalizedEntry);
 
   if (!supabaseEnabled) return;

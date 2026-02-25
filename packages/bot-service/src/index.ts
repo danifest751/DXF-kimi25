@@ -655,7 +655,7 @@ function getPrimaryFileLabel(context: PendingNestingContext): string {
 function composeHomeText(ctx: PendingNestingContext): string {
   const v = getActiveVariant(ctx);
   const lines = [
-    `📁 <b>${getPrimaryFileLabel(ctx)}</b>`,
+    `📁 <b>${escapeHtml(getPrimaryFileLabel(ctx))}</b>`,
     `✂️ ${ctx.summary.totalPierces} врезок · ${formatCutLength(ctx.summary.totalCutLength, 'm')} · ${ctx.items.length} дет.`,
     '',
     `🔢 <b>${ctx.quantity ?? '—'}</b> шт  ·  📐 ${ctx.sheet.width}×${ctx.sheet.height}  ·  ${MODE_LABELS[ctx.mode]}`,
@@ -822,6 +822,14 @@ function toSafeBaseName(fileName: string): string {
   const base = fileName.replace(/\.dxf$/i, '');
   const safe = base.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '');
   return safe.length > 0 ? safe : 'result';
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function appendAnalysisToContext(
@@ -1173,7 +1181,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       setNestingContext(chatId, context);
 
       const caption = [
-        `Файл: ${fileName}`,
+        `Файл: ${escapeHtml(fileName)}`,
         `Врезок: ${result.summary.totalPierces}`,
         `Длина реза: ${formatCutLength(result.summary.totalCutLength, 'm')}`,
         current === undefined
@@ -1266,7 +1274,8 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     const hashPattern = /\b[0-9a-f]{8}\b/gi;
     const hashes = message.text.match(hashPattern);
     if (hashes && hashes.length > 0) {
-      const uniqueHashes = [...new Set(hashes.map(h => h.toLowerCase()))];
+      // N9: limit to 5 hashes per message
+      const uniqueHashes = [...new Set(hashes.map(h => h.toLowerCase()))].slice(0, 5);
       let found = 0;
       let notFound = 0;
       for (const hash of uniqueHashes) {
@@ -1332,9 +1341,7 @@ export async function startTelegramBotPolling(token: string): Promise<void> {
 /**
  * API-level обработка текстового сообщения (без Telegram polling).
  */
-export async function processBotMessage(message: BotMessage): Promise<BotResponse> {
-  console.log('[BotService] Received message:', message.text);
-
+export async function processBotMessage(_message: BotMessage): Promise<BotResponse> {
   return {
     success: true,
     message: 'Bot service is active. For DXF analysis send a .dxf file to Telegram bot.',

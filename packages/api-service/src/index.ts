@@ -606,15 +606,47 @@ app.post('/api/nest', nestingRateLimit, async (req: Request, res: Response): Pro
       return;
     }
 
+    // N5: limit items array length
+    if (params.items.length > 500) {
+      res.status(400).json({ error: 'Too many items: maximum 500' });
+      return;
+    }
+
     const maybeSheet = params.sheet as { width?: unknown; height?: unknown };
     if (typeof maybeSheet.width !== 'number' || typeof maybeSheet.height !== 'number') {
       res.status(400).json({ error: 'Invalid sheet: width and height must be numbers' });
       return;
     }
 
+    // N7: validate sheet dimensions
+    const sheetW = maybeSheet.width as number;
+    const sheetH = maybeSheet.height as number;
+    if (!Number.isFinite(sheetW) || !Number.isFinite(sheetH) || sheetW <= 0 || sheetH <= 0 || sheetW > 100_000 || sheetH > 100_000) {
+      res.status(400).json({ error: 'Invalid sheet: width and height must be positive finite numbers ≤ 100000' });
+      return;
+    }
+
+    // N1: validate each item
+    for (const item of params.items as unknown[]) {
+      const it = item as Record<string, unknown>;
+      const w = typeof it.width === 'number' ? it.width : NaN;
+      const h = typeof it.height === 'number' ? it.height : NaN;
+      const q = typeof it.quantity === 'number' ? it.quantity : 1;
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0 || w > 100_000 || h > 100_000) {
+        res.status(400).json({ error: 'Invalid item: width and height must be positive finite numbers ≤ 100000' });
+        return;
+      }
+      if (!Number.isFinite(q) || q < 1 || q > 10_000) {
+        res.status(400).json({ error: 'Invalid item: quantity must be between 1 and 10000' });
+        return;
+      }
+    }
+
     const items = params.items as readonly NestingItem[];
     const sheet = params.sheet as SheetSize;
-    const gap = typeof params.gap === 'number' ? params.gap : 5;
+    // N7: clamp gap to [0, 500]
+    const rawGap = typeof params.gap === 'number' ? params.gap : 5;
+    const gap = Number.isFinite(rawGap) ? Math.max(0, Math.min(500, rawGap)) : 5;
     const rotationEnabled = typeof params.rotationEnabled === 'boolean' ? params.rotationEnabled : true;
     const rawStep = params.rotationAngleStepDeg;
     const rotationAngleStepDeg: 1 | 2 | 5 = rawStep === 1 || rawStep === 5 ? rawStep : 2;

@@ -149,8 +149,12 @@ export async function restoreGuestDraft(): Promise<void> {
     loadedFiles.splice(0, loadedFiles.length);
 
     const MAX_GUEST_FILE_SIZE_B64 = 270_000_000; // ~200 MB
-  for (const file of parsed.files) {
+    const MAX_GUEST_FILES = 50;
+    let restored = 0;
+    for (const file of parsed.files) {
+      if (restored >= MAX_GUEST_FILES) break;
       if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
+      restored++;
       const buffer = base64ToArrayBuffer(file.base64);
       const result = await parseDXFInWorker(buffer);
       const stats = await _computeStats(file.base64, result.document);
@@ -205,13 +209,17 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
     if (!file.base64) continue;
     migrated++;
-    await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
-      name: file.name,
-      base64: file.base64,
-      catalogId: null,
-      checked: Boolean(file.checked),
-      quantity: Math.max(1, Number(file.quantity) || 1),
-    }, getAuthHeaders());
+    try {
+      await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
+        name: file.name,
+        base64: file.base64,
+        catalogId: null,
+        checked: Boolean(file.checked),
+        quantity: Math.max(1, Number(file.quantity) || 1),
+      }, getAuthHeaders());
+    } catch (err) {
+      console.warn('Failed to migrate file:', file.name, err instanceof Error ? err.message : String(err));
+    }
   }
   clearGuestDraft();
 }
