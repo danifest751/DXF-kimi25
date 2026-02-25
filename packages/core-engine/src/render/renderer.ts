@@ -9,6 +9,7 @@ import { Camera } from './camera.js';
 import { RTree, type RTreeItem } from './rtree.js';
 import { renderEntity, type EntityRenderOptions } from './entity-renderer.js';
 import { TessellationCache } from './tessellation-cache.js';
+import { addEntityPath, entityBatchKey, entityBatchStyle, type BatchRenderOptions } from './batch-renderer.js';
 import { config } from '../config.js';
 
 /** Состояние видимости слоёв */
@@ -214,7 +215,7 @@ export class DXFRenderer {
       visibleBounds.max.y - visibleBounds.min.y,
     ) * 2;
 
-    const baseOpts: Omit<EntityRenderOptions, 'entityIndex'> = {
+    const batchOpts: BatchRenderOptions = {
       arcSegments: config.geometry.discretization.arcSegments,
       splineSegments: config.geometry.discretization.splineSegments,
       ellipseSegments: config.geometry.discretization.ellipseSegments,
@@ -223,39 +224,79 @@ export class DXFRenderer {
       tessCache: this.tessCache,
     };
 
+    // Опции для fallback рендера (highlight, text, hatch, fill-сущности)
+    const fallbackOpts: Omit<EntityRenderOptions, 'entityIndex'> = { ...batchOpts };
+
     // Получаем индексы видимых сущностей из R-tree
     const visibleIndices = this.rtree.search(visibleBounds);
 
-    // Рисуем сущности
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // ─── Группируем по batch key (цвет + толщина) ────────────────────
+    // batch key → массив [entityIndex, fe]
+    const batches = new Map<string, Array<[number, FlattenedEntity]>>();
+    // Сущности которые не батчатся (text, hatch, fill, highlight)
+    const nonBatchable: Array<[number, FlattenedEntity, boolean]> = [];
 
     for (const idx of visibleIndices) {
       const fe = this.doc.flatEntities[idx]!;
-
-      // Проверяем видимость слоя
       if (!this.isLayerVisible(fe.effectiveLayer)) continue;
       if (!fe.entity.visible) continue;
 
-      const opts: EntityRenderOptions = { ...baseOpts, entityIndex: idx };
-
-      // Подсветка выбранных/наведённых
       const isSelected = this.selectedHandles.has(fe.entity.handle);
       const isHovered = idx === this.hoveredIndex;
 
       if (isSelected || isHovered) {
-        ctx.save();
-        const color = isSelected ? this.options.selectionColor : this.options.hoverColor;
-        const highlighted: FlattenedEntity = {
-          ...fe,
-          effectiveColor: color,
-          effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50),
-        };
-        renderEntity(ctx, highlighted, opts);
-        ctx.restore();
-      } else {
+        nonBatchable.push([idx, fe, true]);
+        continue;
+      }
+
+      const key = entityBatchKey(fe, pixelSize);
+      let batch = batches.get(key);
+      if (batch === undefined) { batch = []; batches.set(key, batch); }
+      batch.push([idx, fe]);
+    }
+
+    // ─── Batch render ────────────────────────────────────────────────
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (const batch of batches.values()) {
+      if (batch.length === 0) continue;
+
+      // Применяем стиль один раз для всей группы
+      const style = entityBatchStyle(batch[0]![1], pixelSize);
+      ctx.strokeStyle = style.strokeStyle;
+      ctx.lineWidth = style.lineWidth;
+      ctx.fillStyle = style.strokeStyle;
+
+      // Сначала пробуем батч-рендер (stroke-only сущности)
+      const fallbackQueue: Array<[number, FlattenedEntity]> = [];
+      ctx.beginPath();
+      for (const [idx, fe] of batch) {
+        const added = addEntityPath(ctx, fe, idx, batchOpts);
+        if (!added) fallbackQueue.push([idx, fe]);
+      }
+      ctx.stroke();
+
+      // Fallback для fill/text/hatch сущностей в этой группе
+      for (const [idx, fe] of fallbackQueue) {
+        const opts: EntityRenderOptions = { ...fallbackOpts, entityIndex: idx };
         renderEntity(ctx, fe, opts);
       }
+    }
+
+    // ─── Highlighted (selected/hovered) — поверх остальных ──────────
+    for (const [idx, fe] of nonBatchable) {
+      ctx.save();
+      const isSelected = this.selectedHandles.has(fe.entity.handle);
+      const color = isSelected ? this.options.selectionColor : this.options.hoverColor;
+      const highlighted: FlattenedEntity = {
+        ...fe,
+        effectiveColor: color,
+        effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50),
+      };
+      const opts: EntityRenderOptions = { ...fallbackOpts, entityIndex: idx };
+      renderEntity(ctx, highlighted, opts);
+      ctx.restore();
     }
 
     // Маркеры врезок
