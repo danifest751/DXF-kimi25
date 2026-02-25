@@ -79,7 +79,8 @@ import * as NP from './nesting-panel.js';
 
 const modeBadge = document.createElement('div');
 modeBadge.style.cssText = 'position:fixed;right:12px;bottom:12px;padding:6px 10px;border-radius:8px;font:500 11px/1.2 system-ui,sans-serif;color:#e5e7eb;background:rgba(17,24,39,0.85);border:1px solid rgba(229,231,235,0.2);backdrop-filter:blur(4px);z-index:9999';
-document.body.appendChild(modeBadge);
+// Показываем badge только в dev режиме
+if (import.meta.env.DEV) document.body.appendChild(modeBadge);
 
 function updateModeBadge(): void {
   modeBadge.textContent = `Mode: cutting ${cuttingComputeMode.toUpperCase()} | nesting ${nestingComputeMode.toUpperCase()}`;
@@ -177,11 +178,21 @@ function updateStatusBar(): void {
 
 // ─── Inspector ────────────────────────────────────────────────────────
 
+/** Экранирует строку для безопасной вставки в HTML (защита от XSS) */
+function escHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function showInspector(fe: FlattenedEntity): void {
   sidebarInspector.classList.remove('hidden');
   const e = fe.entity;
   const row = (label: string, value: string) =>
-    `<div class="prop-row"><span class="prop-label">${label}</span><span class="prop-value">${value}</span></div>`;
+    `<div class="prop-row"><span class="prop-label">${escHtml(label)}</span><span class="prop-value">${escHtml(value)}</span></div>`;
   let html = '';
   html += row('Тип', e.type);
   html += row('Handle', e.handle);
@@ -221,10 +232,16 @@ fileInput.addEventListener('change', () => {
   fileInput.value = '';
 });
 
+const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
+
 async function addFiles(files: File[]): Promise<void> {
   syncWelcomeVisibility();
   for (const file of files) {
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert(`Файл "${file.name}" слишком большой (${(file.size / 1024 / 1024).toFixed(1)} MB). Максимальный размер: 200 MB.`);
+      continue;
+    }
     await loadSingleFile(file, setActiveFile);
   }
 }

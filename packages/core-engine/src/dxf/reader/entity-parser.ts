@@ -40,44 +40,72 @@ import {
   DXFEntityType,
 } from '../../types/index.js';
 
-/** Вспомогательная функция: получить числовое значение из группы */
-function getNum(groups: DXFGroup[], code: number, defaultVal: number = 0): number {
-  const g = groups.find((g) => g.code === code);
-  return g !== undefined ? Number(g.value) : defaultVal;
+/**
+ * GroupMap: Map code → first value (O(1) lookup)
+ * GroupsMulti: Map code → all values (O(1) multi-value lookup)
+ * Строится один раз на сущность вместо O(n) find/filter на каждое поле.
+ */
+type GroupMap = Map<number, string | number | boolean>;
+type GroupsMulti = Map<number, (string | number | boolean)[]>;
+
+function buildGroupMap(groups: DXFGroup[]): GroupMap {
+  const m: GroupMap = new Map();
+  for (const g of groups) {
+    if (!m.has(g.code)) m.set(g.code, g.value);
+  }
+  return m;
 }
 
-/** Вспомогательная функция: получить строковое значение из группы */
-function getStr(groups: DXFGroup[], code: number, defaultVal: string = ''): string {
-  const g = groups.find((g) => g.code === code);
-  return g !== undefined ? String(g.value) : defaultVal;
+function buildGroupsMulti(groups: DXFGroup[]): GroupsMulti {
+  const m: GroupsMulti = new Map();
+  for (const g of groups) {
+    const arr = m.get(g.code);
+    if (arr) arr.push(g.value);
+    else m.set(g.code, [g.value]);
+  }
+  return m;
 }
 
-/** Вспомогательная функция: получить все числовые значения с данным кодом */
-function getAllNum(groups: DXFGroup[], code: number): number[] {
-  return groups.filter((g) => g.code === code).map((g) => Number(g.value));
+/** Получить числовое значение O(1) */
+function getNum(gm: GroupMap, code: number, defaultVal: number = 0): number {
+  const v = gm.get(code);
+  return v !== undefined ? Number(v) : defaultVal;
 }
 
-/** Вспомогательная функция: получить 3D точку из групп */
-function getPoint3D(groups: DXFGroup[], xCode: number, yCode: number, zCode: number): Point3D {
+/** Получить строковое значение O(1) */
+function getStr(gm: GroupMap, code: number, defaultVal: string = ''): string {
+  const v = gm.get(code);
+  return v !== undefined ? String(v) : defaultVal;
+}
+
+/** Получить все числовые значения с данным кодом O(1) */
+function getAllNum(gm: GroupsMulti, code: number): number[] {
+  const arr = gm.get(code);
+  return arr ? arr.map(Number) : [];
+}
+
+/** Получить 3D точку O(1) */
+function getPoint3D(gm: GroupMap, xCode: number, yCode: number, zCode: number): Point3D {
   return {
-    x: getNum(groups, xCode),
-    y: getNum(groups, yCode),
-    z: getNum(groups, zCode),
+    x: getNum(gm, xCode),
+    y: getNum(gm, yCode),
+    z: getNum(gm, zCode),
   };
 }
 
-/** Вспомогательная функция: получить 3D вектор из групп */
-function getVector3D(groups: DXFGroup[], xCode: number, yCode: number, zCode: number): Vector3D {
+/** Получить 3D вектор O(1) */
+function getVector3D(gm: GroupMap, xCode: number, yCode: number, zCode: number): Vector3D {
   return {
-    dx: getNum(groups, xCode),
-    dy: getNum(groups, yCode),
-    dz: getNum(groups, zCode),
+    dx: getNum(gm, xCode),
+    dy: getNum(gm, yCode),
+    dz: getNum(gm, zCode),
   };
 }
+
 
 /** Парсит базовые свойства сущности */
-function parseEntityBase(entityType: DXFEntityType, groups: DXFGroup[]): DXFEntityBase {
-  const colorIndex = getNum(groups, 62, -1);
+function parseEntityBase(entityType: DXFEntityType, gm: GroupMap): DXFEntityBase {
+  const colorIndex = getNum(gm, 62, -1);
   let color: Color | undefined;
   if (colorIndex >= 0 && colorIndex <= 255) {
     color = aciToColor(colorIndex);
@@ -85,12 +113,12 @@ function parseEntityBase(entityType: DXFEntityType, groups: DXFGroup[]): DXFEnti
 
   return {
     type: entityType,
-    handle: getStr(groups, 5),
-    layer: getStr(groups, 8, '0'),
+    handle: getStr(gm, 5),
+    layer: getStr(gm, 8, '0'),
     color,
-    lineType: getStr(groups, 6) || undefined,
-    lineWeight: getNum(groups, 370, -1) !== -1 ? getNum(groups, 370) : undefined,
-    visible: getNum(groups, 60) !== 1,
+    lineType: getStr(gm, 6) || undefined,
+    lineWeight: getNum(gm, 370, -1) !== -1 ? getNum(gm, 370) : undefined,
+    visible: getNum(gm, 60) !== 1,
   };
 }
 
@@ -378,76 +406,84 @@ export function aciToColor(index: number): Color {
 
 /** Парсит LINE */
 function parseLine(groups: DXFGroup[]): DXFLineEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.LINE, groups),
+    ...parseEntityBase(DXFEntityType.LINE, gm),
     type: DXFEntityType.LINE,
-    start: getPoint3D(groups, 10, 20, 30),
-    end: getPoint3D(groups, 11, 21, 31),
+    start: getPoint3D(gm, 10, 20, 30),
+    end: getPoint3D(gm, 11, 21, 31),
   };
 }
 
 /** Парсит XLINE */
 function parseXLine(groups: DXFGroup[]): DXFXLineEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.XLINE, groups),
+    ...parseEntityBase(DXFEntityType.XLINE, gm),
     type: DXFEntityType.XLINE,
-    basePoint: getPoint3D(groups, 10, 20, 30),
-    direction: getVector3D(groups, 11, 21, 31),
+    basePoint: getPoint3D(gm, 10, 20, 30),
+    direction: getVector3D(gm, 11, 21, 31),
   };
 }
 
 /** Парсит RAY */
 function parseRay(groups: DXFGroup[]): DXFRayEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.RAY, groups),
+    ...parseEntityBase(DXFEntityType.RAY, gm),
     type: DXFEntityType.RAY,
-    basePoint: getPoint3D(groups, 10, 20, 30),
-    direction: getVector3D(groups, 11, 21, 31),
+    basePoint: getPoint3D(gm, 10, 20, 30),
+    direction: getVector3D(gm, 11, 21, 31),
   };
 }
 
 /** Парсит CIRCLE */
 function parseCircle(groups: DXFGroup[]): DXFCircleEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.CIRCLE, groups),
+    ...parseEntityBase(DXFEntityType.CIRCLE, gm),
     type: DXFEntityType.CIRCLE,
-    center: getPoint3D(groups, 10, 20, 30),
-    radius: getNum(groups, 40),
+    center: getPoint3D(gm, 10, 20, 30),
+    radius: getNum(gm, 40),
   };
 }
 
 /** Парсит ARC */
 function parseArc(groups: DXFGroup[]): DXFArcEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.ARC, groups),
+    ...parseEntityBase(DXFEntityType.ARC, gm),
     type: DXFEntityType.ARC,
-    center: getPoint3D(groups, 10, 20, 30),
-    radius: getNum(groups, 40),
-    startAngle: getNum(groups, 50),
-    endAngle: getNum(groups, 51),
+    center: getPoint3D(gm, 10, 20, 30),
+    radius: getNum(gm, 40),
+    startAngle: getNum(gm, 50),
+    endAngle: getNum(gm, 51),
   };
 }
 
 /** Парсит ELLIPSE */
 function parseEllipse(groups: DXFGroup[]): DXFEllipseEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.ELLIPSE, groups),
+    ...parseEntityBase(DXFEntityType.ELLIPSE, gm),
     type: DXFEntityType.ELLIPSE,
-    center: getPoint3D(groups, 10, 20, 30),
-    majorAxis: getVector3D(groups, 11, 21, 31),
-    minorAxisRatio: getNum(groups, 40),
-    startAngle: getNum(groups, 41),
-    endAngle: getNum(groups, 42, Math.PI * 2),
+    center: getPoint3D(gm, 10, 20, 30),
+    majorAxis: getVector3D(gm, 11, 21, 31),
+    minorAxisRatio: getNum(gm, 40),
+    startAngle: getNum(gm, 41),
+    endAngle: getNum(gm, 42, Math.PI * 2),
   };
 }
 
 /** Парсит SPLINE */
 function parseSpline(groups: DXFGroup[]): DXFSplineEntity {
-  const flags = getNum(groups, 70);
+  const gm = buildGroupMap(groups);
+  const multi = buildGroupsMulti(groups);
+  const flags = getNum(gm, 70);
   // Контрольные точки: code 10/20/30
-  const cpX = getAllNum(groups, 10);
-  const cpY = getAllNum(groups, 20);
-  const cpZ = getAllNum(groups, 30);
+  const cpX = getAllNum(multi, 10);
+  const cpY = getAllNum(multi, 20);
+  const cpZ = getAllNum(multi, 30);
   let controlPoints: Point3D[] = cpX.map((x, i) => ({
     x,
     y: cpY[i] ?? 0,
@@ -456,9 +492,9 @@ function parseSpline(groups: DXFGroup[]): DXFSplineEntity {
 
   // Fit-точки: code 11/21/31 — используются как fallback если нет контрольных
   if (controlPoints.length === 0) {
-    const fpX = getAllNum(groups, 11);
-    const fpY = getAllNum(groups, 21);
-    const fpZ = getAllNum(groups, 31);
+    const fpX = getAllNum(multi, 11);
+    const fpY = getAllNum(multi, 21);
+    const fpZ = getAllNum(multi, 31);
     controlPoints = fpX.map((x, i) => ({
       x,
       y: fpY[i] ?? 0,
@@ -467,12 +503,12 @@ function parseSpline(groups: DXFGroup[]): DXFSplineEntity {
   }
 
   return {
-    ...parseEntityBase(DXFEntityType.SPLINE, groups),
+    ...parseEntityBase(DXFEntityType.SPLINE, gm),
     type: DXFEntityType.SPLINE,
-    degree: getNum(groups, 71, 3),
+    degree: getNum(gm, 71, 3),
     controlPoints,
-    knots: getAllNum(groups, 40),
-    weights: getAllNum(groups, 41),
+    knots: getAllNum(multi, 40),
+    weights: getAllNum(multi, 41),
     closed: (flags & 1) !== 0,
     periodic: (flags & 2) !== 0,
   };
@@ -480,9 +516,10 @@ function parseSpline(groups: DXFGroup[]): DXFSplineEntity {
 
 /** Парсит POLYLINE (заголовок; вершины приходят снаружи через vertices) */
 export function parsePolylineHeader(groups: DXFGroup[]): DXFPolylineEntity {
-  const flags = getNum(groups, 70);
+  const gm = buildGroupMap(groups);
+  const flags = getNum(gm, 70);
   return {
-    ...parseEntityBase(DXFEntityType.POLYLINE, groups),
+    ...parseEntityBase(DXFEntityType.POLYLINE, gm),
     type: DXFEntityType.POLYLINE,
     vertices: [], // будут заполнены VERTEX-сущностями в parseEntitiesSection
     closed: (flags & 1) !== 0,
@@ -494,27 +531,30 @@ export function parsePolylineHeader(groups: DXFGroup[]): DXFPolylineEntity {
 
 /** Парсит одну VERTEX-сущность (R12) */
 function parseVertex(groups: DXFGroup[]): Point3D {
-  return getPoint3D(groups, 10, 20, 30);
+  const gm = buildGroupMap(groups);
+  return getPoint3D(gm, 10, 20, 30);
 }
 
 /** Парсит LWPOLYLINE */
 function parseLWPolyline(groups: DXFGroup[]): DXFLWPolylineEntity {
-  const xCoords = getAllNum(groups, 10);
-  const yCoords = getAllNum(groups, 20);
+  const gm = buildGroupMap(groups);
+  const multi = buildGroupsMulti(groups);
+  const xCoords = getAllNum(multi, 10);
+  const yCoords = getAllNum(multi, 20);
   const vertices: Point2D[] = xCoords.map((x, i) => ({
     x,
     y: yCoords[i] ?? 0,
   }));
 
-  const bulges = getAllNum(groups, 42);
-  const widths = getAllNum(groups, 40);
+  const bulges = getAllNum(multi, 42);
+  const widths = getAllNum(multi, 40);
 
   return {
-    ...parseEntityBase(DXFEntityType.LWPOLYLINE, groups),
+    ...parseEntityBase(DXFEntityType.LWPOLYLINE, gm),
     type: DXFEntityType.LWPOLYLINE,
     vertices,
-    closed: (getNum(groups, 70) & 1) !== 0,
-    constantWidth: getNum(groups, 43) || undefined,
+    closed: (getNum(gm, 70) & 1) !== 0,
+    constantWidth: getNum(gm, 43) || undefined,
     widths: widths.length > 0 ? widths : undefined,
     bulges: bulges.length > 0 ? bulges : undefined,
   };
@@ -522,59 +562,64 @@ function parseLWPolyline(groups: DXFGroup[]): DXFLWPolylineEntity {
 
 /** Парсит POINT */
 function parsePoint(groups: DXFGroup[]): DXFPointEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.POINT, groups),
+    ...parseEntityBase(DXFEntityType.POINT, gm),
     type: DXFEntityType.POINT,
-    location: getPoint3D(groups, 10, 20, 30),
+    location: getPoint3D(gm, 10, 20, 30),
   };
 }
 
 /** Парсит SOLID */
 function parseSolid(groups: DXFGroup[]): DXFSolidEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.SOLID, groups),
+    ...parseEntityBase(DXFEntityType.SOLID, gm),
     type: DXFEntityType.SOLID,
     points: [
-      getPoint3D(groups, 10, 20, 30),
-      getPoint3D(groups, 11, 21, 31),
-      getPoint3D(groups, 12, 22, 32),
-      getPoint3D(groups, 13, 23, 33),
+      getPoint3D(gm, 10, 20, 30),
+      getPoint3D(gm, 11, 21, 31),
+      getPoint3D(gm, 12, 22, 32),
+      getPoint3D(gm, 13, 23, 33),
     ],
   };
 }
 
 /** Парсит TRACE */
 function parseTrace(groups: DXFGroup[]): DXFTraceEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.TRACE, groups),
+    ...parseEntityBase(DXFEntityType.TRACE, gm),
     type: DXFEntityType.TRACE,
     points: [
-      getPoint3D(groups, 10, 20, 30),
-      getPoint3D(groups, 11, 21, 31),
-      getPoint3D(groups, 12, 22, 32),
-      getPoint3D(groups, 13, 23, 33),
+      getPoint3D(gm, 10, 20, 30),
+      getPoint3D(gm, 11, 21, 31),
+      getPoint3D(gm, 12, 22, 32),
+      getPoint3D(gm, 13, 23, 33),
     ],
   };
 }
 
 /** Парсит TEXT */
 function parseText(groups: DXFGroup[]): DXFTextEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.TEXT, groups),
+    ...parseEntityBase(DXFEntityType.TEXT, gm),
     type: DXFEntityType.TEXT,
-    position: getPoint3D(groups, 10, 20, 30),
-    text: getStr(groups, 1),
-    height: getNum(groups, 40),
-    rotation: getNum(groups, 50),
-    style: getStr(groups, 7, 'Standard'),
-    alignment: getNum(groups, 72),
-    widthFactor: getNum(groups, 41, 1),
-    obliqueAngle: getNum(groups, 51),
+    position: getPoint3D(gm, 10, 20, 30),
+    text: getStr(gm, 1),
+    height: getNum(gm, 40),
+    rotation: getNum(gm, 50),
+    style: getStr(gm, 7, 'Standard'),
+    alignment: getNum(gm, 72),
+    widthFactor: getNum(gm, 41, 1),
+    obliqueAngle: getNum(gm, 51),
   };
 }
 
 /** Парсит MTEXT */
 function parseMText(groups: DXFGroup[]): DXFMTextEntity {
+  const gm = buildGroupMap(groups);
   // MTEXT может иметь текст разбитый на несколько групп с кодом 3 и 1
   const textParts = groups
     .filter((g) => g.code === 3 || g.code === 1)
@@ -582,17 +627,17 @@ function parseMText(groups: DXFGroup[]): DXFMTextEntity {
   const fullText = textParts.join('');
 
   return {
-    ...parseEntityBase(DXFEntityType.MTEXT, groups),
+    ...parseEntityBase(DXFEntityType.MTEXT, gm),
     type: DXFEntityType.MTEXT,
-    position: getPoint3D(groups, 10, 20, 30),
+    position: getPoint3D(gm, 10, 20, 30),
     text: fullText,
-    height: getNum(groups, 40),
-    width: getNum(groups, 41),
-    attachment: getNum(groups, 71, 1),
-    direction: getVector3D(groups, 11, 21, 31),
-    style: getStr(groups, 7, 'Standard'),
-    lineSpacing: getNum(groups, 44, 1),
-    rotation: getNum(groups, 50),
+    height: getNum(gm, 40),
+    width: getNum(gm, 41),
+    attachment: getNum(gm, 71, 1),
+    direction: getVector3D(gm, 11, 21, 31),
+    style: getStr(gm, 7, 'Standard'),
+    lineSpacing: getNum(gm, 44, 1),
+    rotation: getNum(gm, 50),
   };
 }
 
@@ -627,7 +672,8 @@ function tessellateHatchArc(
  */
 function parseHatch(groups: DXFGroup[]): DXFHatchEntity {
   const boundaries: Point3D[][] = [];
-  const numLoops = getNum(groups, 91, 0);
+  const hatchGmEarly = buildGroupMap(groups);
+  const numLoops = getNum(hatchGmEarly, 91, 0);
 
   if (numLoops > 0) {
     // Полноценный парсинг через индексы групп
@@ -773,43 +819,48 @@ function parseHatch(groups: DXFGroup[]): DXFHatchEntity {
 
   // Fallback: если boundary не удалось распарсить — берём все code 10/20
   if (boundaries.length === 0) {
-    const xCoords = getAllNum(groups, 10);
-    const yCoords = getAllNum(groups, 20);
+    const multi = buildGroupsMulti(groups);
+    const xCoords = getAllNum(multi, 10);
+    const yCoords = getAllNum(multi, 20);
     const fallback: Point3D[] = xCoords.map((x, idx) => ({
       x, y: yCoords[idx] ?? 0, z: 0,
     }));
     if (fallback.length > 0) boundaries.push(fallback);
   }
 
+  const hatchGm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.HATCH, groups),
+    ...parseEntityBase(DXFEntityType.HATCH, hatchGm),
     type: DXFEntityType.HATCH,
-    patternName: getStr(groups, 2),
-    patternScale: getNum(groups, 41, 1),
-    patternAngle: getNum(groups, 52),
-    solid: getNum(groups, 70) === 1,
+    patternName: getStr(hatchGm, 2),
+    patternScale: getNum(hatchGm, 41, 1),
+    patternAngle: getNum(hatchGm, 52),
+    solid: getNum(hatchGm, 70) === 1,
     boundaries,
   };
 }
 
 /** Парсит DIMENSION */
 function parseDimension(groups: DXFGroup[]): DXFDimensionEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.DIMENSION, groups),
+    ...parseEntityBase(DXFEntityType.DIMENSION, gm),
     type: DXFEntityType.DIMENSION,
-    dimType: getNum(groups, 70),
-    definitionPoint: getPoint3D(groups, 10, 20, 30),
-    textMidpoint: getPoint3D(groups, 11, 21, 31),
-    text: getStr(groups, 1),
-    style: getStr(groups, 3, 'Standard'),
+    dimType: getNum(gm, 70),
+    definitionPoint: getPoint3D(gm, 10, 20, 30),
+    textMidpoint: getPoint3D(gm, 11, 21, 31),
+    text: getStr(gm, 1),
+    style: getStr(gm, 3, 'Standard'),
   };
 }
 
 /** Парсит LEADER */
 function parseLeader(groups: DXFGroup[]): DXFLeaderEntity {
-  const xCoords = getAllNum(groups, 10);
-  const yCoords = getAllNum(groups, 20);
-  const zCoords = getAllNum(groups, 30);
+  const gm = buildGroupMap(groups);
+  const multi = buildGroupsMulti(groups);
+  const xCoords = getAllNum(multi, 10);
+  const yCoords = getAllNum(multi, 20);
+  const zCoords = getAllNum(multi, 30);
   const vertices: Point3D[] = xCoords.map((x, i) => ({
     x,
     y: yCoords[i] ?? 0,
@@ -817,19 +868,21 @@ function parseLeader(groups: DXFGroup[]): DXFLeaderEntity {
   }));
 
   return {
-    ...parseEntityBase(DXFEntityType.LEADER, groups),
+    ...parseEntityBase(DXFEntityType.LEADER, gm),
     type: DXFEntityType.LEADER,
     vertices,
-    annotation: getStr(groups, 1),
-    style: getStr(groups, 3, 'Standard'),
+    annotation: getStr(gm, 1),
+    style: getStr(gm, 3, 'Standard'),
   };
 }
 
 /** Парсит MLEADER */
 function parseMLeader(groups: DXFGroup[]): DXFMLeaderEntity {
-  const xCoords = getAllNum(groups, 10);
-  const yCoords = getAllNum(groups, 20);
-  const zCoords = getAllNum(groups, 30);
+  const gm = buildGroupMap(groups);
+  const multi = buildGroupsMulti(groups);
+  const xCoords = getAllNum(multi, 10);
+  const yCoords = getAllNum(multi, 20);
+  const zCoords = getAllNum(multi, 30);
   const vertices: Point3D[] = xCoords.map((x, i) => ({
     x,
     y: yCoords[i] ?? 0,
@@ -837,73 +890,77 @@ function parseMLeader(groups: DXFGroup[]): DXFMLeaderEntity {
   }));
 
   return {
-    ...parseEntityBase(DXFEntityType.MLEADER, groups),
+    ...parseEntityBase(DXFEntityType.MLEADER, gm),
     type: DXFEntityType.MLEADER,
     vertices,
-    text: getStr(groups, 1),
-    style: getStr(groups, 3, 'Standard'),
+    text: getStr(gm, 1),
+    style: getStr(gm, 3, 'Standard'),
   };
 }
 
 /** Парсит INSERT */
 function parseInsert(groups: DXFGroup[]): DXFInsertEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.INSERT, groups),
+    ...parseEntityBase(DXFEntityType.INSERT, gm),
     type: DXFEntityType.INSERT,
-    blockName: getStr(groups, 2),
-    position: getPoint3D(groups, 10, 20, 30),
+    blockName: getStr(gm, 2),
+    position: getPoint3D(gm, 10, 20, 30),
     scale: {
-      dx: getNum(groups, 41, 1),
-      dy: getNum(groups, 42, 1),
-      dz: getNum(groups, 43, 1),
+      dx: getNum(gm, 41, 1),
+      dy: getNum(gm, 42, 1),
+      dz: getNum(gm, 43, 1),
     },
-    rotation: getNum(groups, 50),
-    columnCount: getNum(groups, 70, 1),
-    rowCount: getNum(groups, 71, 1),
-    columnSpacing: getNum(groups, 44),
-    rowSpacing: getNum(groups, 45),
+    rotation: getNum(gm, 50),
+    columnCount: getNum(gm, 70, 1),
+    rowCount: getNum(gm, 71, 1),
+    columnSpacing: getNum(gm, 44),
+    rowSpacing: getNum(gm, 45),
     attributes: [], // Атрибуты парсятся отдельно при обработке SEQEND
   };
 }
 
 /** Парсит ATTDEF */
 function parseAttdef(groups: DXFGroup[]): DXFAttdefEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.ATTDEF, groups),
+    ...parseEntityBase(DXFEntityType.ATTDEF, gm),
     type: DXFEntityType.ATTDEF,
-    tag: getStr(groups, 2),
-    prompt: getStr(groups, 3),
-    defaultValue: getStr(groups, 1),
-    position: getPoint3D(groups, 10, 20, 30),
-    height: getNum(groups, 40),
-    rotation: getNum(groups, 50),
+    tag: getStr(gm, 2),
+    prompt: getStr(gm, 3),
+    defaultValue: getStr(gm, 1),
+    position: getPoint3D(gm, 10, 20, 30),
+    height: getNum(gm, 40),
+    rotation: getNum(gm, 50),
   };
 }
 
 /** Парсит ATTRIB */
 function parseAttrib(groups: DXFGroup[]): DXFAttribEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.ATTRIB, groups),
+    ...parseEntityBase(DXFEntityType.ATTRIB, gm),
     type: DXFEntityType.ATTRIB,
-    tag: getStr(groups, 2),
-    value: getStr(groups, 1),
-    position: getPoint3D(groups, 10, 20, 30),
-    height: getNum(groups, 40),
-    rotation: getNum(groups, 50),
+    tag: getStr(gm, 2),
+    value: getStr(gm, 1),
+    position: getPoint3D(gm, 10, 20, 30),
+    height: getNum(gm, 40),
+    rotation: getNum(gm, 50),
   };
 }
 
 /** Парсит 3DFACE */
 function parse3DFace(groups: DXFGroup[]): DXF3DFaceEntity {
-  const flags = getNum(groups, 70);
+  const gm = buildGroupMap(groups);
+  const flags = getNum(gm, 70);
   return {
-    ...parseEntityBase(DXFEntityType.THREE_D_FACE, groups),
+    ...parseEntityBase(DXFEntityType.THREE_D_FACE, gm),
     type: DXFEntityType.THREE_D_FACE,
     points: [
-      getPoint3D(groups, 10, 20, 30),
-      getPoint3D(groups, 11, 21, 31),
-      getPoint3D(groups, 12, 22, 32),
-      getPoint3D(groups, 13, 23, 33),
+      getPoint3D(gm, 10, 20, 30),
+      getPoint3D(gm, 11, 21, 31),
+      getPoint3D(gm, 12, 22, 32),
+      getPoint3D(gm, 13, 23, 33),
     ],
     edgeVisibility: [
       (flags & 1) === 0,
@@ -916,53 +973,56 @@ function parse3DFace(groups: DXFGroup[]): DXF3DFaceEntity {
 
 /** Парсит IMAGE */
 function parseImage(groups: DXFGroup[]): DXFImageEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.IMAGE, groups),
+    ...parseEntityBase(DXFEntityType.IMAGE, gm),
     type: DXFEntityType.IMAGE,
-    position: getPoint3D(groups, 10, 20, 30),
-    uVector: getVector3D(groups, 11, 21, 31),
-    vVector: getVector3D(groups, 12, 22, 32),
-    width: getNum(groups, 13),
-    height: getNum(groups, 23),
-    display: getNum(groups, 70),
-    brightness: getNum(groups, 281, 50),
-    contrast: getNum(groups, 282, 50),
-    fade: getNum(groups, 283),
+    position: getPoint3D(gm, 10, 20, 30),
+    uVector: getVector3D(gm, 11, 21, 31),
+    vVector: getVector3D(gm, 12, 22, 32),
+    width: getNum(gm, 13),
+    height: getNum(gm, 23),
+    display: getNum(gm, 70),
+    brightness: getNum(gm, 281, 50),
+    contrast: getNum(gm, 282, 50),
+    fade: getNum(gm, 283),
   };
 }
 
 /** Парсит UNDERLAY */
 function parseUnderlay(groups: DXFGroup[]): DXFUnderlayEntity {
-  const entityName = getStr(groups, 0);
+  const gm = buildGroupMap(groups);
+  const entityName = getStr(gm, 0);
   let underlayType: 'PDF' | 'DWF' | 'DGN' = 'PDF';
   if (entityName.includes('DWF')) underlayType = 'DWF';
   else if (entityName.includes('DGN')) underlayType = 'DGN';
 
   return {
-    ...parseEntityBase(DXFEntityType.UNDERLAY, groups),
+    ...parseEntityBase(DXFEntityType.UNDERLAY, gm),
     type: DXFEntityType.UNDERLAY,
-    filename: getStr(groups, 1),
-    position: getPoint3D(groups, 10, 20, 30),
+    filename: getStr(gm, 1),
+    position: getPoint3D(gm, 10, 20, 30),
     scale: {
-      dx: getNum(groups, 41, 1),
-      dy: getNum(groups, 42, 1),
-      dz: getNum(groups, 43, 1),
+      dx: getNum(gm, 41, 1),
+      dy: getNum(gm, 42, 1),
+      dz: getNum(gm, 43, 1),
     },
-    rotation: getNum(groups, 50),
+    rotation: getNum(gm, 50),
     underlayType,
   };
 }
 
 /** Парсит VIEWPORT */
 function parseViewport(groups: DXFGroup[]): DXFViewportEntity {
+  const gm = buildGroupMap(groups);
   return {
-    ...parseEntityBase(DXFEntityType.VIEWPORT, groups),
+    ...parseEntityBase(DXFEntityType.VIEWPORT, gm),
     type: DXFEntityType.VIEWPORT,
-    center: getPoint3D(groups, 10, 20, 30),
-    width: getNum(groups, 40),
-    height: getNum(groups, 41),
-    viewDirection: getVector3D(groups, 16, 26, 36),
-    viewTarget: getPoint3D(groups, 17, 27, 37),
+    center: getPoint3D(gm, 10, 20, 30),
+    width: getNum(gm, 40),
+    height: getNum(gm, 41),
+    viewDirection: getVector3D(gm, 16, 26, 36),
+    viewTarget: getPoint3D(gm, 17, 27, 37),
   };
 }
 

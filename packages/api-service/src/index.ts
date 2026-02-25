@@ -84,6 +84,83 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 
+// ─── In-memory rate limiter ───────────────────────────────────────────
+
+interface RateLimitState {
+  windowStart: number;
+  count: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitState>();
+
+/**
+ * Простой rate limiter (sliding window по IP).
+ * @returns true если запрос разрешён, false если лимит превышен
+ */
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+  const now = Date.now();
+  const state = rateLimitStore.get(key);
+  if (state === undefined || now - state.windowStart > windowMs) {
+    rateLimitStore.set(key, { windowStart: now, count: 1 });
+    return true;
+  }
+  state.count++;
+  return state.count <= maxRequests;
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.header('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]!.trim();
+  return req.socket?.remoteAddress ?? 'unknown';
+}
+
+// Очищаем устаревшие записи каждые 10 минут
+setInterval(() => {
+  const cutoff = Date.now() - 60_000;
+  for (const [key, state] of rateLimitStore) {
+    if (state.windowStart < cutoff) rateLimitStore.delete(key);
+  }
+}, 10 * 60_000).unref();
+
+// Middleware для тяжёлых вычислительных эндпоинтов (10 req/min per IP)
+function heavyRateLimit(req: Request, res: Response, next: () => void): void {
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`heavy:${ip}`, 10, 60_000)) {
+    res.status(429).json({ error: 'Too many requests. Limit: 10 per minute.' });
+    return;
+  }
+  next();
+}
+
+// Middleware для нестинга (3 req/min per IP — очень тяжёлая операция)
+function nestingRateLimit(req: Request, res: Response, next: () => void): void {
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`nest:${ip}`, 3, 60_000)) {
+    res.status(429).json({ error: 'Too many nesting requests. Limit: 3 per minute.' });
+    return;
+  }
+  next();
+}
+
+// ─── Validation helpers ───────────────────────────────────────────────
+
+const MAX_DXF_BASE64_LEN = 270_000_000; // ~200MB в base64
+
+function validateDxfPayload(req: Request, res: Response): boolean {
+  const body = req.body as { base64?: string; text?: string };
+  const b64len = typeof body?.base64 === 'string' ? body.base64.length : 0;
+  const textlen = typeof body?.text === 'string' ? body.text.length : 0;
+  if (b64len === 0 && textlen === 0) {
+    res.status(400).json({ error: 'Provide DXF via body.base64 or body.text' });
+    return false;
+  }
+  if (b64len > MAX_DXF_BASE64_LEN) {
+    res.status(413).json({ error: 'DXF file too large (max 200 MB)' });
+    return false;
+  }
+  return true;
+}
+
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
@@ -414,13 +491,11 @@ app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-down
 });
 
 // Parse DXF file
-app.post('/api/parse', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/parse', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!validateDxfPayload(req, res)) return;
     const buffer = getBufferFromRequest(req);
-    if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
-      return;
-    }
+    if (!buffer) return;
 
     const doc = parseDXF(toArrayBuffer(buffer));
     const normalized = normalizeDocument(doc);
@@ -443,13 +518,11 @@ app.post('/api/parse', async (req: Request, res: Response): Promise<void> => {
 });
 
 // Normalize DXF (summary)
-app.post('/api/normalize', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/normalize', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!validateDxfPayload(req, res)) return;
     const buffer = getBufferFromRequest(req);
-    if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
-      return;
-    }
+    if (!buffer) return;
 
     const doc = parseDXF(toArrayBuffer(buffer));
     const normalized = normalizeDocument(doc);
@@ -469,13 +542,11 @@ app.post('/api/normalize', async (req: Request, res: Response): Promise<void> =>
 });
 
 // Cutting stats from DXF
-app.post('/api/cutting-stats', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/cutting-stats', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!validateDxfPayload(req, res)) return;
     const buffer = getBufferFromRequest(req);
-    if (!buffer) {
-      res.status(400).json({ error: 'Provide DXF via body.base64/body.text' });
-      return;
-    }
+    if (!buffer) return;
 
     const doc = parseDXF(toArrayBuffer(buffer));
     const normalized = normalizeDocument(doc);
@@ -503,7 +574,7 @@ app.post('/api/cutting-stats', async (req: Request, res: Response): Promise<void
 });
 
 // Nesting
-app.post('/api/nest', async (req: Request, res: Response): Promise<void> => {
+app.post('/api/nest', nestingRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const params = req.body as {
       items?: unknown;
@@ -545,14 +616,21 @@ app.post('/api/nest', async (req: Request, res: Response): Promise<void> => {
       maxMergeDistanceMm: typeof commonLineInput?.maxMergeDistanceMm === 'number' ? commonLineInput.maxMergeDistanceMm : 0.2,
       minSharedLenMm: typeof commonLineInput?.minSharedLenMm === 'number' ? commonLineInput.minSharedLenMm : 20,
     };
-    const result = nestItems(items, sheet, gap, {
-      rotationEnabled,
-      rotationAngleStepDeg,
-      strategy,
-      multiStart,
-      seed,
-      commonLine,
+    const NESTING_TIMEOUT_MS = 30_000; // 30 сек — защита от бесконечного нестинга
+    const nestPromise = new Promise<ReturnType<typeof nestItems>>((resolve) => {
+      resolve(nestItems(items, sheet, gap, {
+        rotationEnabled,
+        rotationAngleStepDeg,
+        strategy,
+        multiStart,
+        seed,
+        commonLine,
+      }));
     });
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Nesting timeout (30s)')), NESTING_TIMEOUT_MS),
+    );
+    const result = await Promise.race([nestPromise, timeoutPromise]);
 
     res.json({
       success: true,

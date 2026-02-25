@@ -56,8 +56,8 @@ export class DXFRenderer {
   private piercePoints: readonly Point3D[] = [];
   private _showPiercePoints: boolean = false;
   private tessCache: TessellationCache = new TessellationCache();
-  // Переиспользуемый объект opts для hot loop (без spread на каждую итерацию)
-  private readonly _batchOpts: BatchRenderOptions = {
+  // Переиспользуемый объект opts для hot loop (без аллокации на каждую итерацию)
+  private readonly _batchOpts: { -readonly [K in keyof BatchRenderOptions]: BatchRenderOptions[K] } = {
     arcSegments: config.geometry.discretization.arcSegments,
     splineSegments: config.geometry.discretization.splineSegments,
     ellipseSegments: config.geometry.discretization.ellipseSegments,
@@ -285,9 +285,9 @@ export class DXFRenderer {
     ) * 2;
 
     // Обновляем переиспользуемый объект opts (без аллокации)
-    (this._batchOpts as { pixelSize: number }).pixelSize = pixelSize;
-    (this._batchOpts as { viewExtent: number }).viewExtent = viewExtent;
-    (this._batchOpts as { tessCache: TessellationCache }).tessCache = this.tessCache;
+    this._batchOpts.pixelSize = pixelSize;
+    this._batchOpts.viewExtent = viewExtent;
+    this._batchOpts.tessCache = this.tessCache;
     const batchOpts = this._batchOpts;
 
     // R-tree search: используем кэш если камера не двигалась
