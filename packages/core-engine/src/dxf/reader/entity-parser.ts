@@ -732,7 +732,6 @@ function parseHatch(groups: DXFGroup[]): DXFHatchEntity {
           } else if (edgeType === 4) {
             // SPLINE: 94=degree, 73=rational, 74=periodic, 95=nKnots, 96=nCtrl
             // 40=knots, 10/20=controlPoints, 42=weights
-            let _degree = 3;
             let nKnots = 0, nCtrl = 0;
             const knots: number[] = [];
             const ctrlX: number[] = [], ctrlY: number[] = [];
@@ -740,7 +739,7 @@ function parseHatch(groups: DXFGroup[]): DXFHatchEntity {
             const end = Math.min(i + 200, grps.length);
             for (let j = i; j < end; j++) {
               const c = grps[j]!.code;
-              if (c === 94) _degree = Number(grps[j]!.value);
+              if (c === 94) { /* degree — reserved for future NURBS tessellation */ }
               else if (c === 95) nKnots = Number(grps[j]!.value);
               else if (c === 96) nCtrl = Number(grps[j]!.value);
               else if (c === 40) knots.push(Number(grps[j]!.value));
