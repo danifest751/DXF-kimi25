@@ -366,16 +366,26 @@ function renderViewport(ctx: Ctx, e: DXFViewportEntity, m: Matrix4x4): void {
 
 // ─── Вспомогательные функции рисования ──────────────────────────────
 
-/** Рисует кривую из кэша (Float32Array xy-пар) */
+/** Рисует кривую из кэша (Float32Array xy-пар) с pixel-skip LOD */
 function drawFloat32(ctx: Ctx, buf: Float32Array, m: Matrix4x4, closed: boolean): void {
   const count = buf.length / 2;
   if (count < 2) return;
   ctx.beginPath();
   const p0 = tx(m, buf[0]!, buf[1]!);
   ctx.moveTo(p0.x, p0.y);
+  let prevX = p0.x;
+  let prevY = p0.y;
   for (let i = 1; i < count; i++) {
-    const p = tx(m, buf[i * 2]!, buf[i * 2 + 1]!);
+    const px = buf[i * 2]!;
+    const py = buf[i * 2 + 1]!;
+    const p = tx(m, px, py);
+    // Пропускаем точки ближе 0.5px к предыдущей (pixel-skip LOD)
+    const dx = p.x - prevX;
+    const dy = p.y - prevY;
+    if (dx * dx + dy * dy < 0.25) continue; // 0.5^2 = 0.25
     ctx.lineTo(p.x, p.y);
+    prevX = p.x;
+    prevY = p.y;
   }
   if (closed) ctx.closePath();
   ctx.stroke();
