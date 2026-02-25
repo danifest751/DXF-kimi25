@@ -8,6 +8,7 @@ import type { NormalizedDocument, FlattenedEntity } from '../normalize/index.js'
 import { Camera } from './camera.js';
 import { RTree, type RTreeItem } from './rtree.js';
 import { renderEntity, type EntityRenderOptions } from './entity-renderer.js';
+import { TessellationCache } from './tessellation-cache.js';
 import { config } from '../config.js';
 
 /** Состояние видимости слоёв */
@@ -49,6 +50,7 @@ export class DXFRenderer {
   private needsRedraw: boolean = true;
   private piercePoints: readonly Point3D[] = [];
   private _showPiercePoints: boolean = false;
+  private tessCache: TessellationCache = new TessellationCache();
 
   constructor(options?: Partial<RendererOptions>) {
     this.camera = new Camera();
@@ -87,6 +89,7 @@ export class DXFRenderer {
     this.selectedHandles.clear();
     this.hoveredIndex = -1;
     this.piercePoints = [];
+    this.tessCache.clear();
     this.requestRedraw();
   }
 
@@ -102,6 +105,14 @@ export class DXFRenderer {
 
     // Строим R-tree
     this.buildRTree();
+
+    // Строим кэш тесселяции кривых
+    this.tessCache.build(
+      doc.flatEntities,
+      config.geometry.discretization.arcSegments,
+      config.geometry.discretization.splineSegments,
+      config.geometry.discretization.ellipseSegments,
+    );
 
     // Подгоняем камеру
     if (doc.totalBBox !== null) {
@@ -203,12 +214,13 @@ export class DXFRenderer {
       visibleBounds.max.y - visibleBounds.min.y,
     ) * 2;
 
-    const opts: EntityRenderOptions = {
+    const baseOpts: Omit<EntityRenderOptions, 'entityIndex'> = {
       arcSegments: config.geometry.discretization.arcSegments,
       splineSegments: config.geometry.discretization.splineSegments,
       ellipseSegments: config.geometry.discretization.ellipseSegments,
       pixelSize,
       viewExtent,
+      tessCache: this.tessCache,
     };
 
     // Получаем индексы видимых сущностей из R-tree
@@ -225,6 +237,8 @@ export class DXFRenderer {
       if (!this.isLayerVisible(fe.effectiveLayer)) continue;
       if (!fe.entity.visible) continue;
 
+      const opts: EntityRenderOptions = { ...baseOpts, entityIndex: idx };
+
       // Подсветка выбранных/наведённых
       const isSelected = this.selectedHandles.has(fe.entity.handle);
       const isHovered = idx === this.hoveredIndex;
@@ -235,7 +249,7 @@ export class DXFRenderer {
         const highlighted: FlattenedEntity = {
           ...fe,
           effectiveColor: color,
-          effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50), // толще
+          effectiveLineWeight: Math.max(fe.effectiveLineWeight, 50),
         };
         renderEntity(ctx, highlighted, opts);
         ctx.restore();

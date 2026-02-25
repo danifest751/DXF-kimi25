@@ -37,12 +37,12 @@ import {
   tessellateCircle,
   tessellateEllipse,
   tessellateSpline,
-  tessellateLWPolyline,
   DEG2RAD,
   mat4TransformPoint,
   IDENTITY_MATRIX,
 } from '../geometry/index.js';
 import type { FlattenedEntity } from '../normalize/index.js';
+import type { TessellationCache } from './tessellation-cache.js';
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -102,23 +102,27 @@ function renderRay(ctx: Ctx, e: DXFRayEntity, m: Matrix4x4, extent: number): voi
   ctx.stroke();
 }
 
-function renderCircle(ctx: Ctx, e: DXFCircleEntity, m: Matrix4x4, segments: number): void {
+function renderCircle(ctx: Ctx, e: DXFCircleEntity, m: Matrix4x4, segments: number, cached?: Float32Array): void {
+  if (cached !== undefined) { drawFloat32(ctx, cached, m, true); return; }
   const pts = tessellateCircle(e.center, e.radius, segments);
   drawPolyline(ctx, pts, m, true);
 }
 
-function renderArc(ctx: Ctx, e: DXFArcEntity, m: Matrix4x4, segments: number): void {
+function renderArc(ctx: Ctx, e: DXFArcEntity, m: Matrix4x4, segments: number, cached?: Float32Array): void {
+  if (cached !== undefined) { drawFloat32(ctx, cached, m, false); return; }
   const pts = tessellateArc(e.center, e.radius, e.startAngle, e.endAngle, segments);
   drawPolyline(ctx, pts, m, false);
 }
 
-function renderEllipse(ctx: Ctx, e: DXFEllipseEntity, m: Matrix4x4, segments: number): void {
+function renderEllipse(ctx: Ctx, e: DXFEllipseEntity, m: Matrix4x4, segments: number, cached?: Float32Array, cachedClosed?: boolean): void {
+  if (cached !== undefined) { drawFloat32(ctx, cached, m, cachedClosed ?? false); return; }
   const pts = tessellateEllipse(e.center, e.majorAxis, e.minorAxisRatio, e.startAngle, e.endAngle, segments);
   const isFull = Math.abs(e.endAngle - e.startAngle) >= Math.PI * 2 - 0.001;
   drawPolyline(ctx, pts, m, isFull);
 }
 
-function renderSpline(ctx: Ctx, e: DXFSplineEntity, m: Matrix4x4, segments: number): void {
+function renderSpline(ctx: Ctx, e: DXFSplineEntity, m: Matrix4x4, segments: number, cached?: Float32Array): void {
+  if (cached !== undefined) { drawFloat32(ctx, cached, m, e.closed); return; }
   const pts = tessellateSpline(e.degree, e.controlPoints, e.knots, e.weights, segments);
   drawPolyline(ctx, pts, m, e.closed);
 }
@@ -127,14 +131,20 @@ function renderPolyline(ctx: Ctx, e: DXFPolylineEntity, m: Matrix4x4): void {
   drawPolyline3D(ctx, e.vertices, m, e.closed);
 }
 
-function renderLWPolyline(ctx: Ctx, e: DXFLWPolylineEntity, m: Matrix4x4, segments: number): void {
-  const pts = tessellateLWPolyline(e.vertices, e.bulges, e.closed, segments);
-  if (pts.length < 2) return;
+function renderLWPolyline(ctx: Ctx, e: DXFLWPolylineEntity, m: Matrix4x4, _segments: number, cached?: Float32Array): void {
+  // Используем кэш если есть bulge-дуги, иначе рисуем вершины напрямую
+  if (cached !== undefined) {
+    drawFloat32(ctx, cached, m, e.closed);
+    return;
+  }
+  // Нет bulge — рисуем вершины без тесселяции
+  const verts = e.vertices;
+  if (verts.length < 2) return;
   ctx.beginPath();
-  const p0 = tx(m, pts[0]!.x, pts[0]!.y);
+  const p0 = tx(m, verts[0]!.x, verts[0]!.y);
   ctx.moveTo(p0.x, p0.y);
-  for (let i = 1; i < pts.length; i++) {
-    const p = tx(m, pts[i]!.x, pts[i]!.y);
+  for (let i = 1; i < verts.length; i++) {
+    const p = tx(m, verts[i]!.x, verts[i]!.y);
     ctx.lineTo(p.x, p.y);
   }
   if (e.closed) ctx.closePath();
@@ -356,6 +366,21 @@ function renderViewport(ctx: Ctx, e: DXFViewportEntity, m: Matrix4x4): void {
 
 // ─── Вспомогательные функции рисования ──────────────────────────────
 
+/** Рисует кривую из кэша (Float32Array xy-пар) */
+function drawFloat32(ctx: Ctx, buf: Float32Array, m: Matrix4x4, closed: boolean): void {
+  const count = buf.length / 2;
+  if (count < 2) return;
+  ctx.beginPath();
+  const p0 = tx(m, buf[0]!, buf[1]!);
+  ctx.moveTo(p0.x, p0.y);
+  for (let i = 1; i < count; i++) {
+    const p = tx(m, buf[i * 2]!, buf[i * 2 + 1]!);
+    ctx.lineTo(p.x, p.y);
+  }
+  if (closed) ctx.closePath();
+  ctx.stroke();
+}
+
 function drawPolyline(
   ctx: Ctx,
   pts: readonly { x: number; y: number; z: number }[],
@@ -402,6 +427,10 @@ export interface EntityRenderOptions {
   readonly ellipseSegments: number;
   readonly pixelSize: number; // размер 1 пикселя в мировых единицах
   readonly viewExtent: number; // размер видимой области (для XLINE/RAY)
+  /** Индекс сущности в flatEntities для поиска в кэше тесселяции */
+  readonly entityIndex?: number;
+  /** Кэш предвычисленных точек кривых */
+  readonly tessCache?: TessellationCache;
 }
 
 /**
@@ -414,6 +443,10 @@ export function renderEntity(
 ): void {
   const e = fe.entity;
   const m = fe.transform;
+  const idx = opts.entityIndex;
+  const cache = opts.tessCache;
+  const cached = (cache !== undefined && idx !== undefined) ? cache.get(idx) : undefined;
+  const cachedClosed = (cache !== undefined && idx !== undefined) ? cache.isClosed(idx) : undefined;
 
   setStrokeStyle(ctx, fe, opts.pixelSize);
   setFillStyle(ctx, fe);
@@ -422,12 +455,12 @@ export function renderEntity(
     case DXFEntityType.LINE: renderLine(ctx, e, m); break;
     case DXFEntityType.XLINE: renderXLine(ctx, e, m, opts.viewExtent); break;
     case DXFEntityType.RAY: renderRay(ctx, e, m, opts.viewExtent); break;
-    case DXFEntityType.CIRCLE: renderCircle(ctx, e, m, opts.arcSegments); break;
-    case DXFEntityType.ARC: renderArc(ctx, e, m, opts.arcSegments); break;
-    case DXFEntityType.ELLIPSE: renderEllipse(ctx, e, m, opts.ellipseSegments); break;
-    case DXFEntityType.SPLINE: renderSpline(ctx, e, m, opts.splineSegments); break;
+    case DXFEntityType.CIRCLE: renderCircle(ctx, e, m, opts.arcSegments, cached); break;
+    case DXFEntityType.ARC: renderArc(ctx, e, m, opts.arcSegments, cached); break;
+    case DXFEntityType.ELLIPSE: renderEllipse(ctx, e, m, opts.ellipseSegments, cached, cachedClosed); break;
+    case DXFEntityType.SPLINE: renderSpline(ctx, e, m, opts.splineSegments, cached); break;
     case DXFEntityType.POLYLINE: renderPolyline(ctx, e, m); break;
-    case DXFEntityType.LWPOLYLINE: renderLWPolyline(ctx, e, m, opts.arcSegments); break;
+    case DXFEntityType.LWPOLYLINE: renderLWPolyline(ctx, e, m, opts.arcSegments, cached); break;
     case DXFEntityType.POINT: renderPoint(ctx, e, m, opts.pixelSize); break;
     case DXFEntityType.SOLID: renderSolid(ctx, e, m); break;
     case DXFEntityType.TRACE: renderTrace(ctx, e, m); break;
