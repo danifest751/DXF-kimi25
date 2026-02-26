@@ -456,9 +456,9 @@ export function renderAllNestingSheets(): void {
 function buildItemDocs(): Map<number, ItemDocData> {
   const map = new Map<number, ItemDocData>();
   for (const f of loadedFiles) {
-    if (f.doc && f.doc.totalBBox) {
-      map.set(f.id, { flatEntities: f.doc.flatEntities, bbox: f.doc.totalBBox });
-    }
+    if (f.loading || !f.doc) continue;
+    const bbox = f.doc.totalBBox ?? { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
+    map.set(f.id, { flatEntities: f.doc.flatEntities, bbox });
   }
   console.log('[export] itemDocs keys:', [...map.keys()]);
   if (currentNestResult) {
