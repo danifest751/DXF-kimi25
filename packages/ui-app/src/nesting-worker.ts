@@ -6,7 +6,7 @@
 import { nestItems } from '@core/nesting/index.js';
 import type { NestingItem, NestingOptions, SheetSize } from '@core/nesting/index.js';
 
-export interface NestingWorkerRequest {
+interface NestingWorkerRequest {
   items: readonly NestingItem[];
   sheet: SheetSize;
   gap: number;
