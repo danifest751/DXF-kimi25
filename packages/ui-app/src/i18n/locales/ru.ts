@@ -144,6 +144,25 @@ export const ru = {
   'nesting.zoomLabel': 'Лист {n} — {parts} дет. — {fill}%',
   'nesting.resetQty': 'Сбросить на 1',
   'nesting.footer': '{w}×{h} мм  |  {sheets} листов  |  {fill}% заполнение',
+
+  // Units
+  'unit.m': ' м',
+  'unit.mm': ' мм',
+
+  // Status bar
+  'status.pierces': 'Врезок: {n}',
+  'status.cutLength': 'Рез: {len}',
+  'status.files': '{checked}/{total} файлов',
+
+  // Catalog actions
+  'catalog.row.title': 'Клик: показать только этот каталог. Чекбокс: добавить/убрать каталог из выборки.',
+  'catalog.rename.title': 'Переименовать каталог',
+  'catalog.delete.title': 'Удалить каталог',
+  'catalog.add.authRequired': 'Нужен вход для каталогов',
+  'catalog.add.prompt': 'Название каталога:',
+  'catalog.add.error': 'Не удалось создать каталог: {msg}',
+  'catalog.rename.error': 'Не удалось переименовать каталог: {msg}',
+  'catalog.delete.error': 'Не удалось удалить каталог: {msg}',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

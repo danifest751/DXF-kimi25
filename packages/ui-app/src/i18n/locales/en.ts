@@ -146,4 +146,23 @@ export const en: Record<TranslationKey, string> = {
   'nesting.zoomLabel': 'Sheet {n} — {parts} parts — {fill}%',
   'nesting.resetQty': 'Reset to 1',
   'nesting.footer': '{w}×{h} mm  |  {sheets} sheets  |  {fill}% fill',
+
+  // Units
+  'unit.m': ' m',
+  'unit.mm': ' mm',
+
+  // Status bar
+  'status.pierces': 'Pierces: {n}',
+  'status.cutLength': 'Cut: {len}',
+  'status.files': '{checked}/{total} files',
+
+  // Catalog actions
+  'catalog.row.title': 'Click: show only this catalog. Checkbox: add/remove catalog from selection.',
+  'catalog.rename.title': 'Rename catalog',
+  'catalog.delete.title': 'Delete catalog',
+  'catalog.add.authRequired': 'Sign in to use catalogs',
+  'catalog.add.prompt': 'Catalog name:',
+  'catalog.add.error': 'Failed to create catalog: {msg}',
+  'catalog.rename.error': 'Failed to rename catalog: {msg}',
+  'catalog.delete.error': 'Failed to delete catalog: {msg}',
 };

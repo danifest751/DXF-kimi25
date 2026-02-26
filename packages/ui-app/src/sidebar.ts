@@ -177,7 +177,7 @@ export function renderFileList(): void {
     ? [{ id: null, name: '' }]
     : [
         ...workspaceCatalogs.map((c) => ({ id: c.id, name: c.name })),
-        { id: null, name: 'Без каталога' },
+        { id: null, name: t('sidebar.uncategorized') },
       ];
 
   for (const catalog of catalogGroups) {
@@ -205,11 +205,11 @@ function buildCatalogRow(
   const catalogKey = catalog.id ?? UNCATEGORIZED_CATALOG_ID;
   const selected = selectedCatalogIds.has(catalogKey);
   catalogRow.classList.toggle('active', selected);
-  catalogRow.title = 'Клик: показать только этот каталог. Чекбокс: добавить/убрать каталог из выборки.';
+  catalogRow.title = t('catalog.row.title');
 
   const catalogActions = catalog.id
-    ? '<button class="catalog-btn" title="Переименовать каталог"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>'
-      + '<button class="catalog-btn danger" title="Удалить каталог"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+    ? `<button class="catalog-btn" title="${t('catalog.rename.title')}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>`
+      + `<button class="catalog-btn danger" title="${t('catalog.delete.title')}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>`
     : '';
 
   catalogRow.innerHTML = `
@@ -328,7 +328,7 @@ function buildCatalogRow(
             if (cat) (cat as { name: string }).name = catalog.name;
             renderCatalogFilter();
             renderFileList();
-            alert(`Не удалось переименовать каталог: ${err instanceof Error ? err.message : String(err)}`);
+            alert(t('catalog.rename.error', { msg: err instanceof Error ? err.message : String(err) }));
           });
       };
 
@@ -408,7 +408,7 @@ function buildCatalogRow(
             renderFileList();
             _recalcTotals();
             _updateNestItems();
-            alert(`Не удалось удалить каталог: ${err instanceof Error ? err.message : String(err)}`);
+            alert(t('catalog.delete.error', { msg: err instanceof Error ? err.message : String(err) }));
           });
       });
     });
@@ -485,15 +485,15 @@ export function recalcTotals(): void {
 
   const cutM = totalCutLength / 1000;
   ciPierces.textContent = String(totalPierces);
-  ciLength.textContent  = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLength.toFixed(1) + ' мм';
+  ciLength.textContent  = cutM >= 1 ? cutM.toFixed(2) + t('unit.m') : totalCutLength.toFixed(1) + t('unit.mm');
   sidebarFooter.classList.toggle('visible', loadedFiles.length > 0);
 
-  statusPierces.textContent    = totalPierces    > 0 ? `Врезок: ${totalPierces}` : '';
-  statusCutLength.textContent  = totalCutLength  > 0 ? `Рез: ${formatCutLength(totalCutLength)}` : '';
+  statusPierces.textContent    = totalPierces   > 0 ? t('status.pierces',   { n: String(totalPierces) }) : '';
+  statusCutLength.textContent  = totalCutLength  > 0 ? t('status.cutLength', { len: formatCutLength(totalCutLength) }) : '';
 
   const checkedCount = loadedFiles.filter(f => f.checked).length;
   statsEl.textContent = loadedFiles.length > 0
-    ? `${checkedCount}/${loadedFiles.length} файлов`
+    ? t('status.files', { checked: String(checkedCount), total: String(loadedFiles.length) })
     : '';
 
   updateBulkControlsUi();

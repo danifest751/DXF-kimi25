@@ -252,7 +252,7 @@ function showNestResults(): void {
   const totalPierces = commonLineActive ? Math.max(0, rawPierces - pierceDelta) : rawPierces;
   const totalCutLen  = commonLineActive ? Math.max(0, rawCutLen - sharedCutLength) : rawCutLen;
   const cutM = totalCutLen / 1000;
-  const cutStr = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLen.toFixed(1) + ' мм';
+  const cutStr = cutM >= 1 ? cutM.toFixed(2) + t('unit.m') : totalCutLen.toFixed(1) + t('unit.mm');
 
   let cardsHtml = `
     <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">${t('result.sheets.label')}</div></div>
@@ -262,7 +262,7 @@ function showNestResults(): void {
   `;
   if (commonLineActive && (sharedCutLength > 0 || pierceDelta > 0)) {
     cardsHtml += `
-      <div class="np-card"><div class="np-card-val">−${(sharedCutLength / 1000).toFixed(2)} м</div><div class="np-card-label">${t('result.saveCut.label')}</div></div>
+      <div class="np-card"><div class="np-card-val">−${(sharedCutLength / 1000).toFixed(2)}${t('unit.m')}</div><div class="np-card-label">${t('result.saveCut.label')}</div></div>
       <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">${t('result.savePierces.label')}</div></div>
     `;
   }
@@ -274,7 +274,7 @@ function showNestResults(): void {
       ? ` • ${t('result.commonLine.on')}`
       : ` • ${t('result.commonLine.noMatch')}`;
   }
-  const strategyBadgeLabel = r.strategy === 'true_shape' ? '🔷 Контурная' : r.strategy === 'maxrects_bbox' ? '📐 Точная' : r.strategy === 'blf_bbox' ? '📦 BLF' : '';
+  const strategyBadgeLabel = r.strategy === 'true_shape' ? t('nesting.mode.trueShape') : r.strategy === 'maxrects_bbox' ? t('nesting.mode.precise') : r.strategy === 'blf_bbox' ? 'BLF' : '';
   const badgeHtml = strategyBadgeLabel ? ` <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:rgba(99,102,241,0.18);color:#a5b4fc;font-size:10px;font-weight:600;letter-spacing:.5px;margin-left:6px;vertical-align:middle">${strategyBadgeLabel}</span>` : '';
   nestResultSummary.innerHTML = tx('result.placed', { placed: r.totalPlaced, required: r.totalRequired }) + clSummary + badgeHtml;
   nestResults.classList.remove('hidden');

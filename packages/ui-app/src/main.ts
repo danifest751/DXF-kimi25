@@ -403,8 +403,8 @@ btnSelectAllFiles.addEventListener('click', () => {
 });
 
 btnAddCatalog.addEventListener('click', () => {
-  if (!authSessionToken) { showAuthHint('Нужен вход для каталогов'); return; }
-  const name = prompt('Название каталога:')?.trim() ?? '';
+  if (!authSessionToken) { showAuthHint(t('catalog.add.authRequired')); return; }
+  const name = prompt(t('catalog.add.prompt'))?.trim() ?? '';
   if (!name) return;
   void apiPostJSON<{ success: boolean; catalog: import('./types.js').WorkspaceCatalog }>('/api/library-catalogs', {
     name,
@@ -415,7 +415,7 @@ btnAddCatalog.addEventListener('click', () => {
       renderCatalogFilter();
       renderFileList();
     })
-    .catch((e) => alert(`Не удалось создать каталог: ${e instanceof Error ? e.message : String(e)}`));
+    .catch((e) => alert(t('catalog.add.error', { msg: e instanceof Error ? e.message : String(e) })));
 });
 
 // ─── Resize ───────────────────────────────────────────────────────────
