@@ -269,10 +269,12 @@ async function addFiles(files: File[]): Promise<void> {
   }
 }
 
-container.addEventListener('dragover', (e) => { e.preventDefault(); dropOverlay.classList.add('active'); });
-container.addEventListener('dragleave', () => { dropOverlay.classList.remove('active'); });
+let _dragDepth = 0;
+container.addEventListener('dragenter', (e) => { e.preventDefault(); _dragDepth++; dropOverlay.classList.add('active'); });
+container.addEventListener('dragover',  (e) => { e.preventDefault(); });
+container.addEventListener('dragleave', () => { if (--_dragDepth <= 0) { _dragDepth = 0; dropOverlay.classList.remove('active'); } });
 container.addEventListener('drop', (e) => {
-  e.preventDefault(); dropOverlay.classList.remove('active');
+  e.preventDefault(); _dragDepth = 0; dropOverlay.classList.remove('active');
   if (e.dataTransfer?.files) {
     const dxfs = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.dxf'));
     if (dxfs.length > 0) addFiles(dxfs);
