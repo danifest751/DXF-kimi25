@@ -183,6 +183,7 @@ export async function runNesting(): Promise<void> {
             else reject(new Error(e.data.error ?? 'Worker error'));
           };
           worker.onerror = (ev) => { clearTimeout(tid); worker.terminate(); reject(new Error(ev.message)); };
+          console.log('[nesting] posting to worker, items:', items.length);
           worker.postMessage({ items, sheet, gap: effectiveGap, options });
         });
       } catch (workerErr) {
