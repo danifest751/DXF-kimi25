@@ -257,7 +257,9 @@ function showNestResults(): void {
       ? ` • ${t('result.commonLine.on')}`
       : ` • ${t('result.commonLine.noMatch')}`;
   }
-  nestResultSummary.textContent = tx('result.placed', { placed: r.totalPlaced, required: r.totalRequired }) + clSummary;
+  const strategyBadgeLabel = r.strategy === 'true_shape' ? '🔷 Контурная' : r.strategy === 'maxrects_bbox' ? '📐 Точная' : r.strategy === 'blf_bbox' ? '📦 BLF' : '';
+  const badgeHtml = strategyBadgeLabel ? ` <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:rgba(99,102,241,0.18);color:#a5b4fc;font-size:10px;font-weight:600;letter-spacing:.5px;margin-left:6px;vertical-align:middle">${strategyBadgeLabel}</span>` : '';
+  nestResultSummary.innerHTML = tx('result.placed', { placed: r.totalPlaced, required: r.totalRequired }) + clSummary + badgeHtml;
   nestResults.classList.remove('hidden');
   btnExportDXF.style.display = 'flex';
   btnExportCSV.style.display = 'flex';
@@ -406,8 +408,7 @@ export function renderAllNestingSheets(): void {
   const footY = margin + rows * (cellH + gap) + 4;
   ctx.font = '400 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  const strategyLabel = r.strategy === 'true_shape' ? '  [Контурная]' : r.strategy === 'maxrects_bbox' ? '  [Точная]' : r.strategy === 'blf_bbox' ? '  [BLF]' : '';
-  ctx.fillText(tx('nesting.footer', { w: sw, h: sh, sheets: n, fill: r.avgFillPercent }) + strategyLabel, margin, footY);
+  ctx.fillText(tx('nesting.footer', { w: sw, h: sh, sheets: n, fill: r.avgFillPercent }), margin, footY);
 
   nestSheetBtns.innerHTML = '';
   for (const cell of newCellRects) {
@@ -515,14 +516,19 @@ export function renderZoomSheet(sheetIndex: number): void {
   const colorMap = new Map<number, number>(); let ci = 0;
   for (const s of r.sheets) for (const p of s.placed) if (!colorMap.has(p.itemId)) colorMap.set(p.itemId, ci++);
 
+  const isTrueShapeZ = r.strategy === 'true_shape';
   for (const p of sheet.placed) {
     const color = PART_COLORS[(colorMap.get(p.itemId) ?? 0) % PART_COLORS.length]!;
     const px = p.x * zScale, py = p.y * zScale;
     const pw = p.width * zScale, ph = p.height * zScale;
-    ctx.fillStyle = color + '15'; ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
-    const file = loadedFiles.find(lf => lf.id === p.itemId);
-    if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 64);
+    if (isTrueShapeZ && p.contourPts && p.contourPts.length >= 3) {
+      drawTrueShapeContour(ctx, p.contourPts, 0, 0, zScale, color);
+    } else {
+      ctx.fillStyle = color + '15'; ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
+      const file = loadedFiles.find(lf => lf.id === p.itemId);
+      if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 64);
+    }
     const fontSize = Math.min(12, pw * 0.15, ph * 0.22);
     if (fontSize > 5) {
       ctx.font = `500 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'dd';
