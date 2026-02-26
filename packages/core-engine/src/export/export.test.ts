@@ -54,8 +54,15 @@ describe('exportNestingToDXF with real entities', () => {
     const hasRealEntities = lwCount > 0 || lineCount > 0;
     expect(hasRealEntities).toBe(true);
 
-    // Save for manual inspection
     writeFileSync(join(FIXTURE_DIR, 'output-l-bracket.dxf'), dxfOut, 'utf-8');
-    console.log('Saved output to test-dxf/output-l-bracket.dxf');
+
+    // Re-parse the output to verify it's valid
+    const outBuf = readFileSync(join(FIXTURE_DIR, 'output-l-bracket.dxf'));
+    const outAb = outBuf.buffer.slice(outBuf.byteOffset, outBuf.byteOffset + outBuf.byteLength) as ArrayBuffer;
+    const outParsed = parseDXF(outAb);
+    const outDoc = normalizeDocument(outParsed);
+    console.log('Re-parsed output: flatEntities =', outDoc.flatEntities.length);
+    for (const fe of outDoc.flatEntities) console.log('  type:', fe.entity.type, 'bbox:', fe.entity.boundingBox);
+    expect(outDoc.flatEntities.length).toBeGreaterThan(0);
   });
 });

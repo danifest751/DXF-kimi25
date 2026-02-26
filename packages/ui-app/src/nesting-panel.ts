@@ -503,25 +503,9 @@ export function exportAllSheetsDXF(): void {
 }
 
 export function exportFullNestingDXF(): void {
-  if (!currentNestResult) { alert('DEBUG: no currentNestResult'); return; }
+  if (!currentNestResult) return;
   const docs = buildItemDocs();
-  // Build diagnostic string
-  const lines: string[] = [];
-  lines.push(`sheets: ${currentNestResult.sheets.length}`);
-  lines.push(`itemDocs keys: [${[...docs.keys()].join(', ')}]`);
-  for (const [k, v] of docs) lines.push(`  id=${k} flatEntities=${v.flatEntities.length}`);
-  let found = 0, missing = 0;
-  for (const sh of currentNestResult.sheets) {
-    for (const p of sh.placed) {
-      if (docs.has(p.itemId)) found++; else { missing++; lines.push(`  MISSING itemId=${p.itemId}`); }
-    }
-  }
-  lines.push(`placed found=${found} missing=${missing}`);
   const dxfStr = exportNestingToDXF({ nestingResult: currentNestResult, itemDocs: docs });
-  const lwCount = (dxfStr.match(/\nLWPOLYLINE\n/g) ?? []).length;
-  const lineCount = (dxfStr.match(/\nLINE\n/g) ?? []).length;
-  lines.push(`output: LWPOLYLINE=${lwCount} LINE=${lineCount} chars=${dxfStr.length}`);
-  alert(lines.join('\n'));
   const blob = new Blob([dxfStr], { type: 'application/dxf' });
   downloadBlob(blob, 'nesting.dxf');
 }
