@@ -92,9 +92,10 @@ export function placeTrueShape(
   options: NestingOptions,
 ): NestingResult {
   const rotationEnabled = options.rotationEnabled ?? true;
-  // For true-shape, always limit to 4 angles max (0,90,180,270) to prevent browser hang.
-  // Fine rotation steps (1°/2°/5°) cause O(N²×360) NFP computations which freeze the UI.
-  const anglesDeg: number[] = rotationEnabled ? [0, 90, 180, 270] : [0];
+  // True-shape NFP is O(N²) per angle. Limit to avoid browser/worker freeze.
+  // With rotation: max 2 angles (0°, 90°) — enough for rectangular-ish parts.
+  // Without rotation: only 0°.
+  const anglesDeg: number[] = rotationEnabled ? [0, 90] : [0];
 
   const cache = new NfpCache();
 
