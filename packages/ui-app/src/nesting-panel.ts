@@ -4,7 +4,6 @@
  */
 
 import { apiPatchJSON, apiPostJSON, downloadBlob } from './api.js';
-import NestingWorker from './nesting-worker.js?worker';
 import { t, tx } from './i18n/index.js';
 import type { LoadedFile } from './types.js';
 import {
@@ -34,7 +33,6 @@ import {
 import { getAuthHeaders, saveGuestDraft } from './auth.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { NestingResult, NestingOptions, NestingItem } from '../../core-engine/src/nesting/index.js';
-import { buildContour } from '../../core-engine/src/contour/index.js';
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';
@@ -155,66 +153,32 @@ export async function runNesting(): Promise<void> {
   const effectiveGap = options.commonLine?.enabled ? 0 : gap;
   setLastNestingOptions({ ...options, commonLine: options.commonLine ? { ...options.commonLine } : undefined });
 
-  const useTrueShape = options.strategy === 'true_shape';
   const items: NestingItem[] = checked
     .filter((f) => !f.loading && f.doc != null)
     .map(f => {
       const bb = f.doc.totalBBox;
       const w = bb ? Math.abs(bb.max.x - bb.min.x) : 0;
       const h = bb ? Math.abs(bb.max.y - bb.min.y) : 0;
-      let contour: NestingItem['contour'] | undefined;
-      if (useTrueShape) {
-        const result = buildContour(f.doc.flatEntities);
-        if (result && result.outerRing.length >= 3) {
-          contour = result.outerRing;
-        }
-      }
-      return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity, ...(contour ? { contour } : {}) };
+      return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity };
     });
 
   try {
-    if (useTrueShape) {
-      // Run in Web Worker to avoid blocking the main thread
-      // Falls back to synchronous local if Worker fails
-      let result: NestingResult;
-      try {
-        result = await new Promise<NestingResult>((resolve, reject) => {
-          const worker = new NestingWorker();
-          const tid = setTimeout(() => { worker.terminate(); reject(new Error('Worker timeout (60s)')); }, 60_000);
-          worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: NestingResult; error?: string }>) => {
-            clearTimeout(tid);
-            worker.terminate();
-            if (e.data.ok && e.data.result) resolve(e.data.result);
-            else reject(new Error(e.data.error ?? 'Worker error'));
-          };
-          worker.onerror = (ev) => { clearTimeout(tid); worker.terminate(); reject(new Error(ev.message)); };
-          console.log('[nesting] posting to worker, items:', items.length);
-          worker.postMessage({ items, sheet, gap: effectiveGap, options });
-        });
-      } catch (workerErr) {
-        console.error('[nesting] Worker failed:', workerErr);
-        throw workerErr;
-      }
-      setCurrentNestResult(result);
+    try {
+      const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+        items, sheet, gap: effectiveGap,
+        rotationEnabled: options.rotationEnabled,
+        rotationAngleStepDeg: options.rotationAngleStepDeg,
+        strategy: options.strategy,
+        multiStart: options.multiStart,
+        seed: options.seed,
+        commonLine: options.commonLine,
+      });
+      setCurrentNestResult(resp.data);
+      setNestingComputeMode('api');
+    } catch (apiErr) {
+      console.warn('[nesting] API failed, falling back to local:', apiErr);
+      setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
       setNestingComputeMode('local');
-    } else {
-      try {
-        const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
-          items, sheet, gap: effectiveGap,
-          rotationEnabled: options.rotationEnabled,
-          rotationAngleStepDeg: options.rotationAngleStepDeg,
-          strategy: options.strategy,
-          multiStart: options.multiStart,
-          seed: options.seed,
-          commonLine: options.commonLine,
-        });
-        setCurrentNestResult(resp.data);
-        setNestingComputeMode('api');
-      } catch (apiErr) {
-        console.warn('[nesting] API failed, falling back to local:', apiErr);
-        setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
-        setNestingComputeMode('local');
-      }
     }
   } catch (err) {
     console.error('[nesting] failed:', err);
@@ -245,7 +209,6 @@ export async function runNesting(): Promise<void> {
 let _autoRerunTimer: ReturnType<typeof setTimeout> | null = null;
 export function autoRerunNesting(): void {
   if (!nestingMode && !currentNestResult) return;
-  if (getNestingOptions().strategy === 'true_shape') return; // too slow for auto-rerun
   if (_autoRerunTimer !== null) clearTimeout(_autoRerunTimer);
   _autoRerunTimer = setTimeout(() => { _autoRerunTimer = null; void runNesting(); }, 400);
 }
