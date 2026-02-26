@@ -137,10 +137,15 @@ export function setNestModeValue(val: string): void {
 
 // ─── Run nesting ──────────────────────────────────────────────────────
 
+let _nestingRunning = false;
+
 export async function runNesting(): Promise<void> {
   const checked = loadedFiles.filter((f) => f.checked);
   if (checked.length === 0) return;
+  if (_nestingRunning) return;
+  _nestingRunning = true;
 
+  const nestLabel = t('nesting.run');
   btnNestRun.disabled = true;
   btnNestRun.textContent = '…';
 
@@ -217,8 +222,9 @@ export async function runNesting(): Promise<void> {
     nestResults.classList.remove('hidden');
     return;
   } finally {
+    _nestingRunning = false;
     btnNestRun.disabled = false;
-    btnNestRun.textContent = t('nesting.run');
+    btnNestRun.textContent = nestLabel;
   }
   _updateModeBadge();
 
@@ -239,6 +245,7 @@ export async function runNesting(): Promise<void> {
 let _autoRerunTimer: ReturnType<typeof setTimeout> | null = null;
 export function autoRerunNesting(): void {
   if (!nestingMode && !currentNestResult) return;
+  if (getNestingOptions().strategy === 'true_shape') return; // too slow for auto-rerun
   if (_autoRerunTimer !== null) clearTimeout(_autoRerunTimer);
   _autoRerunTimer = setTimeout(() => { _autoRerunTimer = null; void runNesting(); }, 400);
 }
