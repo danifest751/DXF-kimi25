@@ -210,18 +210,16 @@ function tryPlaceOnSheet(
     // 3. Collect NFPs of all already-placed items against this rotated item
     const nfps: Poly2D[] = [];
     for (const pe of state.placed) {
-      const cacheKey_angle = angle; // angle of orbiting item B
-      let nfp: Poly2D[] | undefined = cache.get(pe.itemId, copy.itemId, cacheKey_angle);
+      // Cache key includes both the placed item's angle and the orbiting item's angle
+      const cacheKeyAngle = pe.angleDeg * 1000 + angle;
+      let nfp: Poly2D[] | undefined = cache.get(pe.itemId, copy.itemId, cacheKeyAngle);
       if (nfp === undefined) {
         nfp = computeNFP(pe.originContour, rotated);
-        cache.set(pe.itemId, copy.itemId, cacheKey_angle, nfp);
+        cache.set(pe.itemId, copy.itemId, cacheKeyAngle, nfp);
       }
-      // Translate NFP by placed item's origin
-      const bb = polyBBox(pe.originContour);
-      const ox = pe.item.x;
-      const oy = pe.item.y;
+      // NFP is relative to stationary A's origin → translate to A's absolute position on sheet
       for (const nfpPoly of nfp) {
-        nfps.push(translatePoly(nfpPoly, ox - bb.minX, oy - bb.minY));
+        nfps.push(translatePoly(nfpPoly, pe.item.x, pe.item.y));
       }
     }
 
