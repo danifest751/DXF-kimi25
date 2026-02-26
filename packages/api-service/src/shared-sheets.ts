@@ -6,6 +6,7 @@
 
 import crypto from 'node:crypto';
 import type { NestingResult } from '../../core-engine/src/nesting/index.js';
+import type { ItemDocData } from '../../core-engine/src/export/index.js';
 import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 
 export interface SharedSheet {
@@ -13,6 +14,8 @@ export interface SharedSheet {
   readonly sheetIndex: number;
   readonly singleResult: NestingResult;
   readonly createdAt: number;
+  /** Geometry data for each itemId — used to generate real DXF entities on server */
+  readonly itemDocs?: Record<number, ItemDocData>;
 }
 
 interface SharedSheetRow {
@@ -20,6 +23,7 @@ interface SharedSheetRow {
   readonly sheet_index: number;
   readonly single_result: NestingResult;
   readonly created_at: string;
+  readonly item_docs?: Record<number, ItemDocData>;
 }
 
 const SHARED_SHEET_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -42,6 +46,7 @@ function fromRow(row: SharedSheetRow): SharedSheet {
     sheetIndex: row.sheet_index,
     singleResult: row.single_result,
     createdAt: Date.parse(row.created_at),
+    itemDocs: row.item_docs,
   };
 }
 
@@ -51,6 +56,7 @@ function toRow(entry: SharedSheet): SharedSheetRow {
     sheet_index: entry.sheetIndex,
     single_result: entry.singleResult,
     created_at: new Date(entry.createdAt).toISOString(),
+    item_docs: entry.itemDocs,
   };
 }
 

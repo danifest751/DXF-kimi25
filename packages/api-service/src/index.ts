@@ -790,11 +790,12 @@ app.post('/api/export/csv', heavyRateLimit, async (req: Request, res: Response):
 app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     await pruneExpiredSheets();
-    const { nestingResult } = req.body as { nestingResult?: NestingResult };
+    const { nestingResult, itemDocs: itemDocsRaw } = req.body as { nestingResult?: NestingResult; itemDocs?: Record<number, unknown> };
     if (!nestingResult || !nestingResult.sheets) {
       res.status(400).json({ error: 'nestingResult is required' });
       return;
     }
+    const itemDocs = itemDocsRaw as Record<number, import('../../core-engine/src/export/index.js').ItemDocData> | undefined;
 
     // P6: limit sheets to prevent loop/store abuse
     const MAX_SHAREABLE_SHEETS = 50;
@@ -829,6 +830,7 @@ app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (re
         sheetIndex: i,
         singleResult,
         createdAt: Date.now(),
+        itemDocs,
       });
       hashes.push(hash);
     }
@@ -850,7 +852,10 @@ app.get('/api/nesting/sheet/:hash', heavyRateLimit, async (req: Request, res: Re
       return;
     }
 
-    const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
+    const itemDocsMap = entry.itemDocs
+      ? new Map(Object.entries(entry.itemDocs).map(([k, v]) => [Number(k), v] as const))
+      : undefined;
+    const dxf = exportNestingToDXF({ nestingResult: entry.singleResult, itemDocs: itemDocsMap });
     res.setHeader('Content-Type', 'application/dxf');
     res.setHeader('Content-Disposition', `attachment; filename="sheet_${entry.sheetIndex + 1}_${hash}.dxf"`);
     res.send(dxf);

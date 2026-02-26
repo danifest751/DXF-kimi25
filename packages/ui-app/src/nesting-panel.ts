@@ -196,8 +196,10 @@ export async function runNesting(): Promise<void> {
   setNestSheetHashes([]);
   if (currentNestResult) {
     try {
+      const itemDocsObj: Record<number, ItemDocData> = Object.fromEntries(buildItemDocs());
       const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting-share', {
         nestingResult: currentNestResult,
+        itemDocs: itemDocsObj,
       });
       setNestSheetHashes(shareResp.hashes);
     } catch { /* no hashes */ }
