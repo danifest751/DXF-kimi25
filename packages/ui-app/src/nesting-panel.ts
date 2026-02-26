@@ -4,6 +4,7 @@
  */
 
 import { apiPatchJSON, apiPostJSON, downloadBlob } from './api.js';
+import NestingWorker from './nesting-worker.js?worker';
 import { t, tx } from './i18n/index.js';
 import type { LoadedFile } from './types.js';
 import {
@@ -168,9 +169,18 @@ export async function runNesting(): Promise<void> {
 
   try {
     if (useTrueShape) {
-      // true_shape runs locally; yield to browser first so loading state renders
-      await new Promise<void>(r => setTimeout(r, 20));
-      setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
+      // Run in Web Worker to avoid blocking the main thread
+      const result = await new Promise<NestingResult>((resolve, reject) => {
+        const worker = new NestingWorker();
+        worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: NestingResult; error?: string }>) => {
+          worker.terminate();
+          if (e.data.ok && e.data.result) resolve(e.data.result);
+          else reject(new Error(e.data.error ?? 'Worker error'));
+        };
+        worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message)); };
+        worker.postMessage({ items, sheet, gap: effectiveGap, options });
+      });
+      setCurrentNestResult(result);
       setNestingComputeMode('local');
     } else {
       try {
