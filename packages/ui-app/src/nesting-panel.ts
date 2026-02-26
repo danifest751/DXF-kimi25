@@ -168,7 +168,8 @@ export async function runNesting(): Promise<void> {
 
   try {
     if (useTrueShape) {
-      // true_shape uses clipper2-js which times out on Vercel serverless — run locally
+      // true_shape runs locally; yield to browser first so loading state renders
+      await new Promise<void>(r => setTimeout(r, 20));
       setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
       setNestingComputeMode('local');
     } else {
