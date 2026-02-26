@@ -111,11 +111,13 @@ export function getNestingOptions(): NestingOptions {
   const seed = Number.isFinite(Number(nestSeed.value)) ? Math.trunc(Number(nestSeed.value)) : 0;
   const maxMergeDistanceMm = Number.isFinite(Number(nestCommonLineDist.value)) ? Number(nestCommonLineDist.value) : 0.2;
   const minSharedLenMm = Number.isFinite(Number(nestCommonLineMinLen.value)) ? Number(nestCommonLineMinLen.value) : 20;
+  const modeVal = getNestModeValue();
+  const strategy = modeVal === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
   return {
     rotationEnabled: nestRotateEnabled.checked,
     rotationAngleStepDeg,
-    strategy: 'maxrects_bbox',
-    multiStart: true,
+    strategy,
+    multiStart: modeVal !== 'true_shape',
     seed,
     commonLine: { enabled: nestCommonLineEnabled.checked, maxMergeDistanceMm, minSharedLenMm },
   };

@@ -101,6 +101,11 @@ const strings = {
     modeFast: 'Быстрый',
     modePrecise: 'Точный',
     modeCommon: 'Общий рез',
+    modeContour: 'Контурная',
+    btnModeContour: 'Контурная',
+    nestingModeContour: '▶️ Контурная раскладка',
+    nestingModeContourWarning: '⚠️ Медленно при >30 деталей',
+
 
     // Buttons
     btnNesting: '▶️ Раскладка',
@@ -206,6 +211,11 @@ const strings = {
     modeFast: 'Fast',
     modePrecise: 'Precise',
     modeCommon: 'Common cut',
+    modeContour: 'True shape',
+    btnModeContour: 'True shape',
+    nestingModeContour: '▶️ True shape nesting',
+    nestingModeContourWarning: '⚠️ Slow with >30 parts',
+
 
     btnNesting: '▶️ Nesting',
     btnSettings: '⚙️ Settings',

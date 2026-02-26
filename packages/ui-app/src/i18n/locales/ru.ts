@@ -43,6 +43,8 @@ export const ru = {
   'nesting.mode': 'Режим',
   'nesting.mode.precise': 'Точно',
   'nesting.mode.common': 'Общий рез',
+  'nesting.mode.trueShape': 'Контурная',
+  'nesting.mode.trueShape.warning': 'Контурная раскладка медленнее при >30 деталей',
   'nesting.sheet': 'Лист металла',
   'nesting.sheet.custom': 'Свой размер...',
   'nesting.width': 'Ширина',

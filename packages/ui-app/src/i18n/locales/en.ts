@@ -45,6 +45,8 @@ export const en: Record<TranslationKey, string> = {
   'nesting.mode': 'Mode',
   'nesting.mode.precise': 'Precise',
   'nesting.mode.common': 'Common cut',
+  'nesting.mode.trueShape': 'True shape',
+  'nesting.mode.trueShape.warning': 'True shape nesting is slower with >30 parts',
   'nesting.sheet': 'Sheet',
   'nesting.sheet.custom': 'Custom size...',
   'nesting.width': 'Width',
