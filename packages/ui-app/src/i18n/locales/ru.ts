@@ -103,6 +103,45 @@ export const ru = {
   // Auth / workspace
   'auth.uploadHint.guest': 'Войдите чтобы сохранить файлы в облако',
   'auth.uploadHint.user': 'Файлы сохраняются в вашу библиотеку',
+  'auth.login.prompt': 'Введите код из Telegram бота (/login):',
+  'auth.codeInvalid': 'Код неверный или истек',
+  'auth.changeAccount': 'Сменить Telegram',
+  'auth.changeAccount.title': 'Сменить Telegram-сессию',
+
+  // Sidebar dynamic
+  'sidebar.addFiles.title': 'Добавить DXF файлы',
+  'sidebar.addFiles.toCatalog': 'Добавить DXF → {name}',
+  'sidebar.addFiles.uncategorized': 'Добавить DXF → Без каталога',
+  'sidebar.selectAll.select': 'Выделить все',
+  'sidebar.selectAll.deselect': 'Снять выделение',
+  'sidebar.selectAll.selectTitle': 'Выделить все файлы',
+  'sidebar.selectAll.deselectTitle': 'Снять выделение со всех файлов',
+  'sidebar.allCatalogs': 'Все каталоги',
+  'sidebar.uncategorized': 'Без каталога',
+
+  // Workspace progress/errors
+  'workspace.loading': 'Загрузка: {name}',
+  'workspace.loadError': 'Ошибка загрузки {name}: {msg}',
+
+  // Nesting result cards
+  'result.sheets.label': 'Листов',
+  'result.fill.label': 'Заполнение',
+  'result.pierces.label': 'Врезок',
+  'result.cutLength.label': 'Длина реза',
+  'result.saveCut.label': 'Экономия реза',
+  'result.savePierces.label': 'Экономия врезок',
+  'result.placed': 'Размещено {placed} из {required} деталей',
+  'result.commonLine.on': 'Совместный рез: ВКЛ',
+  'result.commonLine.noMatch': 'Совместный рез: ВКЛ (совпадения не найдены)',
+
+  // Nesting sheet buttons
+  'nesting.sheet.download': 'Скачать лист #{n} (DXF)',
+  'nesting.sheet.copyHash': 'Копировать код: {hash}',
+  'nesting.sheet.hashCopied': '✓ Скопировано',
+  'nesting.copyHashes.title': 'Копировать все коды',
+  'nesting.zoomLabel': 'Лист {n} — {parts} дет. — {fill}%',
+  'nesting.resetQty': 'Сбросить на 1',
+  'nesting.footer': '{w}×{h} мм  |  {sheets} листов  |  {fill}% заполнение',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

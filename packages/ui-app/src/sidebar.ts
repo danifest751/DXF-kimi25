@@ -4,6 +4,7 @@
  */
 
 import { apiPatchJSON, apiPostJSON } from './api.js';
+import { t, tx } from './i18n/index.js';
 import type { LoadedFile, WorkspaceCatalog } from './types.js';
 import {
   loadedFiles, workspaceCatalogs, selectedCatalogIds,
@@ -82,14 +83,14 @@ export function showDeleteCatalogModal(
 
 export function updateUploadTargetHint(): void {
   if (!authSessionToken) {
-    btnAddFiles.title = 'Добавить DXF файлы';
+    btnAddFiles.title = t('sidebar.addFiles.title');
     return;
   }
   const catId = getPreferredUploadCatalogId();
   const cat = catId ? workspaceCatalogs.find(c => c.id === catId) : null;
   btnAddFiles.title = cat
-    ? `Добавить DXF → ${cat.name}`
-    : 'Добавить DXF → Без каталога';
+    ? tx('sidebar.addFiles.toCatalog', { name: cat.name })
+    : t('sidebar.addFiles.uncategorized');
 }
 
 // ─── Bulk controls ────────────────────────────────────────────────────
@@ -97,8 +98,8 @@ export function updateUploadTargetHint(): void {
 export function updateBulkControlsUi(): void {
   const visibleFiles = loadedFiles.filter((f) => isFileInSelectedCatalogs(f));
   const hasUnchecked = visibleFiles.some((f) => !f.checked);
-  btnSelectAllFiles.textContent = hasUnchecked ? 'Выделить все' : 'Снять выделение';
-  btnSelectAllFiles.title = hasUnchecked ? 'Выделить все файлы' : 'Снять выделение со всех файлов';
+  btnSelectAllFiles.textContent = hasUnchecked ? t('sidebar.selectAll.select') : t('sidebar.selectAll.deselect');
+  btnSelectAllFiles.title = hasUnchecked ? t('sidebar.selectAll.selectTitle') : t('sidebar.selectAll.deselectTitle');
 }
 
 // ─── Catalog filter ───────────────────────────────────────────────────
@@ -118,7 +119,7 @@ export function renderCatalogFilter(): void {
 
   const allChip = document.createElement('button');
   allChip.className = 'catalog-chip';
-  allChip.textContent = 'Все каталоги';
+  allChip.textContent = t('sidebar.allCatalogs');
   allChip.classList.toggle('active', totalCatalogsCount > 0 && selectedCatalogIds.size >= totalCatalogsCount);
   allChip.addEventListener('click', () => {
     selectAllCatalogsForCurrentData();
@@ -148,7 +149,7 @@ export function renderCatalogFilter(): void {
   if (hasUncategorized) {
     const uncat = document.createElement('button');
     uncat.className = 'catalog-chip';
-    uncat.textContent = 'Без каталога';
+    uncat.textContent = t('sidebar.uncategorized');
     uncat.classList.toggle('active', selectedCatalogIds.has(UNCATEGORIZED_CATALOG_ID));
     uncat.addEventListener('click', () => {
       if (selectedCatalogIds.has(UNCATEGORIZED_CATALOG_ID)) {

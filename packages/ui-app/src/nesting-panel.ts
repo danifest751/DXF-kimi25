@@ -4,6 +4,7 @@
  */
 
 import { apiPatchJSON, apiPostJSON, downloadBlob } from './api.js';
+import { t, tx } from './i18n/index.js';
 import type { LoadedFile } from './types.js';
 import {
   loadedFiles, authSessionToken,
@@ -71,7 +72,7 @@ export function updateNestItems(): void {
       <button class="np-qty-btn" data-delta="-10">−10</button>
       <input type="number" class="np-item-qty" min="1" value="${f.quantity}" />
       <button class="np-qty-btn" data-delta="10">+10</button>
-      <button class="np-qty-rst" title="Сбросить на 1">↺</button>
+      <button class="np-qty-rst" data-i18n-title="nesting.resetQty">↺</button>
     `;
     (row.querySelector('.np-item-name') as HTMLSpanElement).textContent = f.name;
     const qtyInput = row.querySelector('input') as HTMLInputElement;
@@ -226,15 +227,15 @@ function showNestResults(): void {
   const cutStr = cutM >= 1 ? cutM.toFixed(2) + ' м' : totalCutLen.toFixed(1) + ' мм';
 
   let cardsHtml = `
-    <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">Листов</div></div>
-    <div class="np-card"><div class="np-card-val">${r.avgFillPercent}%</div><div class="np-card-label">Заполнение</div></div>
-    <div class="np-card"><div class="np-card-val">${totalPierces}</div><div class="np-card-label">Врезок</div></div>
-    <div class="np-card"><div class="np-card-val">${cutStr}</div><div class="np-card-label">Длина реза</div></div>
+    <div class="np-card"><div class="np-card-val">${r.totalSheets}</div><div class="np-card-label">${t('result.sheets.label')}</div></div>
+    <div class="np-card"><div class="np-card-val">${r.avgFillPercent}%</div><div class="np-card-label">${t('result.fill.label')}</div></div>
+    <div class="np-card"><div class="np-card-val">${totalPierces}</div><div class="np-card-label">${t('result.pierces.label')}</div></div>
+    <div class="np-card"><div class="np-card-val">${cutStr}</div><div class="np-card-label">${t('result.cutLength.label')}</div></div>
   `;
   if (commonLineActive && (sharedCutLength > 0 || pierceDelta > 0)) {
     cardsHtml += `
-      <div class="np-card"><div class="np-card-val">−${(sharedCutLength / 1000).toFixed(2)} м</div><div class="np-card-label">Экономия реза</div></div>
-      <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">Экономия врезок</div></div>
+      <div class="np-card"><div class="np-card-val">−${(sharedCutLength / 1000).toFixed(2)} м</div><div class="np-card-label">${t('result.saveCut.label')}</div></div>
+      <div class="np-card"><div class="np-card-val">−${pierceDelta}</div><div class="np-card-label">${t('result.savePierces.label')}</div></div>
     `;
   }
   nestResultCards.innerHTML = cardsHtml;
@@ -242,10 +243,10 @@ function showNestResults(): void {
   let clSummary = '';
   if (commonLineActive) {
     clSummary = sharedCutLength > 0 || pierceDelta > 0
-      ? ' • Совместный рез: ВКЛ'
-      : ' • Совместный рез: ВКЛ (совпадения не найдены)';
+      ? ` • ${t('result.commonLine.on')}`
+      : ` • ${t('result.commonLine.noMatch')}`;
   }
-  nestResultSummary.textContent = `Размещено ${r.totalPlaced} из ${r.totalRequired} деталей${clSummary}`;
+  nestResultSummary.textContent = tx('result.placed', { placed: r.totalPlaced, required: r.totalRequired }) + clSummary;
   nestResults.classList.remove('hidden');
   btnExportDXF.style.display = 'flex';
   btnExportCSV.style.display = 'flex';
@@ -366,13 +367,13 @@ export function renderAllNestingSheets(): void {
   const footY = margin + rows * (cellH + gap) + 4;
   ctx.font = '400 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText(`${sw}×${sh} мм  |  ${n} листов  |  ${r.avgFillPercent}% заполнение`, margin, footY);
+  ctx.fillText(tx('nesting.footer', { w: sw, h: sh, sheets: n, fill: r.avgFillPercent }), margin, footY);
 
   nestSheetBtns.innerHTML = '';
   for (const cell of newCellRects) {
     const hash = nestSheetHashes[cell.si] ?? '';
     const btn = document.createElement('button');
-    btn.className = 'nest-sheet-dl'; btn.title = `Скачать лист #${cell.si + 1} (DXF)`;
+    btn.className = 'nest-sheet-dl'; btn.title = tx('nesting.sheet.download', { n: cell.si + 1 });
     btn.style.left = `${cell.x + cell.w - 28}px`; btn.style.top = `${cell.y + 4}px`;
     btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     const si = cell.si;
@@ -380,7 +381,7 @@ export function renderAllNestingSheets(): void {
     nestSheetBtns.appendChild(btn);
     if (hash) {
       const hb = document.createElement('button');
-      hb.className = 'nest-sheet-hash'; hb.title = `Копировать код: ${hash}`;
+      hb.className = 'nest-sheet-hash'; hb.title = tx('nesting.sheet.copyHash', { hash });
       hb.style.left = `${cell.x + cell.w - 28 - 68}px`; hb.style.top = `${cell.y + 4}px`;
       hb.textContent = hash;
       hb.addEventListener('click', (e) => {
@@ -424,8 +425,8 @@ export function copyAllHashes(feedbackEl: HTMLElement): void {
   void navigator.clipboard.writeText(nestSheetHashes.join('\n')).then(() => {
     const orig = feedbackEl.innerHTML;
     feedbackEl.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2"><polyline points="20 6 9 17 4 12"/></svg>';
-    feedbackEl.title = '✓ Скопировано';
-    setTimeout(() => { feedbackEl.innerHTML = orig; feedbackEl.title = 'Копировать все коды'; }, 1200);
+    feedbackEl.title = t('nesting.sheet.hashCopied');
+    setTimeout(() => { feedbackEl.innerHTML = orig; feedbackEl.title = t('nesting.copyHashes.title'); }, 1200);
   });
 }
 
@@ -497,7 +498,7 @@ export function renderZoomSheet(sheetIndex: number): void {
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText(`×${zoomLevel.toFixed(1)}`, popW - 8, 7);
   }
-  nestZoomLabel.textContent = `Лист ${sheetIndex + 1}  —  ${sheet.placed.length} дет.  —  ${sheet.fillPercent}%`;
+  nestZoomLabel.textContent = tx('nesting.zoomLabel', { n: sheetIndex + 1, parts: sheet.placed.length, fill: sheet.fillPercent });
 }
 
 export function positionPopup(mouseX: number, mouseY: number): void {

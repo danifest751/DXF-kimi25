@@ -4,6 +4,7 @@
  */
 
 import { apiGetJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
+import { t } from './i18n/index.js';
 import type { LoadedFile, WorkspaceCatalog } from './types.js';
 import {
   authSessionToken, authWorkspaceId,
@@ -269,7 +270,7 @@ export async function restoreAuthSession(): Promise<void> {
 }
 
 export async function runTelegramLoginFlow(): Promise<void> {
-  const code = prompt('Введите код из Telegram бота (/login):')?.trim().toUpperCase() ?? '';
+  const code = prompt(t('auth.login.prompt'))?.trim().toUpperCase() ?? '';
   if (!code) return;
   try {
     const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
@@ -280,7 +281,7 @@ export async function runTelegramLoginFlow(): Promise<void> {
     await _reloadFromServer();
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
-    showAuthHint('Код неверный или истек');
+    showAuthHint(t('auth.codeInvalid'));
     console.error('Telegram login failed:', details);
   }
 }
@@ -293,15 +294,15 @@ export function applyAuthUiState(updateUploadTargetHint: VoidFn): void {
   if (isAuthenticated) {
     const shortId = authWorkspaceId.length > 12 ? authWorkspaceId.slice(0, 12) + '…' : authWorkspaceId;
     authWorkspace.textContent = `WS: ${shortId}`;
-    btnAuthLogin.textContent  = 'Сменить Telegram';
-    btnAuthLogin.title        = 'Сменить Telegram-сессию';
+    btnAuthLogin.textContent  = t('auth.changeAccount');
+    btnAuthLogin.title        = t('auth.changeAccount.title');
     btnAuthLogout.hidden      = false;
     btnAddCatalog.hidden      = false;
     return;
   }
-  authWorkspace.textContent = 'Гость';
-  btnAuthLogin.textContent  = 'Вход Telegram';
-  btnAuthLogin.title        = 'Вход через Telegram код';
+  authWorkspace.textContent = t('toolbar.guest');
+  btnAuthLogin.textContent  = t('toolbar.login');
+  btnAuthLogin.title        = t('toolbar.login.title');
   btnAuthLogout.hidden      = true;
   btnAddCatalog.hidden      = true;
   updateUploadTargetHint();

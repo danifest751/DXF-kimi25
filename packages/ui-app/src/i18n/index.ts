@@ -22,6 +22,11 @@ export function t(key: TranslationKey): string {
   return locales[_locale][key] ?? locales['ru'][key] ?? key;
 }
 
+/** Translate with {placeholder} substitution. */
+export function tx(key: TranslationKey, vars: Record<string, string | number>): string {
+  return t(key).replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
+}
+
 /** Get active locale. */
 export function getLocale(): Locale {
   return _locale;

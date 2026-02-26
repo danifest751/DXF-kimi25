@@ -5,6 +5,7 @@
  */
 
 import { apiGetJSON, apiPatchJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
+import { t, tx } from './i18n/index.js';
 import type { LoadedFile, UICuttingStats, WorkspaceCatalog } from './types.js';
 import {
   authSessionToken, UNCATEGORIZED_CATALOG_ID,
@@ -241,7 +242,7 @@ export async function loadSingleFile(
 ): Promise<void> {
   progressBar.classList.remove('hidden');
   progressFill.style.width = '0%';
-  progressLabel.textContent = `Загрузка: ${file.name}`;
+  progressLabel.textContent = tx('workspace.loading', { name: file.name });
 
   try {
     const buffer = await file.arrayBuffer();
@@ -303,7 +304,7 @@ export async function loadSingleFile(
   } catch (err) {
     progressBar.classList.add('hidden');
     const msg = err instanceof Error ? err.message : String(err);
-    alert(`Ошибка загрузки ${file.name}: ${msg}`);
+    alert(tx('workspace.loadError', { name: file.name, msg }));
   }
 }
 
