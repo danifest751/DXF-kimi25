@@ -292,7 +292,11 @@ function classifyRings(rawLoops: Pt[][]): Ring[] {
   // Ensure outer rings are CCW (positive area), holes are CW.
   // In DXF the winding is not always consistent — use absolute area
   // and containment to determine outer vs hole.
-  if (rings.length <= 1) return rings;
+  // Single ring: always treat as outer regardless of winding.
+  if (rings.length <= 1) {
+    if (rings.length === 1) rings[0]!.isOuter = true;
+    return rings;
+  }
 
   // Sort descending by absolute area
   rings.sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
