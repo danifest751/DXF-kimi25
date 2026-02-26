@@ -16,6 +16,7 @@ import './styles/responsive.css';
 import { apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
 import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
+import { DXFRenderer } from '../../core-engine/src/render/renderer.js';
 import { SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
 import type { Color } from '../../core-engine/src/types/index.js';
@@ -157,6 +158,160 @@ function syncWelcomeVisibility(): void {
   welcome.classList.toggle('hidden', loadedFiles.length > 0);
 }
 
+interface ViewportSceneItem {
+  readonly id: number;
+  readonly fileId: number;
+  x: number;
+  y: number;
+  readonly root: HTMLDivElement;
+  readonly canvas: HTMLCanvasElement;
+  readonly renderer: DXFRenderer;
+}
+
+const sceneLayer = document.createElement('div');
+sceneLayer.className = 'viewport-scene-layer';
+container.appendChild(sceneLayer);
+
+let nextSceneItemId = 1;
+let nextSceneZ = 1;
+const sceneItems = new Map<number, ViewportSceneItem>();
+
+function isSceneDesktop(): boolean {
+  return window.innerWidth > 1024;
+}
+
+function bringSceneItemToFront(item: ViewportSceneItem): void {
+  item.root.style.zIndex = String(++nextSceneZ);
+}
+
+function setSceneItemPosition(item: ViewportSceneItem, x: number, y: number): void {
+  const maxX = Math.max(0, container.clientWidth - item.root.offsetWidth);
+  const maxY = Math.max(0, container.clientHeight - item.root.offsetHeight);
+  item.x = Math.min(Math.max(0, x), maxX);
+  item.y = Math.min(Math.max(0, y), maxY);
+  item.root.style.left = `${item.x}px`;
+  item.root.style.top = `${item.y}px`;
+}
+
+function zoomSceneItem(item: ViewportSceneItem, factor: number): void {
+  const dpr = devicePixelRatio;
+  const cx = (item.canvas.clientWidth * dpr) / 2;
+  const cy = (item.canvas.clientHeight * dpr) / 2;
+  item.renderer.camera.zoomAt(cx, cy, factor);
+  item.renderer.requestRedraw();
+}
+
+function addFileToScene(fileId: number, clientX?: number, clientY?: number): void {
+  if (!isSceneDesktop()) return;
+  const entry = loadedFiles.find((f) => f.id === fileId);
+  if (!entry || entry.loading || !entry.doc) return;
+
+  const root = document.createElement('div');
+  root.className = 'viewport-scene-item';
+  root.innerHTML = `
+    <div class="viewport-scene-item__header">
+      <span class="viewport-scene-item__title"></span>
+      <div class="viewport-scene-item__controls">
+        <button type="button" class="viewport-scene-item__btn" data-act="zoom-out">−</button>
+        <button type="button" class="viewport-scene-item__btn" data-act="zoom-in">+</button>
+        <button type="button" class="viewport-scene-item__btn viewport-scene-item__btn--danger" data-act="remove">×</button>
+      </div>
+    </div>
+    <div class="viewport-scene-item__body"><canvas></canvas></div>
+  `;
+  (root.querySelector('.viewport-scene-item__title') as HTMLSpanElement).textContent = entry.name;
+  const canvasEl = root.querySelector('canvas') as HTMLCanvasElement;
+  sceneLayer.appendChild(root);
+
+  const item: ViewportSceneItem = {
+    id: nextSceneItemId++,
+    fileId,
+    x: 0,
+    y: 0,
+    root,
+    canvas: canvasEl,
+    renderer: new DXFRenderer(),
+  };
+  sceneItems.set(item.id, item);
+
+  bringSceneItemToFront(item);
+
+  if (typeof clientX === 'number' && typeof clientY === 'number') {
+    const rect = container.getBoundingClientRect();
+    const dropX = clientX - rect.left - root.offsetWidth / 2;
+    const dropY = clientY - rect.top - 16;
+    setSceneItemPosition(item, dropX, dropY);
+  } else {
+    setSceneItemPosition(item, 24 + (sceneItems.size - 1) * 18, 24 + (sceneItems.size - 1) * 18);
+  }
+
+  item.renderer.attach(canvasEl);
+  item.renderer.setDocument(entry.doc);
+  item.renderer.showDimensions = false;
+  item.renderer.showPiercePoints = false;
+  requestAnimationFrame(() => item.renderer.resizeToContainer());
+
+  const headerEl = root.querySelector('.viewport-scene-item__header') as HTMLDivElement;
+  const controlsEl = root.querySelector('.viewport-scene-item__controls') as HTMLDivElement;
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+
+  const onMove = (e: MouseEvent): void => {
+    if (!dragging) return;
+    setSceneItemPosition(item, startLeft + (e.clientX - startX), startTop + (e.clientY - startY));
+  };
+  const onUp = (): void => {
+    dragging = false;
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  headerEl.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    bringSceneItemToFront(item);
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = item.x;
+    startTop = item.y;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+
+  controlsEl.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.target as HTMLElement;
+    const btn = target.closest<HTMLButtonElement>('.viewport-scene-item__btn');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === 'zoom-in') zoomSceneItem(item, 1.15);
+    if (act === 'zoom-out') zoomSceneItem(item, 1 / 1.15);
+    if (act === 'remove') {
+      item.renderer.detach();
+      root.remove();
+      sceneItems.delete(item.id);
+    }
+  });
+
+  canvasEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    bringSceneItemToFront(item);
+    zoomSceneItem(item, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+  }, { passive: false });
+
+  root.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    bringSceneItemToFront(item);
+  });
+}
+
 // ─── Init callbacks ───────────────────────────────────────────────────
 
 initAuthCallbacks({
@@ -257,15 +412,29 @@ fileInput.addEventListener('change', () => {
 
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
 
-async function addFiles(files: File[]): Promise<void> {
+async function addFiles(
+  files: File[],
+  options?: { placeInScene?: boolean; dropClientX?: number; dropClientY?: number },
+): Promise<void> {
   syncWelcomeVisibility();
+  const pendingSceneAdds: Array<{ fileId: number; x: number; y: number }> = [];
   for (const file of files) {
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
     if (file.size > MAX_FILE_SIZE_BYTES) {
       alert(`Файл "${file.name}" слишком большой (${(file.size / 1024 / 1024).toFixed(1)} MB). Максимальный размер: 200 MB.`);
       continue;
     }
+    const before = loadedFiles.length;
     await loadSingleFile(file, setActiveFile);
+    if (options?.placeInScene && loadedFiles.length > before) {
+      const fileId = loadedFiles[loadedFiles.length - 1]!.id;
+      pendingSceneAdds.push({ fileId, x: 40 + pendingSceneAdds.length * 20, y: 40 + pendingSceneAdds.length * 20 });
+    }
+  }
+  for (const a of pendingSceneAdds) {
+    const baseX = options?.dropClientX ?? container.getBoundingClientRect().left + a.x;
+    const baseY = options?.dropClientY ?? container.getBoundingClientRect().top + a.y;
+    addFileToScene(a.fileId, baseX + pendingSceneAdds.indexOf(a) * 20, baseY + pendingSceneAdds.indexOf(a) * 20);
   }
 }
 
@@ -275,9 +444,20 @@ container.addEventListener('dragover',  (e) => { e.preventDefault(); });
 container.addEventListener('dragleave', () => { if (--_dragDepth <= 0) { _dragDepth = 0; dropOverlay.classList.remove('active'); } });
 container.addEventListener('drop', (e) => {
   e.preventDefault(); _dragDepth = 0; dropOverlay.classList.remove('active');
+  const fileIdRaw = e.dataTransfer?.getData('application/x-file-id') ?? '';
+  if (fileIdRaw) {
+    const fileId = Number(fileIdRaw);
+    if (Number.isFinite(fileId)) addFileToScene(fileId, e.clientX, e.clientY);
+    return;
+  }
   if (e.dataTransfer?.files) {
     const dxfs = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.dxf'));
-    if (dxfs.length > 0) addFiles(dxfs);
+    if (dxfs.length > 0) {
+      addFiles(dxfs, isSceneDesktop()
+        ? { placeInScene: true, dropClientX: e.clientX, dropClientY: e.clientY }
+        : undefined,
+      );
+    }
   }
 });
 
@@ -420,7 +600,16 @@ btnAddCatalog.addEventListener('click', () => {
 
 // ─── Resize ───────────────────────────────────────────────────────────
 
-new ResizeObserver(() => { renderer.resizeToContainer(); }).observe(container);
+new ResizeObserver(() => {
+  sceneLayer.style.display = isSceneDesktop() ? '' : 'none';
+  renderer.resizeToContainer();
+  for (const item of sceneItems.values()) {
+    item.renderer.resizeToContainer();
+    setSceneItemPosition(item, item.x, item.y);
+  }
+}).observe(container);
+
+sceneLayer.style.display = isSceneDesktop() ? '' : 'none';
 
 // ─── Nesting panel ────────────────────────────────────────────────────
 

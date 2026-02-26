@@ -436,16 +436,14 @@ function buildFileItem(f: LoadedFile, isGuest: boolean): HTMLDivElement {
   const item = document.createElement('div');
   item.className = `file-item${isGuest ? '' : ' in-catalog'}${f.id === activeFileId ? ' active' : ''}${f.loading ? ' loading' : ''}`;
 
-  if (!isGuest) {
-    item.draggable = true;
-    item.addEventListener('dragstart', (de) => {
-      de.dataTransfer!.effectAllowed = 'move';
-      de.dataTransfer!.setData('application/x-file-id', String(f.id));
-      de.dataTransfer!.setData('application/x-file-remote-id', f.remoteId);
-      item.classList.add('dragging');
-    });
-    item.addEventListener('dragend', () => item.classList.remove('dragging'));
-  }
+  item.draggable = true;
+  item.addEventListener('dragstart', (de) => {
+    de.dataTransfer!.effectAllowed = 'copyMove';
+    de.dataTransfer!.setData('application/x-file-id', String(f.id));
+    if (!isGuest && f.remoteId) de.dataTransfer!.setData('application/x-file-remote-id', f.remoteId);
+    item.classList.add('dragging');
+  });
+  item.addEventListener('dragend', () => item.classList.remove('dragging'));
 
   item.innerHTML = `
     <input type="checkbox" ${f.checked ? 'checked' : ''} />
@@ -488,12 +486,12 @@ export function recalcTotals(): void {
   ciLength.textContent  = cutM >= 1 ? cutM.toFixed(2) + t('unit.m') : totalCutLength.toFixed(1) + t('unit.mm');
   sidebarFooter.classList.toggle('visible', loadedFiles.length > 0);
 
-  statusPierces.textContent    = totalPierces   > 0 ? t('status.pierces',   { n: String(totalPierces) }) : '';
-  statusCutLength.textContent  = totalCutLength  > 0 ? t('status.cutLength', { len: formatCutLength(totalCutLength) }) : '';
+  statusPierces.textContent    = totalPierces   > 0 ? tx('status.pierces',   { n: String(totalPierces) }) : '';
+  statusCutLength.textContent  = totalCutLength  > 0 ? tx('status.cutLength', { len: formatCutLength(totalCutLength) }) : '';
 
   const checkedCount = loadedFiles.filter(f => f.checked).length;
   statsEl.textContent = loadedFiles.length > 0
-    ? t('status.files', { checked: String(checkedCount), total: String(loadedFiles.length) })
+    ? tx('status.files', { checked: String(checkedCount), total: String(loadedFiles.length) })
     : '';
 
   updateBulkControlsUi();
