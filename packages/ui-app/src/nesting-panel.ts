@@ -31,7 +31,8 @@ import {
 } from './dom.js';
 import { getAuthHeaders, saveGuestDraft } from './auth.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
-import type { NestingResult, NestingOptions } from '../../core-engine/src/nesting/index.js';
+import type { NestingResult, NestingOptions, NestingItem } from '../../core-engine/src/nesting/index.js';
+import { buildContour } from '../../core-engine/src/contour/index.js';
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
 import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';
@@ -144,13 +145,21 @@ export async function runNesting(): Promise<void> {
   const effectiveGap = options.commonLine?.enabled ? 0 : gap;
   setLastNestingOptions({ ...options, commonLine: options.commonLine ? { ...options.commonLine } : undefined });
 
-  const items = checked
+  const useTrueShape = options.strategy === 'true_shape';
+  const items: NestingItem[] = checked
     .filter((f) => !f.loading && f.doc != null)
     .map(f => {
       const bb = f.doc.totalBBox;
       const w = bb ? Math.abs(bb.max.x - bb.min.x) : 0;
       const h = bb ? Math.abs(bb.max.y - bb.min.y) : 0;
-      return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity };
+      let contour: NestingItem['contour'] | undefined;
+      if (useTrueShape) {
+        const result = buildContour(f.doc.flatEntities);
+        if (result && result.outerRing.length >= 3) {
+          contour = result.outerRing;
+        }
+      }
+      return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity, ...(contour ? { contour } : {}) };
     });
 
   try {
