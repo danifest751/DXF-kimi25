@@ -46,6 +46,8 @@ export interface PlacedItem {
   readonly rotated: boolean;
   readonly angleDeg: number;
   readonly copyIndex: number;
+  /** Absolute contour polygon on the sheet (true_shape mode only). */
+  readonly contourPts?: readonly NestingPoint[];
 }
 
 export type NestingStrategy = 'blf_bbox' | 'maxrects_bbox' | 'true_shape';
@@ -88,6 +90,8 @@ export interface NestingResult {
   readonly cutLengthAfterMerge: number;
   readonly pierceEstimate: number;
   readonly pierceDelta: number;
+  /** Strategy used for this nesting result. */
+  readonly strategy?: NestingStrategy;
 }
 
 // ─── Пресеты ────────────────────────────────────────────────────────
@@ -648,5 +652,6 @@ export function nestItems(
     cutLengthAfterMerge: Math.round(cutLengthAfterMerge * 100) / 100,
     pierceEstimate,
     pierceDelta,
+    strategy,
   };
 }

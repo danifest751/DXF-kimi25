@@ -182,6 +182,7 @@ export function placeTrueShape(
     cutLengthAfterMerge: Math.round(cutLengthEstimate * 100) / 100,
     pierceEstimate: totalPlaced,
     pierceDelta: 0,
+    strategy: 'true_shape',
   };
 }
 
@@ -249,6 +250,8 @@ function tryPlaceOnSheet(
   const norm = ((bestAngle % 180) + 180) % 180;
   const isRotated = Math.abs(norm - 90) < 1;
 
+  const absoluteContour = translatePoly(bestRotated, bestPos.x, bestPos.y);
+
   const placedItem: PlacedItem = {
     itemId: copy.itemId,
     name: copy.name,
@@ -259,9 +262,8 @@ function tryPlaceOnSheet(
     rotated: isRotated,
     angleDeg: bestAngle,
     copyIndex: copy.copyIndex,
+    contourPts: absoluteContour,
   };
-
-  const absoluteContour = translatePoly(bestRotated, bestPos.x, bestPos.y);
 
   state.placed.push({
     contour: absoluteContour,

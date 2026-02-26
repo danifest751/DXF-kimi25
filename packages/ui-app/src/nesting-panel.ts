@@ -278,6 +278,29 @@ export function getPlacedAngleDeg(p: { angleDeg?: unknown; rotated?: unknown }):
   return p.rotated === true ? 90 : 0;
 }
 
+/** Draw absolute contour polygon from contourPts (true_shape mode). */
+function drawTrueShapeContour(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly { x: number; y: number }[],
+  ox: number, oy: number, scale: number,
+  color: string,
+): void {
+  if (pts.length < 3) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(ox + pts[0]!.x * scale, oy + pts[0]!.y * scale);
+  for (let i = 1; i < pts.length; i++) {
+    ctx.lineTo(ox + pts[i]!.x * scale, oy + pts[i]!.y * scale);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color + '22';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPartContour(
   ctx: CanvasRenderingContext2D,
   file: LoadedFile,
@@ -357,14 +380,19 @@ export function renderAllNestingSheets(): void {
     ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(ox, oy, sheetDrawW, sheetDrawH);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, sheetDrawW, sheetDrawH);
 
+    const isTrueShape = r.strategy === 'true_shape';
     for (const p of sheet.placed) {
       const color = PART_COLORS[(colorMap.get(p.itemId) ?? 0) % PART_COLORS.length]!;
       const px = ox + p.x * scale, py = oy + p.y * scale;
       const pw = p.width * scale,  ph = p.height * scale;
-      ctx.fillStyle = color + '10'; ctx.fillRect(px, py, pw, ph);
-      ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
-      const file = loadedFiles.find(lf => lf.id === p.itemId);
-      if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 32);
+      if (isTrueShape && p.contourPts && p.contourPts.length >= 3) {
+        drawTrueShapeContour(ctx, p.contourPts, ox, oy, scale, color);
+      } else {
+        ctx.fillStyle = color + '10'; ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
+        const file = loadedFiles.find(lf => lf.id === p.itemId);
+        if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 32);
+      }
       const fontSize = Math.min(9, pw * 0.18, ph * 0.28);
       if (fontSize > 3.5) {
         ctx.font = `500 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'cc';
@@ -378,7 +406,8 @@ export function renderAllNestingSheets(): void {
   const footY = margin + rows * (cellH + gap) + 4;
   ctx.font = '400 10px JetBrains Mono, monospace'; ctx.fillStyle = 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText(tx('nesting.footer', { w: sw, h: sh, sheets: n, fill: r.avgFillPercent }), margin, footY);
+  const strategyLabel = r.strategy === 'true_shape' ? '  [Контурная]' : r.strategy === 'maxrects_bbox' ? '  [Точная]' : r.strategy === 'blf_bbox' ? '  [BLF]' : '';
+  ctx.fillText(tx('nesting.footer', { w: sw, h: sh, sheets: n, fill: r.avgFillPercent }) + strategyLabel, margin, footY);
 
   nestSheetBtns.innerHTML = '';
   for (const cell of newCellRects) {
