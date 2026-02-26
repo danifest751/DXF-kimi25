@@ -75,7 +75,7 @@ import {
   setZoomPanStartX, setZoomPanStartY, setZoomHideTimer,
 } from './nesting-panel.js';
 import * as NP from './nesting-panel.js';
-import { applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
+import { t, applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
 

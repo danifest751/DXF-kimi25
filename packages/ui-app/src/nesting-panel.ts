@@ -166,30 +166,34 @@ export async function runNesting(): Promise<void> {
     });
 
   try {
-    const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
-      items, sheet, gap: effectiveGap,
-      rotationEnabled: options.rotationEnabled,
-      rotationAngleStepDeg: options.rotationAngleStepDeg,
-      strategy: options.strategy,
-      multiStart: options.multiStart,
-      seed: options.seed,
-      commonLine: options.commonLine,
-    });
-    setCurrentNestResult(resp.data);
-    setNestingComputeMode('api');
-  } catch (apiErr) {
-    console.warn('[nesting] API failed, falling back to local:', apiErr);
-    try {
+    if (useTrueShape) {
+      // true_shape uses clipper2-js which times out on Vercel serverless — run locally
       setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
       setNestingComputeMode('local');
-    } catch (localErr) {
-      console.error('[nesting] local nestItems also failed:', localErr);
-      nestResultSummary.innerHTML = `<span style="color:#f87171">Ошибка раскладки: ${localErr instanceof Error ? localErr.message : String(localErr)}</span>`;
-      nestResults.classList.remove('hidden');
-      btnNestRun.disabled = false;
-      btnNestRun.textContent = t('nesting.run');
-      return;
+    } else {
+      try {
+        const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+          items, sheet, gap: effectiveGap,
+          rotationEnabled: options.rotationEnabled,
+          rotationAngleStepDeg: options.rotationAngleStepDeg,
+          strategy: options.strategy,
+          multiStart: options.multiStart,
+          seed: options.seed,
+          commonLine: options.commonLine,
+        });
+        setCurrentNestResult(resp.data);
+        setNestingComputeMode('api');
+      } catch (apiErr) {
+        console.warn('[nesting] API failed, falling back to local:', apiErr);
+        setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
+        setNestingComputeMode('local');
+      }
     }
+  } catch (err) {
+    console.error('[nesting] failed:', err);
+    nestResultSummary.innerHTML = `<span style="color:#f87171">\u041e\u0448\u0438\u0431\u043a\u0430 \u0440\u0430\u0441\u043a\u043b\u0430\u0434\u043a\u0438: ${err instanceof Error ? err.message : String(err)}</span>`;
+    nestResults.classList.remove('hidden');
+    return;
   } finally {
     btnNestRun.disabled = false;
     btnNestRun.textContent = t('nesting.run');
