@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parseDXF } from '../dxf/reader/index.js';
 import { normalizeDocument } from '../normalize/index.js';
@@ -53,5 +53,9 @@ describe('exportNestingToDXF with real entities', () => {
     // Real part entities go on a non-SHEET layer
     const hasRealEntities = lwCount > 0 || lineCount > 0;
     expect(hasRealEntities).toBe(true);
+
+    // Save for manual inspection
+    writeFileSync(join(FIXTURE_DIR, 'output-l-bracket.dxf'), dxfOut, 'utf-8');
+    console.log('Saved output to test-dxf/output-l-bracket.dxf');
   });
 });
