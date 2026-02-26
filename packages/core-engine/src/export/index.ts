@@ -93,8 +93,6 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   const { itemDocs } = options;
   const sheetH = nestingResult.sheet.height;
 
-  console.log('[exportDXF] itemDocs size:', itemDocs?.size ?? 'undefined');
-
   // Y-flip helper: nesting stores Y=0 at bottom (grows up), but visually
   // (in UI canvas) items appear at the top. Mirror Y within each sheet so
   // the exported DXF matches the on-screen layout (items at the top).
@@ -106,7 +104,6 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   for (const sheet of nestingResult.sheets) {
     const sheetOffsetY = sheet.sheetIndex * (sheetH + nestingResult.gap);
     for (const placed of sheet.placed) {
-      console.log('[exportDXF] placed.itemId:', placed.itemId, 'has doc:', itemDocs?.has(placed.itemId));
       const itemDoc = itemDocs?.get(placed.itemId);
       if (itemDoc) {
         // Draw real entities from source DXF, transformed to placement position

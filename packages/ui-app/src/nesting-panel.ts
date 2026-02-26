@@ -462,20 +462,6 @@ function buildItemDocs(): Map<number, ItemDocData> {
     const bbox = f.doc.totalBBox ?? { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
     map.set(f.id, { flatEntities: f.doc.flatEntities, bbox });
   }
-  console.log('[export] itemDocs keys:', [...map.keys()]);
-  for (const [id, doc] of map) {
-    console.log(`[export] id=${id} flatEntities=${doc.flatEntities.length} bbox=`, doc.bbox);
-    if (doc.flatEntities.length > 0) {
-      console.log('[export] first entity type:', doc.flatEntities[0]!.entity.type);
-    }
-  }
-  if (currentNestResult) {
-    for (const sh of currentNestResult.sheets) {
-      for (const p of sh.placed) {
-        console.log('[export] placed itemId:', p.itemId, 'found:', map.has(p.itemId));
-      }
-    }
-  }
   return map;
 }
 
