@@ -18,38 +18,39 @@
       <div class="logo">DXF<span>viewer</span></div>
       <div class="tb-sep"></div>
 
-      <button class="tb-btn" id="btn-open" title="Открыть файл (Ctrl+O)">
+      <button class="tb-btn" id="btn-open" data-i18n-title="toolbar.open.title">
         <svg viewBox="0 0 24 24"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h4a2 2 0 0 1 2 2v1"/><path d="M20 19H9a2 2 0 0 1-2-2l1.5-6A2 2 0 0 1 10.5 9H21l-2 8a2 2 0 0 1-2 2z"/></svg>
-        Открыть
+        <span data-i18n="toolbar.open">Открыть</span>
       </button>
-      <button class="tb-btn" id="btn-fit" title="Вписать в экран (F)">
+      <button class="tb-btn" id="btn-fit" data-i18n-title="toolbar.fit.title">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg>
-        Вписать
+        <span data-i18n="toolbar.fit">Вписать</span>
       </button>
 
       <div class="tb-sep"></div>
 
-      <button class="tb-btn" id="btn-inspector" title="Инспектор свойств">
+      <button class="tb-btn" id="btn-inspector" data-i18n-title="toolbar.inspector.title">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        Свойства
+        <span data-i18n="toolbar.inspector">Свойства</span>
       </button>
-      <button class="tb-btn" id="btn-nesting" title="Раскладка на лист">
+      <button class="tb-btn" id="btn-nesting" data-i18n-title="toolbar.nesting.title">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" fill="none"/><rect x="5" y="5" width="6" height="8" rx="0.5" fill="none"/><rect x="13" y="5" width="6" height="5" rx="0.5" fill="none"/><rect x="5" y="15" width="4" height="4" rx="0.5" fill="none"/><rect x="13" y="12" width="6" height="7" rx="0.5" fill="none"/></svg>
-        Раскладка
+        <span data-i18n="toolbar.nesting">Раскладка</span>
       </button>
       <button class="tb-btn" id="btn-grid" title="Сетка (G)">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
 
       <div class="tb-spacer"></div>
-      <button class="tb-btn" id="btn-auth-login" title="Вход через Telegram код">
+      <button class="tb-btn tb-btn-ghost" id="btn-lang-toggle" title="Switch language">EN</button>
+      <button class="tb-btn" id="btn-auth-login" data-i18n-title="toolbar.login.title">
         <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9 22 2z"/></svg>
-        Вход Telegram
+        <span data-i18n="toolbar.login">Вход Telegram</span>
       </button>
-      <button class="tb-btn tb-btn-ghost" id="btn-auth-logout" title="Выйти из воркспейса" hidden>
+      <button class="tb-btn tb-btn-ghost" id="btn-auth-logout" data-i18n-title="toolbar.logout.title" data-i18n="toolbar.logout" hidden>
         Выйти
       </button>
-      <span class="tb-auth-session" id="auth-workspace">Гость</span>
+      <span class="tb-auth-session" id="auth-workspace" data-i18n="toolbar.guest">Гость</span>
       <span class="tb-stats" id="stats"></span>
     </div>
 
@@ -58,16 +59,16 @@
       <!-- Sidebar: Files -->
       <div class="sidebar" id="sidebar-files">
         <div class="sidebar-header">
-          <span>Файлы и каталоги</span>
+          <span data-i18n="sidebar.title">Файлы и каталоги</span>
           <div class="sidebar-actions">
-            <button class="sidebar-action-btn" id="btn-select-all-files" title="Выделить все файлы">Выделить все</button>
-            <button class="sidebar-action-btn" id="btn-add-catalog" title="Добавить каталог" hidden>+ Каталог</button>
-            <button class="sidebar-action-btn primary" id="btn-add-files" title="Добавить файлы">+ DXF</button>
+            <button class="sidebar-action-btn" id="btn-select-all-files" data-i18n="sidebar.selectAll" data-i18n-title="sidebar.selectAll">Выделить все</button>
+            <button class="sidebar-action-btn" id="btn-add-catalog" data-i18n="sidebar.addCatalog" hidden>+ Каталог</button>
+            <button class="sidebar-action-btn primary" id="btn-add-files" data-i18n="sidebar.addFiles">+ DXF</button>
           </div>
         </div>
         <div class="catalog-filter" id="catalog-filter"></div>
         <div class="file-list" id="file-list">
-          <div class="file-list-empty" id="file-list-empty">Нет файлов</div>
+          <div class="file-list-empty" id="file-list-empty" data-i18n="sidebar.noFiles">Нет файлов</div>
         </div>
 
         <!-- Sidebar footer: cutting stats + pierce toggle -->
@@ -82,15 +83,15 @@
               <span id="ci-length">0</span>
             </div>
           </div>
-          <label class="pierce-toggle" id="pierce-toggle" title="Показать точки врезки">
+          <label class="pierce-toggle" id="pierce-toggle" data-i18n-title="sidebar.togglePierces.title">
             <input type="checkbox" id="chk-pierces" />
             <span class="pierce-dot"></span>
-            Врезки
+            <span data-i18n="sidebar.togglePierces">Врезки</span>
           </label>
-          <label class="pierce-toggle" id="dim-toggle" title="Показать габаритные размеры">
+          <label class="pierce-toggle" id="dim-toggle" data-i18n-title="sidebar.toggleDimensions.title">
             <input type="checkbox" id="chk-dimensions" />
             <span class="pierce-dot pierce-dot--blue"></span>
-            Размеры
+            <span data-i18n="sidebar.toggleDimensions">Размеры</span>
           </label>
         </div>
       </div>
@@ -114,14 +115,14 @@
         </div>
         <div class="drop-overlay" id="drop-overlay">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Перетащите DXF файл сюда
+          <span data-i18n="drop.hint">Перетащите DXF файл сюда</span>
         </div>
         <div class="welcome" id="welcome">
           <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
           <h2>DXF Viewer</h2>
-          <p>Просмотр чертежей с анализом лазерной резки</p>
-          <button id="btn-welcome-open">Открыть файл</button>
-          <span class="welcome-hint">или перетащите .dxf в окно</span>
+          <p data-i18n="welcome.subtitle">Просмотр чертежей с анализом лазерной резки</p>
+          <button id="btn-welcome-open" data-i18n="welcome.open">Открыть файл</button>
+          <span class="welcome-hint" data-i18n="welcome.hint">или перетащите .dxf в окно</span>
         </div>
         <div class="progress-bar hidden" id="progress-bar">
           <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
@@ -131,67 +132,67 @@
 
       <!-- Inspector -->
       <div class="inspector hidden" id="sidebar-inspector">
-        <div class="inspector-header">Свойства</div>
+        <div class="inspector-header" data-i18n="inspector.title">Свойства</div>
         <div class="inspector-content" id="inspector-content">
-          <p style="color: var(--text-muted); font-size: 12px;">Кликните на объект</p>
+          <p style="color: var(--text-muted); font-size: 12px;" data-i18n="inspector.hint">Кликните на объект</p>
         </div>
       </div>
 
       <!-- Nesting panel -->
       <div class="nesting-panel hidden" id="nesting-panel">
-        <div class="np-header">Раскладка</div>
+        <div class="np-header" data-i18n="nesting.title">Раскладка</div>
 
         <!-- Mode: radio buttons -->
         <div class="np-section">
-          <div class="np-label">Режим</div>
+          <div class="np-label" data-i18n="nesting.mode">Режим</div>
           <div class="np-radio-group" id="nest-mode-group">
             <label class="np-radio" data-value="precise">
               <input type="radio" name="nest-mode" value="precise" checked />
-              <span>Точно</span>
+              <span data-i18n="nesting.mode.precise">Точно</span>
             </label>
             <label class="np-radio" data-value="common">
               <input type="radio" name="nest-mode" value="common" />
-              <span>Общий рез</span>
+              <span data-i18n="nesting.mode.common">Общий рез</span>
             </label>
           </div>
         </div>
 
         <!-- Sheet + Gap -->
         <div class="np-section">
-          <div class="np-label">Лист металла</div>
+          <div class="np-label" data-i18n="nesting.sheet">Лист металла</div>
           <select class="np-select" id="nest-preset">
             <option value="0">1000 × 2000</option>
             <option value="1" selected>1250 × 2500</option>
             <option value="2">1500 × 3000</option>
             <option value="3">1500 × 6000</option>
             <option value="4">2000 × 6000</option>
-            <option value="custom">Свой размер...</option>
+            <option value="custom" data-i18n="nesting.sheet.custom">Свой размер...</option>
           </select>
           <div class="np-row np-custom-size hidden" id="nest-custom-row">
-            <input type="number" class="np-input" id="nest-w" placeholder="Ширина" min="1" value="1250" />
+            <input type="number" class="np-input" id="nest-w" data-i18n-placeholder="nesting.width" placeholder="Ширина" min="1" value="1250" />
             <span class="np-x">×</span>
-            <input type="number" class="np-input" id="nest-h" placeholder="Высота" min="1" value="2500" />
-            <span class="np-unit">мм</span>
+            <input type="number" class="np-input" id="nest-h" data-i18n-placeholder="nesting.height" placeholder="Высота" min="1" value="2500" />
+            <span class="np-unit" data-i18n="nesting.mm">мм</span>
           </div>
           <div class="np-row" style="margin-top: 10px;">
-            <span class="np-unit" style="min-width: 50px;">Зазор</span>
+            <span class="np-unit" style="min-width: 50px;" data-i18n="nesting.gap">Зазор</span>
             <input type="number" class="np-input np-input-sm" id="nest-gap" min="0" value="5" step="1" />
-            <span class="np-unit">мм</span>
+            <span class="np-unit" data-i18n="nesting.mm">мм</span>
           </div>
         </div>
 
         <!-- Parts -->
         <div class="np-section">
-          <div class="np-label">Детали и количество</div>
+          <div class="np-label" data-i18n="nesting.parts">Детали и количество</div>
           <div id="nest-items" class="np-items"></div>
-          <div class="np-items-empty" id="nest-items-empty">Отметьте файлы в списке</div>
+          <div class="np-items-empty" id="nest-items-empty" data-i18n="nesting.partsEmpty">Отметьте файлы в списке</div>
         </div>
 
-        <button class="np-run-btn" id="btn-nest-run">Разложить</button>
+        <button class="np-run-btn" id="btn-nest-run" data-i18n="nesting.run">Разложить</button>
 
         <!-- Results -->
         <div class="np-results hidden" id="nest-results">
-          <div class="np-label">Результат</div>
+          <div class="np-label" data-i18n="nesting.result">Результат</div>
           <div class="np-result-cards" id="nest-result-cards"></div>
           <div class="np-result-summary" id="nest-result-summary"></div>
           <div class="np-row" style="margin-top: 12px; gap: 8px;">
@@ -201,16 +202,16 @@
             </button>
             <button class="tb-btn" id="btn-export-csv" style="flex: 1;">
               <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              CSV
+              <span data-i18n="nesting.export.csv">CSV</span>
             </button>
           </div>
           <button class="tb-btn np-download-all-btn" id="btn-export-all-sheets" style="margin-top: 8px; width: 100%;">
             <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Скачать все листы (DXF)
+            <span data-i18n="nesting.export.allSheets">Скачать все листы (DXF)</span>
           </button>
           <button class="tb-btn np-copy-hashes-btn" id="btn-copy-all-hashes" style="margin-top: 4px; width: 100%; display: none;">
             <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Копировать все коды
+            <span data-i18n="nesting.copyHashes">Копировать все коды</span>
           </button>
         </div>
 
@@ -218,18 +219,18 @@
         <div class="np-section np-advanced-toggle">
           <button class="np-advanced-btn" id="btn-advanced-toggle">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            Расширенные настройки
+            <span data-i18n="nesting.advanced">Расширенные настройки</span>
             <svg class="np-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
         </div>
 
         <div class="np-advanced hidden" id="nest-advanced">
           <div class="np-section">
-            <div class="np-label">Поворот</div>
+            <div class="np-label" data-i18n="nesting.rotation">Поворот</div>
             <div class="np-row" style="justify-content: space-between;">
               <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
                 <input type="checkbox" id="nest-rotate-enabled" checked />
-                Разрешить
+                <span data-i18n="nesting.rotation.allow">Разрешить</span>
               </label>
               <select class="np-select" id="nest-rotate-step" style="max-width: 80px;">
                 <option value="1">1°</option>
@@ -240,7 +241,7 @@
           </div>
 
           <div class="np-section">
-            <div class="np-label">Алгоритм</div>
+            <div class="np-label" data-i18n="nesting.algorithm">Алгоритм</div>
             <div class="np-row">
               <span class="np-unit" style="min-width: 50px;">Seed</span>
               <input type="number" class="np-input np-input-sm" id="nest-seed" value="0" step="1" />
@@ -248,11 +249,11 @@
           </div>
 
           <div class="np-section">
-            <div class="np-label">Совместный рез</div>
+            <div class="np-label" data-i18n="nesting.commonLine">Совместный рез</div>
             <div class="np-row" style="justify-content: space-between;">
               <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
                 <input type="checkbox" id="nest-commonline-enabled" />
-                Включить
+                <span data-i18n="nesting.commonLine.enable">Включить</span>
               </label>
               <span id="nest-commonline-status" style="font-size:11px; font-weight:600; color:#f59e0b;">OFF</span>
             </div>
@@ -286,19 +287,19 @@
   <div class="shortcuts-overlay hidden" id="shortcuts-overlay">
     <div class="shortcuts-dialog">
       <div class="shortcuts-header">
-        <span>Горячие клавиши</span>
+        <span data-i18n="shortcuts.title">Горячие клавиши</span>
         <button class="shortcuts-close" id="shortcuts-close">&times;</button>
       </div>
       <div class="shortcuts-body">
-        <div class="shortcut-row"><kbd>Ctrl+O</kbd><span>Открыть файл</span></div>
-        <div class="shortcut-row"><kbd>F</kbd><span>Вписать в экран</span></div>
-        <div class="shortcut-row"><kbd>G</kbd><span>Сетка вкл/выкл</span></div>
-        <div class="shortcut-row"><kbd>Escape</kbd><span>Закрыть / Сбросить</span></div>
-        <div class="shortcut-row"><kbd>?</kbd><span>Эта подсказка</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+O</kbd><span data-i18n="shortcuts.open">Открыть файл</span></div>
+        <div class="shortcut-row"><kbd>F</kbd><span data-i18n="shortcuts.fit">Вписать в экран</span></div>
+        <div class="shortcut-row"><kbd>G</kbd><span data-i18n="shortcuts.grid">Сетка вкл/выкл</span></div>
+        <div class="shortcut-row"><kbd>Escape</kbd><span data-i18n="shortcuts.escape">Закрыть / Сбросить</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span data-i18n="shortcuts.help">Эта подсказка</span></div>
         <div class="shortcut-divider"></div>
-        <div class="shortcut-row"><kbd>Колёсико</kbd><span>Масштаб</span></div>
-        <div class="shortcut-row"><kbd>Зажать ЛКМ</kbd><span>Перемещение</span></div>
-        <div class="shortcut-row"><kbd>Клик</kbd><span>Выбрать объект</span></div>
+        <div class="shortcut-row"><kbd data-i18n="shortcuts.wheel">Колёсико</kbd><span data-i18n="shortcuts.zoom">Масштаб</span></div>
+        <div class="shortcut-row"><kbd data-i18n="shortcuts.drag">Зажать ЛКМ</kbd><span data-i18n="shortcuts.pan">Перемещение</span></div>
+        <div class="shortcut-row"><kbd data-i18n="shortcuts.click">Клик</kbd><span data-i18n="shortcuts.select">Выбрать объект</span></div>
       </div>
     </div>
   </div>
@@ -306,11 +307,11 @@
   <!-- Delete catalog modal -->
   <div class="modal-overlay hidden" id="delete-catalog-modal">
     <div class="modal-card">
-      <h3>Удалить каталог «<span id="dcm-name"></span>»?</h3>
-      <p>Выберите, что сделать с файлами:</p>
-      <button class="modal-btn" id="dcm-move">Перенести в «Без каталога»</button>
-      <button class="modal-btn danger" id="dcm-delete">Удалить вместе с файлами</button>
-      <button class="modal-btn ghost" id="dcm-cancel">Отмена</button>
+      <h3><span data-i18n="modal.deleteCatalog.title">Удалить каталог</span> «<span id="dcm-name"></span>»?</h3>
+      <p data-i18n="modal.deleteCatalog.question">Выберите, что сделать с файлами:</p>
+      <button class="modal-btn" id="dcm-move" data-i18n="modal.deleteCatalog.move">Перенести в «Без каталога»</button>
+      <button class="modal-btn danger" id="dcm-delete" data-i18n="modal.deleteCatalog.delete">Удалить вместе с файлами</button>
+      <button class="modal-btn ghost" id="dcm-cancel" data-i18n="modal.deleteCatalog.cancel">Отмена</button>
     </div>
   </div>
 
