@@ -162,6 +162,27 @@
   animation: pulse 2s infinite;
 }
 
+/* Размеры — синяя вариация */
+.pierce-dot--blue {
+  border-color: #60a5fa;
+}
+.pierce-toggle.on .pierce-dot--blue {
+  background: #60a5fa;
+  border-color: #60a5fa;
+  box-shadow: 0 0 10px #60a5fa, 0 0 20px rgba(96,165,250,0.5);
+  animation: pulse-blue 2s infinite;
+}
+.pierce-toggle:has(.pierce-dot--blue).on {
+  background: rgba(96, 165, 250, 0.1);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.2);
+}
+@keyframes pulse-blue {
+  0%, 100% { box-shadow: 0 0 10px #60a5fa, 0 0 20px rgba(96,165,250,0.5); }
+  50%       { box-shadow: 0 0 16px #60a5fa, 0 0 32px rgba(96,165,250,0.7); }
+}
+
 .tb-spacer { flex: 1; }
 .tb-auth-session {
   font-size: 11px;

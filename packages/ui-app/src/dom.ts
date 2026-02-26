@@ -38,6 +38,8 @@ export const ciPierces       = document.getElementById('ci-pierces') as HTMLElem
 export const ciLength        = document.getElementById('ci-length') as HTMLElement;
 export const chkPierces      = document.getElementById('chk-pierces') as HTMLInputElement;
 export const pierceToggle    = document.getElementById('pierce-toggle') as HTMLLabelElement;
+export const chkDimensions   = document.getElementById('chk-dimensions') as HTMLInputElement;
+export const dimToggle       = document.getElementById('dim-toggle') as HTMLLabelElement;
 
 // ─── Inspector ───────────────────────────────────────────────────────
 

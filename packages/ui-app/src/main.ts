@@ -38,6 +38,7 @@ import {
   sidebarInspector, inspectorContent,
   statusZoom, statusEntities, statusVersion,
   chkPierces, pierceToggle,
+  chkDimensions, dimToggle,
   btnNesting, nestingPanel, nestPreset, nestCustomRow,
   nestRotateEnabled, nestRotateStep, nestModeRadios,
   btnAdvancedToggle, nestAdvanced, nestCommonLineEnabled,
@@ -353,6 +354,11 @@ btnGrid.addEventListener('click', () => {
 chkPierces.addEventListener('change', () => {
   renderer.showPiercePoints = chkPierces.checked;
   pierceToggle.classList.toggle('on', chkPierces.checked);
+});
+
+chkDimensions.addEventListener('change', () => {
+  renderer.showDimensions = chkDimensions.checked;
+  dimToggle.classList.toggle('on', chkDimensions.checked);
 });
 
 btnAuthLogin.addEventListener('click', () => { void runTelegramLoginFlow(); });
