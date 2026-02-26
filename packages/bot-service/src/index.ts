@@ -14,6 +14,7 @@ import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
 import { createTelegramLoginCode } from '../../api-service/src/telegram-auth.js';
 import { getSharedSheet } from '../../api-service/src/shared-sheets.js';
+import { detectBotLocale, getBotStrings, type BotLocale } from './i18n.js';
 
 export interface BotMessage {
   readonly chatId: string;
@@ -76,6 +77,7 @@ interface SavedNestingVariant {
 }
 
 interface PendingNestingContext {
+  readonly locale: BotLocale;
   readonly fileNames: readonly string[];
   readonly summary: BotCuttingSummary;
   readonly items: readonly NestingItem[];
@@ -586,28 +588,19 @@ function getSheetFromCallbackData(data: string): SheetSize | null {
   return { width, height };
 }
 
-function buildSheetButtons(): readonly (readonly { text: string; callback_data: string }[])[] {
+function buildSheetButtons(locale: BotLocale): readonly (readonly { text: string; callback_data: string }[])[] {
+  const s = getBotStrings(locale);
   const rows: { text: string; callback_data: string }[][] = [];
   for (let i = 0; i < SHEET_PRESETS.length; i += 2) {
     const row: { text: string; callback_data: string }[] = [];
     const a = SHEET_PRESETS[i];
     const b = SHEET_PRESETS[i + 1];
-    if (a !== undefined) {
-      row.push({
-        text: a.label,
-        callback_data: `${NESTING_CALLBACK_PREFIX}${a.size.width}x${a.size.height}`,
-      });
-    }
-    if (b !== undefined) {
-      row.push({
-        text: b.label,
-        callback_data: `${NESTING_CALLBACK_PREFIX}${b.size.width}x${b.size.height}`,
-      });
-    }
+    if (a !== undefined) row.push({ text: a.label, callback_data: `${NESTING_CALLBACK_PREFIX}${a.size.width}x${a.size.height}` });
+    if (b !== undefined) row.push({ text: b.label, callback_data: `${NESTING_CALLBACK_PREFIX}${b.size.width}x${b.size.height}` });
     rows.push(row);
   }
-  rows.push([{ text: 'Свой размер (ввести)', callback_data: `${ACTION_CALLBACK_PREFIX}sheet_custom` }]);
-  rows.push([{ text: 'Назад в меню', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
+  rows.push([{ text: s.btnCustomSheet, callback_data: `${ACTION_CALLBACK_PREFIX}sheet_custom` }]);
+  rows.push([{ text: s.btnBackMenu, callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
   return rows;
 }
 
@@ -629,11 +622,9 @@ function parseSheetSizeText(text: string): SheetSize | null {
 
 // ─── UI: метки и утилиты ─────────────────────────────────────────────
 
-const MODE_LABELS: Record<PendingNestingContext['mode'], string> = {
-  fast: 'Быстрый',
-  precise: 'Точный',
-  common: 'Общий рез',
-};
+function getModeLabel(mode: PendingNestingContext['mode'], s: ReturnType<typeof getBotStrings>): string {
+  return mode === 'fast' ? s.modeFast : mode === 'precise' ? s.modePrecise : s.modeCommon;
+}
 
 type InlineBtn = { text: string; callback_data: string };
 type BtnRow = readonly InlineBtn[];
@@ -645,53 +636,50 @@ function getActiveVariant(context: PendingNestingContext): SavedNestingVariant |
 }
 
 function getPrimaryFileLabel(context: PendingNestingContext): string {
-  if (context.fileNames.length === 0) return 'без_имени';
-  if (context.fileNames.length === 1) return context.fileNames[0]!;
-  return `${context.fileNames[0]} +${context.fileNames.length - 1}`;
+  if (context.fileNames.length === 0) return 'noname';
+  const s = getBotStrings(context.locale);
+  return s.fileLabel(context.fileNames[0]!, context.fileNames.length - 1);
 }
 
 // ─── Экран 1: Главный (компактный дашборд) ──────────────────────
 
 function composeHomeText(ctx: PendingNestingContext): string {
+  const s = getBotStrings(ctx.locale);
   const v = getActiveVariant(ctx);
   const lines = [
     `📁 <b>${escapeHtml(getPrimaryFileLabel(ctx))}</b>`,
-    `✂️ ${ctx.summary.totalPierces} врезок · ${formatCutLength(ctx.summary.totalCutLength, 'm')} · ${ctx.items.length} дет.`,
+    s.homeStats(ctx.summary.totalPierces, formatCutLength(ctx.summary.totalCutLength, 'm'), ctx.items.length),
     '',
-    `🔢 <b>${ctx.quantity ?? '—'}</b> шт  ·  📐 ${ctx.sheet.width}×${ctx.sheet.height}  ·  ${MODE_LABELS[ctx.mode]}`,
+    s.homeParams(ctx.quantity, ctx.sheet.width, ctx.sheet.height, getModeLabel(ctx.mode, s)),
   ];
   if (v !== null) {
     const n = v.nesting;
-    lines.push(
-      '',
-      `✅ <b>${v.name}</b>: ${n.totalSheets} лист. · ${n.avgFillPercent}% · ${n.totalPlaced}/${n.totalRequired} разм.`,
-    );
+    lines.push('', s.homeVariant(v.name, n.totalSheets, n.avgFillPercent, n.totalPlaced, n.totalRequired));
   }
   return lines.join('\n');
 }
 
 function buildHomeButtons(ctx: PendingNestingContext): BtnGrid {
+  const s = getBotStrings(ctx.locale);
   const hasResult = ctx.variants.length > 0;
   const rows: InlineBtn[][] = [
     [
-      { text: '▶️ Раскладка', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
-      { text: '⚙️ Настройки', callback_data: `${ACTION_CALLBACK_PREFIX}settings` },
+      { text: s.btnNesting, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
+      { text: s.btnSettings, callback_data: `${ACTION_CALLBACK_PREFIX}settings` },
     ],
     [
-      { text: '🖼 Превью', callback_data: `${ACTION_CALLBACK_PREFIX}preview` },
-      { text: '📎 Добавить файл', callback_data: `${ACTION_CALLBACK_PREFIX}hint_add_file` },
+      { text: s.btnPreview, callback_data: `${ACTION_CALLBACK_PREFIX}preview` },
+      { text: s.btnAddFile, callback_data: `${ACTION_CALLBACK_PREFIX}hint_add_file` },
     ],
   ];
   if (hasResult) {
     rows.push([
-      { text: '📄 DXF', callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
-      { text: '📋 CSV', callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
-      { text: `📂 Варианты (${ctx.variants.length})`, callback_data: `${ACTION_CALLBACK_PREFIX}variants` },
+      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
+      { text: s.btnCSV, callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
+      { text: s.btnVariants(ctx.variants.length), callback_data: `${ACTION_CALLBACK_PREFIX}variants` },
     ]);
   }
-  rows.push([
-    { text: '🗑 Сброс', callback_data: `${ACTION_CALLBACK_PREFIX}reset_confirm` },
-  ]);
+  rows.push([{ text: s.btnReset, callback_data: `${ACTION_CALLBACK_PREFIX}reset_confirm` }]);
   return rows;
 }
 
@@ -702,34 +690,35 @@ async function sendHome(token: string, chatId: number, ctx: PendingNestingContex
 // ─── Экран 2: Настройки ──────────────────────────────────────
 
 function composeSettingsText(ctx: PendingNestingContext): string {
+  const s = getBotStrings(ctx.locale);
   return [
-    '⚙️ <b>Параметры раскладки</b>',
-    '',
-    `🔢 Количество: <b>${ctx.quantity ?? '—'}</b>`,
-    `📐 Лист: <b>${ctx.sheet.width}×${ctx.sheet.height}</b> мм`,
-    `📏 Зазор: <b>${ctx.gap}</b> мм`,
-    `🎯 Режим: <b>${MODE_LABELS[ctx.mode]}</b>`,
+    s.settingsTitle, '',
+    s.settingsQty(ctx.quantity),
+    s.settingsSheet(ctx.sheet.width, ctx.sheet.height),
+    s.settingsGap(ctx.gap),
+    s.settingsMode(getModeLabel(ctx.mode, s)),
   ].join('\n');
 }
 
 function buildSettingsButtons(ctx: PendingNestingContext): BtnGrid {
+  const s = getBotStrings(ctx.locale);
   const m = ctx.mode;
   return [
     [
-      { text: '🔢 Количество', callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
-      { text: '📐 Лист', callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
+      { text: s.btnQty, callback_data: `${ACTION_CALLBACK_PREFIX}set_qty` },
+      { text: s.btnSheet, callback_data: `${ACTION_CALLBACK_PREFIX}set_sheet` },
     ],
     [
-      { text: `Зазор: ${ctx.gap}`, callback_data: `${ACTION_CALLBACK_PREFIX}set_gap` },
+      { text: s.btnGap(ctx.gap), callback_data: `${ACTION_CALLBACK_PREFIX}set_gap` },
     ],
     [
-      { text: m === 'fast' ? '✔ Быстрый' : 'Быстрый', callback_data: `${ACTION_CALLBACK_PREFIX}mode_fast` },
-      { text: m === 'precise' ? '✔ Точный' : 'Точный', callback_data: `${ACTION_CALLBACK_PREFIX}mode_precise` },
-      { text: m === 'common' ? '✔ Общий рез' : 'Общий рез', callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
+      { text: s.btnModeLabel(s.modeFast, m === 'fast'), callback_data: `${ACTION_CALLBACK_PREFIX}mode_fast` },
+      { text: s.btnModeLabel(s.modePrecise, m === 'precise'), callback_data: `${ACTION_CALLBACK_PREFIX}mode_precise` },
+      { text: s.btnModeLabel(s.modeCommon, m === 'common'), callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
     ],
     [
-      { text: '▶️ Запустить', callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
-      { text: '← Назад', callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
+      { text: s.btnRun, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
+      { text: s.btnBack, callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
     ],
   ];
 }
@@ -741,40 +730,40 @@ async function sendSettings(token: string, chatId: number, ctx: PendingNestingCo
 // ─── Экран 3: Результат раскладки ──────────────────────────
 
 function composeResultCaption(ctx: PendingNestingContext, variantName: string, n: NestingResult): string {
+  const s = getBotStrings(ctx.locale);
   const lines = [
-    `✅ <b>Раскладка ${variantName}</b> — ${getPrimaryFileLabel(ctx)}`,
+    s.resultTitle(variantName, getPrimaryFileLabel(ctx)),
     '',
-    `📝 ${n.totalSheets} лист. · ${n.avgFillPercent}% заполн. · ${n.totalPlaced}/${n.totalRequired} разм.`,
+    s.resultStats(n.totalSheets, n.avgFillPercent, n.totalPlaced, n.totalRequired),
   ];
   if (n.sharedCutLength > 0) {
-    lines.push(`✂️ Совм. рез: ${n.sharedCutLength.toFixed(1)} мм · Экономия: −${n.pierceDelta} врезок`);
+    lines.push(s.resultCommonLine(n.sharedCutLength, n.pierceDelta));
   }
-  lines.push(
-    '',
-    `⚙️ ${ctx.quantity} шт · ${ctx.sheet.width}×${ctx.sheet.height} · ${MODE_LABELS[ctx.mode]} · зазор ${ctx.gap}`,
-  );
+  lines.push('', s.resultParams(ctx.quantity, ctx.sheet.width, ctx.sheet.height, getModeLabel(ctx.mode, s), ctx.gap));
   return lines.join('\n');
 }
 
 function buildResultButtons(ctx: PendingNestingContext): BtnGrid {
+  const s = getBotStrings(ctx.locale);
   return [
     [
-      { text: '📄 DXF', callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
-      { text: '📋 CSV', callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
+      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
+      { text: s.btnCSV, callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
     ],
     [
-      { text: '🔄 Другие параметры', callback_data: `${ACTION_CALLBACK_PREFIX}settings` },
-      { text: `📂 Варианты (${ctx.variants.length})`, callback_data: `${ACTION_CALLBACK_PREFIX}variants` },
+      { text: s.btnOtherParams, callback_data: `${ACTION_CALLBACK_PREFIX}settings` },
+      { text: s.btnVariants(ctx.variants.length), callback_data: `${ACTION_CALLBACK_PREFIX}variants` },
     ],
     [
-      { text: '← Главная', callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
+      { text: s.btnHome, callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
     ],
   ];
 }
 
 // ─── Подэкраны: количество, лист, зазор, варианты ──────────────
 
-function buildQuantityButtons(): BtnGrid {
+function buildQuantityButtons(locale: BotLocale): BtnGrid {
+  const s = getBotStrings(locale);
   return [
     [
       { text: '1', callback_data: `${QUANTITY_CALLBACK_PREFIX}1` },
@@ -786,30 +775,31 @@ function buildQuantityButtons(): BtnGrid {
       { text: '50', callback_data: `${QUANTITY_CALLBACK_PREFIX}50` },
       { text: '100', callback_data: `${QUANTITY_CALLBACK_PREFIX}100` },
     ],
-    [{ text: '← Назад', callback_data: `${ACTION_CALLBACK_PREFIX}settings` }],
+    [{ text: s.btnBackSettings, callback_data: `${ACTION_CALLBACK_PREFIX}settings` }],
   ];
 }
 
-function buildGapButtons(currentGap: number): BtnGrid {
+function buildGapButtons(currentGap: number, locale: BotLocale): BtnGrid {
+  const s = getBotStrings(locale);
   const gaps = [0, 2, 5, 10];
   return [
     gaps.map(g => ({
-      text: g === currentGap ? `✔ ${g} мм` : `${g} мм`,
+      text: s.btnGapMm(g, g === currentGap),
       callback_data: `${ACTION_CALLBACK_PREFIX}gap_${g}`,
     })),
-    [{ text: '← Назад', callback_data: `${ACTION_CALLBACK_PREFIX}settings` }],
+    [{ text: s.btnBackSettings, callback_data: `${ACTION_CALLBACK_PREFIX}settings` }],
   ];
 }
 
 function buildVariantsButtons(ctx: PendingNestingContext): BtnGrid {
+  const s = getBotStrings(ctx.locale);
   const rows: InlineBtn[][] = [];
   for (let i = 0; i < ctx.variants.length; i++) {
     const v = ctx.variants[i]!;
     const active = ctx.activeVariantIndex === i;
-    const label = `${active ? '● ' : ''}${v.name} — ${v.nesting.totalSheets}л. ${v.nesting.avgFillPercent}%`;
-    rows.push([{ text: label, callback_data: `${VARIANT_CALLBACK_PREFIX}${i}` }]);
+    rows.push([{ text: s.variantLabel(active, v.name, v.nesting.totalSheets, v.nesting.avgFillPercent), callback_data: `${VARIANT_CALLBACK_PREFIX}${i}` }]);
   }
-  rows.push([{ text: '← Главная', callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
+  rows.push([{ text: s.btnHome, callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
   return rows;
 }
 
@@ -888,12 +878,13 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
     if (data.startsWith(VARIANT_CALLBACK_PREFIX)) {
       if (context === undefined) {
-        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        await telegramSendMessage(token, chatId, getBotStrings('ru').sendDxfFirst);
         return;
       }
+      const s = getBotStrings(context.locale);
       const idx = Number(data.slice(VARIANT_CALLBACK_PREFIX.length));
       if (!Number.isInteger(idx) || idx < 0 || idx >= context.variants.length) {
-        await telegramSendMessage(token, chatId, 'Вариант не найден.');
+        await telegramSendMessage(token, chatId, s.variantNotFound);
         return;
       }
       const nextContext: PendingNestingContext = {
@@ -908,12 +899,13 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
     if (data.startsWith(QUANTITY_CALLBACK_PREFIX)) {
       if (context === undefined) {
-        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        await telegramSendMessage(token, chatId, getBotStrings('ru').sendDxfFirst);
         return;
       }
+      const s = getBotStrings(context.locale);
       const quantity = Number(data.slice(QUANTITY_CALLBACK_PREFIX.length));
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        await telegramSendMessage(token, chatId, 'Некорректное количество.');
+        await telegramSendMessage(token, chatId, s.invalidQuantity);
         return;
       }
       const nextContext: PendingNestingContext = {
@@ -931,7 +923,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
       if (action === 'menu') {
         if (context === undefined) {
-          await telegramSendMessage(token, chatId, 'Отправьте DXF файл (.dxf), чтобы открыть рабочее меню.');
+          await telegramSendMessage(token, chatId, getBotStrings('ru').noContextForMenu);
           return;
         }
         await sendDashboard(token, chatId, context);
@@ -939,9 +931,11 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       }
 
       if (context === undefined) {
-        await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+        await telegramSendMessage(token, chatId, getBotStrings('ru').sendDxfFirst);
         return;
       }
+
+      const s = getBotStrings(context.locale);
 
       // ── Навигация ──
 
@@ -951,12 +945,12 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       }
 
       if (action === 'preview') {
-        await telegramSendPhoto(token, chatId, context.previewJpeg, `Превью: ${getPrimaryFileLabel(context)}`);
+        await telegramSendPhoto(token, chatId, context.previewJpeg, s.previewCaption(getPrimaryFileLabel(context)));
         return;
       }
 
       if (action === 'hint_add_file') {
-        await telegramSendMessage(token, chatId, 'Отправьте ещё один DXF файл — он добавится в текущий набор.');
+        await telegramSendMessage(token, chatId, s.hintAddFile);
         return;
       }
 
@@ -966,8 +960,8 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         setNestingContext(chatId, { ...context, awaitingInput: 'quantity' });
         await telegramSendMessageWithKeyboard(
           token, chatId,
-          'Количество копий каждой детали:',
-          buildQuantityButtons(),
+          s.selectQuantity,
+          buildQuantityButtons(context.locale),
         );
         return;
       }
@@ -975,23 +969,23 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       if (action === 'set_sheet') {
         await telegramSendMessageWithKeyboard(
           token, chatId,
-          'Выберите размер листа или введите свой (напр. 1500x3000):',
-          buildSheetButtons(),
+          s.selectSheet,
+          buildSheetButtons(context.locale),
         );
         return;
       }
 
       if (action === 'sheet_custom') {
         setNestingContext(chatId, { ...context, awaitingInput: 'custom_sheet' });
-        await telegramSendMessage(token, chatId, 'Введите размер листа, например: 1500x3000');
+        await telegramSendMessage(token, chatId, s.enterCustomSheet);
         return;
       }
 
       if (action === 'set_gap') {
         await telegramSendMessageWithKeyboard(
           token, chatId,
-          `Зазор между деталями (сейчас ${context.gap} мм):`,
-          buildGapButtons(context.gap),
+          s.gapPrompt(context.gap),
+          buildGapButtons(context.gap, context.locale),
         );
         return;
       }
@@ -999,7 +993,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       if (action.startsWith('gap_')) {
         const gap = Number(action.slice(4));
         if (!Number.isFinite(gap) || gap < 0) {
-          await telegramSendMessage(token, chatId, 'Некорректный зазор.');
+          await telegramSendMessage(token, chatId, s.invalidGap);
           return;
         }
         const next: PendingNestingContext = { ...context, gap, awaitingInput: 'none' };
@@ -1021,7 +1015,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
       if (action === 'run_nesting') {
         if (context.quantity === null || context.quantity <= 0) {
-          await telegramSendMessage(token, chatId, 'Сначала задайте количество (⚙️ Настройки → Количество).');
+          await telegramSendMessage(token, chatId, s.needQuantityFirst);
           return;
         }
 
@@ -1059,7 +1053,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           awaitingInput: 'none',
         };
         setNestingContext(chatId, next);
-        await telegramSendMessageWithKeyboard(token, chatId, 'Что дальше?', buildResultButtons(next), 'HTML');
+        await telegramSendMessageWithKeyboard(token, chatId, s.whatNext, buildResultButtons(next), 'HTML');
         return;
       }
 
@@ -1067,12 +1061,12 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
       if (action === 'variants') {
         if (context.variants.length === 0) {
-          await telegramSendMessage(token, chatId, 'Нет вариантов. Запустите раскладку.');
+          await telegramSendMessage(token, chatId, s.noVariants);
           return;
         }
         await telegramSendMessageWithKeyboard(
           token, chatId,
-          'Выберите вариант:',
+          s.selectVariant,
           buildVariantsButtons(context),
         );
         return;
@@ -1083,10 +1077,10 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       if (action === 'reset_confirm') {
         await telegramSendMessageWithKeyboard(
           token, chatId,
-          `Сбросить набор (${context.fileNames.length} файл., ${context.variants.length} вар.)?`,
+          s.resetConfirm(context.fileNames.length, context.variants.length),
           [[
-            { text: '✅ Да', callback_data: `${ACTION_CALLBACK_PREFIX}reset_yes` },
-            { text: '❌ Отмена', callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
+            { text: s.resetYes, callback_data: `${ACTION_CALLBACK_PREFIX}reset_yes` },
+            { text: s.resetCancel, callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
           ]],
         );
         return;
@@ -1094,7 +1088,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
       if (action === 'reset_yes') {
         chatNestingContext.delete(chatId);
-        await telegramSendMessage(token, chatId, 'Набор сброшен. Отправьте DXF файл.');
+        await telegramSendMessage(token, chatId, s.resetDone);
         return;
       }
 
@@ -1103,7 +1097,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       if (action === 'export_dxf' || action === 'export_csv') {
         const activeVariant = getActiveVariant(context);
         if (activeVariant === null) {
-          await telegramSendMessage(token, chatId, 'Сначала запустите раскладку.');
+          await telegramSendMessage(token, chatId, s.runNestingFirst);
           return;
         }
         const safe = toSafeBaseName(getPrimaryFileLabel(context));
@@ -1117,19 +1111,21 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         return;
       }
 
-      await telegramSendMessage(token, chatId, 'Команда не распознана.');
+      await telegramSendMessage(token, chatId, s.unknownCommand);
       return;
     }
 
+    const ctxLocale = context?.locale ?? 'ru';
+    const fallbackS = getBotStrings(ctxLocale);
     const sheet = getSheetFromCallbackData(data);
     if (sheet === null) {
-      await telegramSendMessage(token, chatId, 'Не понял размер листа. Выберите пресет кнопкой ниже.');
-      await telegramSendMessageWithKeyboard(token, chatId, 'Выберите размер листа:', buildSheetButtons());
+      await telegramSendMessage(token, chatId, fallbackS.invalidSheetSize);
+      await telegramSendMessageWithKeyboard(token, chatId, fallbackS.selectSheetPrompt, buildSheetButtons(ctxLocale));
       return;
     }
 
     if (context === undefined) {
-      await telegramSendMessage(token, chatId, 'Сначала отправьте DXF файл.');
+      await telegramSendMessage(token, chatId, fallbackS.sendDxfFirst);
       return;
     }
 
@@ -1152,16 +1148,19 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     const isDXF = fileName.toLowerCase().endsWith('.dxf')
       || (message.document.mime_type ?? '').toLowerCase().includes('dxf');
 
+    const userLocale = detectBotLocale(message.from?.language_code);
+    const ms = getBotStrings(userLocale);
+
     if (!isDXF) {
-      await telegramSendMessage(token, chatId, 'Пришлите DXF файл (.dxf).');
+      await telegramSendMessage(token, chatId, ms.notDxf);
       return;
     }
 
-    await telegramSendMessage(token, chatId, 'Файл получен, обрабатываю...');
+    await telegramSendMessage(token, chatId, ms.fileReceived);
 
     const fileSize = message.document.file_size ?? 0;
     if (fileSize > BOT_MAX_DXF_BYTES) {
-      await telegramSendMessage(token, chatId, `Файл слишком большой (${(fileSize / 1024 / 1024).toFixed(1)} MB). Максимум: 20 MB.`);
+      await telegramSendMessage(token, chatId, ms.fileTooBig((fileSize / 1024 / 1024).toFixed(1)));
       return;
     }
 
@@ -1172,6 +1171,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       const current = chatNestingContext.get(chatId);
       const context: PendingNestingContext = current === undefined
         ? {
+            locale: userLocale,
             fileNames: [fileName],
             summary: result.summary,
             items: result.nestingItems,
@@ -1190,53 +1190,53 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
       setNestingContext(chatId, context);
 
-      const caption = [
-        `Файл: ${escapeHtml(fileName)}`,
-        `Врезок: ${result.summary.totalPierces}`,
-        `Длина реза: ${formatCutLength(result.summary.totalCutLength, 'm')}`,
-        current === undefined
-          ? 'Открываю рабочее меню ниже.'
-          : `Добавлен в набор. Теперь файлов в наборе: ${context.fileNames.length}`,
-      ].join('\n');
+      const caption = ms.fileCaption(
+        escapeHtml(fileName),
+        result.summary.totalPierces,
+        formatCutLength(result.summary.totalCutLength, 'm'),
+        current === undefined,
+        context.fileNames.length,
+      );
 
       await telegramSendPhoto(token, chatId, result.previewJpeg, caption);
       await sendDashboard(token, chatId, context);
     } catch (error) {
       const details = error instanceof Error ? error.message : String(error);
-      await telegramSendMessage(token, chatId, `Ошибка обработки DXF: ${details}`);
+      await telegramSendMessage(token, chatId, ms.dxfError(details));
     }
 
     return;
   }
 
   if (message.text !== undefined) {
+    const textLocale = detectBotLocale(message.from?.language_code);
+    const ts = getBotStrings(textLocale);
+
     if (message.text === '/login' || message.text === '/auth') {
       try {
         const telegramUserId = message.from?.id ?? chatId;
         const { code, expiresAt } = await createTelegramLoginCode(telegramUserId, chatId);
         const ttlMinutes = Math.max(1, Math.round((expiresAt - Date.now()) / 60000));
-        await telegramSendMessage(
-          token,
-          chatId,
-          `Код входа: ${code}\n\nВведите его в программе DXF Viewer (кнопка «Вход Telegram»).\nКод действует ~${ttlMinutes} мин.`,
-        );
+        await telegramSendMessage(token, chatId, ts.loginCode(code, ttlMinutes));
       } catch (error) {
         const details = error instanceof Error ? error.message : String(error);
-        await telegramSendMessage(token, chatId, `Не удалось выдать код входа: ${details}`);
+        await telegramSendMessage(token, chatId, ts.loginError(details));
       }
       return;
     }
 
     const pending = chatNestingContext.get(chatId);
+    const pendingS = pending ? getBotStrings(pending.locale) : ts;
+
     if (pending !== undefined && pending.awaitingInput === 'quantity') {
       if (!isPositiveIntegerText(message.text)) {
-        await telegramSendMessage(token, chatId, 'Введите целое число больше 0. Например: 5');
+        await telegramSendMessage(token, chatId, pendingS.invalidQuantityFormat);
         return;
       }
 
       const quantity = Number(message.text.trim());
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        await telegramSendMessage(token, chatId, 'Введите целое число больше 0. Например: 5');
+        await telegramSendMessage(token, chatId, pendingS.invalidQuantityFormat);
         return;
       }
 
@@ -1253,7 +1253,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     if (pending !== undefined && pending.awaitingInput === 'custom_sheet') {
       const sheet = parseSheetSizeText(message.text);
       if (sheet === null) {
-        await telegramSendMessage(token, chatId, 'Неверный формат. Введите так: 1500x3000');
+        await telegramSendMessage(token, chatId, pendingS.invalidSheetFormat);
         return;
       }
 
@@ -1271,11 +1271,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       if (pending !== undefined) {
         await sendDashboard(token, chatId, pending);
       } else {
-        await telegramSendMessage(
-          token,
-          chatId,
-          'Отправьте DXF файл (.dxf). После загрузки откроется полное меню: статистика, параметры, раскладка и экспорт.\n\nТакже можно отправить код листа (8 символов) для получения DXF раскладки.\nДля входа в программу по Telegram используйте /login.',
-        );
+        await telegramSendMessage(token, chatId, ts.startNoContext);
       }
       return;
     }
@@ -1293,7 +1289,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         if (entry) {
           const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
           const s = entry.singleResult;
-          const caption = `📋 Лист #${entry.sheetIndex + 1} [${hash}]\n${s.sheet.width}×${s.sheet.height} мм · ${s.totalPlaced} дет. · ${s.avgFillPercent}%`;
+          const caption = ts.hashCaption(entry.sheetIndex + 1, hash, s.sheet.width, s.sheet.height, s.totalPlaced, s.avgFillPercent);
           await telegramSendDocument(
             token, chatId,
             Buffer.from(dxf, 'utf-8'),
@@ -1307,9 +1303,9 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         }
       }
       if (notFound > 0 && found === 0) {
-        await telegramSendMessage(token, chatId, `Код${uniqueHashes.length > 1 ? 'ы' : ''} не найден${uniqueHashes.length > 1 ? 'ы' : ''} или истёк срок действия.`);
+        await telegramSendMessage(token, chatId, ts.hashNotFound(uniqueHashes.length > 1));
       } else if (notFound > 0) {
-        await telegramSendMessage(token, chatId, `${found} из ${uniqueHashes.length} листов отправлено. Остальные коды не найдены.`);
+        await telegramSendMessage(token, chatId, ts.hashPartial(found, uniqueHashes.length));
       }
       return;
     }
@@ -1317,9 +1313,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     await telegramSendMessage(
       token,
       chatId,
-      pending !== undefined
-        ? 'Используйте /menu для панели действий, отправьте DXF файл или код листа (8 символов).'
-        : 'Отправьте DXF файл (.dxf) или код листа (8 символов) для получения раскладки.',
+      pending !== undefined ? ts.startWithContext : ts.unknownText,
     );
   }
 }

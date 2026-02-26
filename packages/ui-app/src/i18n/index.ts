@@ -32,11 +32,19 @@ export function getLocale(): Locale {
   return _locale;
 }
 
+const _localeListeners: Array<() => void> = [];
+
+/** Register a callback that fires after every locale switch. */
+export function onLocaleChange(fn: () => void): void {
+  _localeListeners.push(fn);
+}
+
 /** Switch locale and persist, then re-apply to DOM. */
 export function setLocale(locale: Locale): void {
   _locale = locale;
   localStorage.setItem(STORAGE_KEY, locale);
   applyLocale();
+  for (const fn of _localeListeners) fn();
 }
 
 /**

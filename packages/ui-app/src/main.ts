@@ -75,7 +75,7 @@ import {
   setZoomPanStartX, setZoomPanStartY, setZoomHideTimer,
 } from './nesting-panel.js';
 import * as NP from './nesting-panel.js';
-import { applyLocale, setLocale, getLocale } from './i18n/index.js';
+import { applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
 
@@ -84,6 +84,10 @@ applyLocale();
 const btnLangToggle = document.getElementById('btn-lang-toggle') as HTMLButtonElement | null;
 btnLangToggle?.addEventListener('click', () => {
   setLocale(getLocale() === 'ru' ? 'en' : 'ru');
+});
+onLocaleChange(() => {
+  applyAuthUiState(updateUploadTargetHint);
+  updateBulkControlsUi();
 });
 
 // ─── Mode badge ───────────────────────────────────────────────────────
