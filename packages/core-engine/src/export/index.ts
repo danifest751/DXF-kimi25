@@ -7,7 +7,7 @@
 import type { NestingResult } from '../nesting/index.js';
 import type { CuttingStats } from '../cutting/index.js';
 import { DXFEntityType, DXFFormat, DXFVersion } from '../types/index.js';
-import type { DXFDocument, DXFEntity, DXFLayer, DXFLineEntity, DXFArcEntity, DXFCircleEntity, DXFLWPolylineEntity, BoundingBox } from '../types/index.js';
+import type { DXFDocument, DXFEntity, DXFLayer, DXFLineEntity, DXFArcEntity, DXFCircleEntity, DXFLWPolylineEntity, DXFEllipseEntity, DXFSplineEntity, DXFPolylineEntity, BoundingBox } from '../types/index.js';
 import type { FlattenedEntity } from '../normalize/index.js';
 import { mat4TransformPoint, tessellateArc, tessellateEllipse, tessellateSpline, tessellateLWPolyline } from '../geometry/index.js';
 
@@ -237,7 +237,7 @@ function transformEntity(
   }
 
   if (e.type === DXFEntityType.ELLIPSE) {
-    const el = e as import('../types/index.js').DXFEllipseEntity;
+    const el = e as DXFEllipseEntity;
     const pts = tessellateEllipse(el.center, el.majorAxis, el.minorAxisRatio, el.startAngle, el.endAngle, 64);
     if (pts.length < 2) return [];
     const isFull = Math.abs(el.endAngle - el.startAngle) >= Math.PI * 2 - 0.01;
@@ -245,7 +245,7 @@ function transformEntity(
   }
 
   if (e.type === DXFEntityType.SPLINE) {
-    const sp = e as import('../types/index.js').DXFSplineEntity;
+    const sp = e as DXFSplineEntity;
     if (sp.controlPoints.length < 2) return [];
     const pts = tessellateSpline(sp.degree, sp.controlPoints, sp.knots, sp.weights, 128);
     if (pts.length < 2) return [];
@@ -253,7 +253,7 @@ function transformEntity(
   }
 
   if (e.type === DXFEntityType.POLYLINE) {
-    const pl = e as import('../types/index.js').DXFPolylineEntity;
+    const pl = e as DXFPolylineEntity;
     if (pl.vertices.length < 2) return [];
     return [makePoly(pl.vertices, pl.closed)];
   }
