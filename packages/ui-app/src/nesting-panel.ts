@@ -503,8 +503,17 @@ export function exportAllSheetsDXF(): void {
 }
 
 export function exportFullNestingDXF(): void {
-  if (!currentNestResult) return;
-  const dxfStr = exportNestingToDXF({ nestingResult: currentNestResult, itemDocs: buildItemDocs() });
+  if (!currentNestResult) { console.warn('[exportFullNestingDXF] no currentNestResult'); return; }
+  console.log('[exportFullNestingDXF] sheets:', currentNestResult.sheets.length);
+  const docs = buildItemDocs();
+  console.log('[exportFullNestingDXF] itemDocs size:', docs.size);
+  for (const [k, v] of docs) console.log(`  itemDocs[${k}]: flatEntities=${v.flatEntities.length}`);
+  for (const sh of currentNestResult.sheets) {
+    for (const p of sh.placed) console.log(`  placed itemId=${p.itemId} found=${docs.has(p.itemId)}`);
+  }
+  const dxfStr = exportNestingToDXF({ nestingResult: currentNestResult, itemDocs: docs });
+  const lwCount = (dxfStr.match(/\nLWPOLYLINE\n/g) ?? []).length;
+  console.log('[exportFullNestingDXF] output LWPOLYLINE count:', lwCount, 'total chars:', dxfStr.length);
   const blob = new Blob([dxfStr], { type: 'application/dxf' });
   downloadBlob(blob, 'nesting.dxf');
 }
