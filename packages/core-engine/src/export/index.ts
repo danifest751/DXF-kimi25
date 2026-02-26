@@ -91,10 +91,17 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   }
 
   const { itemDocs } = options;
+  const sheetH = nestingResult.sheet.height;
+
+  // Y-flip helper: nesting stores Y=0 at bottom (grows up), but visually
+  // (in UI canvas) items appear at the top. Mirror Y within each sheet so
+  // the exported DXF matches the on-screen layout (items at the top).
+  function flipY(y: number, offsetY: number): number {
+    return offsetY + (sheetH - y);
+  }
 
   // Создаём сущности для каждого размещённого объекта
   for (const sheet of nestingResult.sheets) {
-    const sheetH = nestingResult.sheet.height;
     const sheetOffsetY = sheet.sheetIndex * (sheetH + nestingResult.gap);
     for (const placed of sheet.placed) {
       const itemDoc = itemDocs?.get(placed.itemId);
@@ -105,18 +112,20 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
         const bbH = bb.max.y - bb.min.y;
         const angleDeg = (placed as { angleDeg?: number }).angleDeg ?? (placed.rotated ? 90 : 0);
         const angleRad = (angleDeg * Math.PI) / 180;
-        const cosA = Math.cos(angleRad);
-        const sinA = Math.sin(angleRad);
+        // For Y-flipped space, negate the rotation angle
+        const cosA = Math.cos(-angleRad);
+        const sinA = Math.sin(-angleRad);
         // Centre of bbox in source space
         const srcCx = bb.min.x + bbW / 2;
         const srcCy = bb.min.y + bbH / 2;
         // After rotation, bbox dims swap for 90°
-        const rotBbW = Math.abs(bbW * cosA) + Math.abs(bbH * sinA);
-        const rotBbH = Math.abs(bbW * sinA) + Math.abs(bbH * cosA);
-        // Placement origin (bottom-left of rotated bbox) in DXF sheet coords
-        // nesting Y=0 is bottom of sheet, DXF Y=0 is bottom → same convention
+        const rotBbW = Math.abs(bbW * Math.cos(angleRad)) + Math.abs(bbH * Math.sin(angleRad));
+        const rotBbH = Math.abs(bbW * Math.sin(angleRad)) + Math.abs(bbH * Math.cos(angleRad));
+        // Destination centre in DXF coords (Y-flipped)
+        // placed.y is bottom of bbox in nesting space; after flip top of bbox = sheetH - placed.y
+        // centre Y in flipped space = sheetH - placed.y - rotBbH/2
         const destCx = placed.x + rotBbW / 2;
-        const destCy = sheetOffsetY + placed.y + rotBbH / 2;
+        const destCy = sheetOffsetY + sheetH - placed.y - rotBbH / 2;
 
         for (const fe of itemDoc.flatEntities) {
           const transformed = transformEntity(fe, srcCx, srcCy, cosA, sinA, destCx, destCy, placed.name, handleCounter);
@@ -126,22 +135,22 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
           }
         }
       } else {
-        // Fallback: bbox rectangle
+        // Fallback: bbox rectangle (Y-flipped)
         const x = placed.x;
-        const y = placed.y + sheetOffsetY;
+        const yTop = flipY(placed.y, sheetOffsetY);       // nesting y=bottom → DXF y=top
+        const yBot = flipY(placed.y + placed.height, sheetOffsetY);
         const w = placed.width;
-        const h = placed.height;
-        entities.push(createLine(x, y, x + w, y, handleCounter++, placed.name));
-        entities.push(createLine(x + w, y, x + w, y + h, handleCounter++, placed.name));
-        entities.push(createLine(x + w, y + h, x, y + h, handleCounter++, placed.name));
-        entities.push(createLine(x, y + h, x, y, handleCounter++, placed.name));
+        entities.push(createLine(x,     yBot, x + w, yBot, handleCounter++, placed.name));
+        entities.push(createLine(x + w, yBot, x + w, yTop, handleCounter++, placed.name));
+        entities.push(createLine(x + w, yTop, x,     yTop, handleCounter++, placed.name));
+        entities.push(createLine(x,     yTop, x,     yBot, handleCounter++, placed.name));
       }
     }
 
     const sharedSegments = createCommonLineSegments(
       sheet.placed.map((p) => ({
         x: p.x,
-        y: p.y + sheetOffsetY,
+        y: flipY(p.y + p.height, sheetOffsetY),
         width: p.width,
         height: p.height,
       })),
@@ -155,9 +164,8 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   let sheetHandle = 5000;
   for (let i = 0; i < nestingResult.sheets.length; i++) {
     const sheetX = 0;
-    const sheetY = i * (nestingResult.sheet.height + nestingResult.gap);
+    const sheetY = i * (sheetH + nestingResult.gap);
     const sheetW = nestingResult.sheet.width;
-    const sheetH = nestingResult.sheet.height;
 
     // Контур листа (4 линии)
     entities.push(createLine(sheetX, sheetY, sheetX + sheetW, sheetY, sheetHandle++, 'SHEET'));

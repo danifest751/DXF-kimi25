@@ -460,6 +460,14 @@ function buildItemDocs(): Map<number, ItemDocData> {
       map.set(f.id, { flatEntities: f.doc.flatEntities, bbox: f.doc.totalBBox });
     }
   }
+  console.log('[export] itemDocs keys:', [...map.keys()]);
+  if (currentNestResult) {
+    for (const sh of currentNestResult.sheets) {
+      for (const p of sh.placed) {
+        console.log('[export] placed itemId:', p.itemId, 'found:', map.has(p.itemId));
+      }
+    }
+  }
   return map;
 }
 
