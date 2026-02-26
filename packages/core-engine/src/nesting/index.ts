@@ -3,6 +3,7 @@
  * Модуль раскладки деталей на лист металла.
  * Алгоритм: Bottom-Left Fill (BLF) с опциональным поворотом на 90°.
  */
+import { placeTrueShape } from './true-shape-placer.js';
 
 // ─── Типы ───────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ export interface PlacedItem {
   readonly copyIndex: number;
 }
 
-export type NestingStrategy = 'blf_bbox' | 'maxrects_bbox';
+export type NestingStrategy = 'blf_bbox' | 'maxrects_bbox' | 'true_shape';
 
 export interface CommonLineOptions {
   readonly enabled?: boolean;
@@ -470,6 +471,10 @@ export function nestItems(
   gap: number = 5,
   options: NestingOptions = {},
 ): NestingResult {
+  if (options.strategy === 'true_shape') {
+    return placeTrueShape(items, sheet, gap, options);
+  }
+
   const rotationEnabled = options.rotationEnabled ?? true;
   const strategy: NestingStrategy = options.strategy === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
   const multiStart = options.multiStart ?? false;

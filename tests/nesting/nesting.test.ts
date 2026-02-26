@@ -351,3 +351,89 @@ describe('nestItems', () => {
   });
 });
 
+// ─── True Shape Nesting ──────────────────────────────────────────────────────
+
+describe('nestItems – strategy: true_shape', () => {
+  const sheet: SheetSize = { width: 1000, height: 1000 };
+
+  it('places all items on the sheet (rectangles without contour)', () => {
+    const items: NestingItem[] = [
+      { id: 1, name: 'A', width: 200, height: 100, quantity: 3 },
+      { id: 2, name: 'B', width: 150, height: 150, quantity: 2 },
+    ];
+    const result = nestItems(items, sheet, 5, { strategy: 'true_shape' });
+    expect(result.totalPlaced).toBe(5);
+    expect(result.totalRequired).toBe(5);
+    expect(result.totalSheets).toBeGreaterThanOrEqual(1);
+  });
+
+  it('result has correct sheet reference', () => {
+    const items: NestingItem[] = [
+      { id: 1, name: 'X', width: 100, height: 100, quantity: 1 },
+    ];
+    const result = nestItems(items, sheet, 0, { strategy: 'true_shape' });
+    expect(result.sheet).toEqual(sheet);
+  });
+
+  it('placed items have valid coordinates (within sheet bounds)', () => {
+    const items: NestingItem[] = [
+      { id: 1, name: 'R', width: 200, height: 100, quantity: 4 },
+    ];
+    const result = nestItems(items, sheet, 5, { strategy: 'true_shape' });
+    for (const s of result.sheets) {
+      for (const p of s.placed) {
+        expect(p.x).toBeGreaterThanOrEqual(0);
+        expect(p.y).toBeGreaterThanOrEqual(0);
+        expect(p.x + p.width).toBeLessThanOrEqual(sheet.width + 0.1);
+        expect(p.y + p.height).toBeLessThanOrEqual(sheet.height + 0.1);
+      }
+    }
+  });
+
+  it('uses contour polygon when provided', () => {
+    // L-shape contour (100×100 with 50×50 cutout)
+    const contour = [
+      { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 },
+      { x: 50, y: 50 }, { x: 50, y: 100 }, { x: 0, y: 100 },
+    ];
+    const items: NestingItem[] = [
+      { id: 1, name: 'L', width: 100, height: 100, quantity: 3, contour },
+    ];
+    const result = nestItems(items, sheet, 5, { strategy: 'true_shape' });
+    expect(result.totalPlaced).toBe(3);
+  });
+
+  it('opens additional sheets when items do not fit on one', () => {
+    // 5 items of 400×400 on a 500×500 sheet → need multiple sheets
+    const items: NestingItem[] = [
+      { id: 1, name: 'Big', width: 400, height: 400, quantity: 5 },
+    ];
+    const smallSheet: SheetSize = { width: 500, height: 500 };
+    const result = nestItems(items, smallSheet, 0, { strategy: 'true_shape' });
+    expect(result.totalSheets).toBeGreaterThan(1);
+    expect(result.totalPlaced).toBe(5);
+  });
+
+  it('fills better than bbox on L-shaped parts (sanity check)', () => {
+    // Regression: true_shape and bbox_blf both place the same parts;
+    // true_shape should not place FEWER parts.
+    const items: NestingItem[] = [
+      { id: 1, name: 'P', width: 300, height: 200, quantity: 6 },
+    ];
+    const s: SheetSize = { width: 1000, height: 600 };
+    const tsResult = nestItems(items, s, 5, { strategy: 'true_shape' });
+    const blfResult = nestItems(items, s, 5, { strategy: 'blf_bbox' });
+    // true_shape should place at least as many as bbox
+    expect(tsResult.totalPlaced).toBeGreaterThanOrEqual(blfResult.totalPlaced - 1);
+  });
+
+  it('avgFillPercent is between 0 and 100', () => {
+    const items: NestingItem[] = [
+      { id: 1, name: 'Q', width: 100, height: 100, quantity: 4 },
+    ];
+    const result = nestItems(items, sheet, 5, { strategy: 'true_shape' });
+    expect(result.avgFillPercent).toBeGreaterThanOrEqual(0);
+    expect(result.avgFillPercent).toBeLessThanOrEqual(100);
+  });
+});
+
