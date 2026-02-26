@@ -309,7 +309,7 @@ window.addEventListener('mousemove', (e) => {
   document.getElementById('status-coords')!.textContent = `X: ${world.x.toFixed(2)}  Y: ${world.y.toFixed(2)}`;
   if (!isPanning) {
     const idx = renderer.hitTestScreen(sx, sy);
-    renderer.setHovered(idx);
+    renderer.setHovered(idx, sx, sy);
     canvas.style.cursor = idx >= 0 ? 'pointer' : 'default';
   }
 

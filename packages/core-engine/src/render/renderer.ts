@@ -56,6 +56,8 @@ export class DXFRenderer {
   private piercePoints: readonly Point3D[] = [];
   private _showPiercePoints: boolean = false;
   private _showDimensions: boolean = false;
+  private _hoverScreenX: number = 0;
+  private _hoverScreenY: number = 0;
   private tessCache: TessellationCache = new TessellationCache();
   // Переиспользуемый объект opts для hot loop (без аллокации на каждую итерацию)
   private readonly _batchOpts: { -readonly [K in keyof BatchRenderOptions]: BatchRenderOptions[K] } = {
@@ -423,6 +425,21 @@ export class DXFRenderer {
       }
     }
 
+    // Dimension tooltip при hover
+    if (hasHover && this._showDimensions) {
+      const fe = this.doc.flatEntities[this.hoveredIndex];
+      if (fe !== undefined) {
+        const bb = fe.entity.boundingBox;
+        if (bb !== null && bb !== undefined) {
+          const w = bb.max.x - bb.min.x;
+          const h = bb.max.y - bb.min.y;
+          if (w > 0 && h > 0) {
+            this._drawDimTooltip(ctx, this._hoverScreenX, this._hoverScreenY, w, h);
+          }
+        }
+      }
+    }
+
     // Selection
     if (hasSelection) {
       const selColor = this.options.selectionColor;
@@ -447,6 +464,58 @@ export class DXFRenderer {
         renderEntity(ctx, fe, opts);
       }
     }
+  }
+
+  /**
+   * Рисует tooltip W×H рядом с курсором (в экранных координатах).
+   */
+  private _drawDimTooltip(ctx: CanvasRenderingContext2D, sx: number, sy: number, w: number, h: number): void {
+    const wLabel = this._dimLabel(w);
+    const hLabel = this._dimLabel(h);
+    const line1 = `W: ${wLabel}`;
+    const line2 = `H: ${hLabel}`;
+
+    const FONT  = 11;
+    const PAD_X = 8;
+    const PAD_Y = 6;
+    const GAP   = 3;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `${FONT}px "JetBrains Mono", "Courier New", monospace`;
+
+    const tw1 = ctx.measureText(line1).width;
+    const tw2 = ctx.measureText(line2).width;
+    const boxW = Math.max(tw1, tw2) + PAD_X * 2;
+    const boxH = FONT * 2 + PAD_Y * 2 + GAP;
+
+    // Позиция: правее и чуть ниже курсора, с коррекцией у краёв
+    const cw = this.canvas?.width ?? ctx.canvas.width;
+    const ch = this.canvas?.height ?? ctx.canvas.height;
+    let tx = sx + 14;
+    let ty = sy + 14;
+    if (tx + boxW > cw - 4) tx = sx - boxW - 10;
+    if (ty + boxH > ch - 4) ty = sy - boxH - 10;
+
+    // Фон с рамкой
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(tx, ty, boxW, boxH, 5);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(96, 165, 250, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.stroke();
+
+    // Текст
+    ctx.fillStyle = '#93c5fd';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillText(line1, tx + PAD_X, ty + PAD_Y);
+    ctx.fillStyle = '#bfdbfe';
+    ctx.fillText(line2, tx + PAD_X, ty + PAD_Y + FONT + GAP);
+
+    ctx.restore();
   }
 
   /**
@@ -542,9 +611,12 @@ export class DXFRenderer {
   /**
    * Устанавливает hovered entity.
    */
-  setHovered(index: number): void {
-    if (this.hoveredIndex !== index) {
-      this.hoveredIndex = index;
+  setHovered(index: number, screenX?: number, screenY?: number): void {
+    const changed = this.hoveredIndex !== index;
+    this.hoveredIndex = index;
+    if (screenX !== undefined) this._hoverScreenX = screenX;
+    if (screenY !== undefined) this._hoverScreenY = screenY;
+    if (changed || screenX !== undefined) {
       this.requestOverlayRedraw();
     }
   }
