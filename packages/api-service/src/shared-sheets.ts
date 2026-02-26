@@ -75,7 +75,7 @@ async function loadFromDb(hash: string): Promise<SharedSheet | null> {
   if (!supabaseEnabled) return null;
 
   const params = new URLSearchParams({
-    select: 'hash,sheet_index,single_result,created_at',
+    select: 'hash,sheet_index,single_result,created_at,item_docs',
     hash: `eq.${hash}`,
     limit: '1',
   });

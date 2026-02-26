@@ -84,11 +84,12 @@ app.use(cors({
     callback(null, false);
   },
 }));
-// Default body limit 1 MB; DXF endpoints override with 50 MB via dedicated middleware
+// Default body limit 1 MB; DXF endpoints override with 50 MB; share endpoint 20 MB for itemDocs
 app.use((req, _res, next) => {
   const dxfRoutes = ['/api/parse', '/api/normalize', '/api/cutting-stats', '/api/library/files', '/api/library-files'];
   const isDxf = dxfRoutes.some(r => req.path.startsWith(r));
-  express.json({ limit: isDxf ? '50mb' : '1mb' })(req, _res, next);
+  const isShare = req.path === '/api/nesting-share' || req.path === '/api/nesting/share';
+  express.json({ limit: isDxf ? '50mb' : isShare ? '20mb' : '1mb' })(req, _res, next);
 });
 
 // ─── In-memory rate limiter ───────────────────────────────────────────

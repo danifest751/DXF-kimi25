@@ -202,7 +202,7 @@ export async function runNesting(): Promise<void> {
         itemDocs: itemDocsObj,
       });
       setNestSheetHashes(shareResp.hashes);
-    } catch { /* no hashes */ }
+    } catch (e) { console.warn('[share] failed:', e); }
   }
 
   showNestResults();
