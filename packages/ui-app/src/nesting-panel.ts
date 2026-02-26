@@ -34,6 +34,7 @@ import { getAuthHeaders, saveGuestDraft } from './auth.js';
 import { nestItems, SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
 import type { NestingResult, NestingOptions, NestingItem } from '../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF } from '../../core-engine/src/export/index.js';
+import type { ItemDocData } from '../../core-engine/src/export/index.js';
 import { renderEntity } from '../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../core-engine/src/render/entity-renderer.js';
 
@@ -452,6 +453,16 @@ export function renderAllNestingSheets(): void {
 
 // ─── Export ───────────────────────────────────────────────────────────
 
+function buildItemDocs(): Map<number, ItemDocData> {
+  const map = new Map<number, ItemDocData>();
+  for (const f of loadedFiles) {
+    if (f.doc && f.doc.totalBBox) {
+      map.set(f.id, { flatEntities: f.doc.flatEntities, bbox: f.doc.totalBBox });
+    }
+  }
+  return map;
+}
+
 export function exportSingleSheetDXF(sheetIndex: number): void {
   if (!currentNestResult) return;
   const r = currentNestResult;
@@ -465,7 +476,7 @@ export function exportSingleSheetDXF(sheetIndex: number): void {
     sharedCutLength: r.sharedCutLength, cutLengthAfterMerge: r.cutLengthAfterMerge,
     pierceEstimate: sheet.placed.length, pierceDelta: 0,
   };
-  const dxfStr = exportNestingToDXF({ nestingResult: singleResult });
+  const dxfStr = exportNestingToDXF({ nestingResult: singleResult, itemDocs: buildItemDocs() });
   const blob = new Blob([dxfStr], { type: 'application/dxf' });
   downloadBlob(blob, `nesting_sheet_${sheetIndex + 1}.dxf`);
 }

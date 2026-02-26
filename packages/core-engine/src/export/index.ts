@@ -7,13 +7,23 @@
 import type { NestingResult } from '../nesting/index.js';
 import type { CuttingStats } from '../cutting/index.js';
 import { DXFEntityType, DXFFormat, DXFVersion } from '../types/index.js';
-import type { DXFDocument, DXFEntity, DXFLayer } from '../types/index.js';
+import type { DXFDocument, DXFEntity, DXFLayer, DXFLineEntity, DXFArcEntity, DXFCircleEntity, DXFLWPolylineEntity, BoundingBox } from '../types/index.js';
+import type { FlattenedEntity } from '../normalize/index.js';
+import { mat4TransformPoint } from '../geometry/index.js';
 
 // ─── Экспорт в DXF ──────────────────────────────────────────────────
+
+/** Данные исходного документа для одной детали */
+export interface ItemDocData {
+  readonly flatEntities: readonly FlattenedEntity[];
+  readonly bbox: BoundingBox; // totalBBox of source document
+}
 
 /** Опции экспорта в DXF */
 export interface ExportDXFOptions {
   readonly nestingResult: NestingResult;
+  /** Map from itemId → source document data. When provided, real entities are exported instead of bboxes. */
+  readonly itemDocs?: ReadonlyMap<number, ItemDocData>;
 }
 
 /**
@@ -80,24 +90,52 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
     return segments;
   }
 
+  const { itemDocs } = options;
+
   // Создаём сущности для каждого размещённого объекта
   for (const sheet of nestingResult.sheets) {
-    const sheetOffsetY = sheet.sheetIndex * (nestingResult.sheet.height + nestingResult.gap);
+    const sheetH = nestingResult.sheet.height;
+    const sheetOffsetY = sheet.sheetIndex * (sheetH + nestingResult.gap);
     for (const placed of sheet.placed) {
-      // Создаём прямоугольник (4 линии) для каждой детали
-      const x = placed.x;
-      const y = placed.y + sheetOffsetY;
-      const w = placed.width;
-      const h = placed.height;
+      const itemDoc = itemDocs?.get(placed.itemId);
+      if (itemDoc) {
+        // Draw real entities from source DXF, transformed to placement position
+        const bb = itemDoc.bbox;
+        const bbW = bb.max.x - bb.min.x;
+        const bbH = bb.max.y - bb.min.y;
+        const angleDeg = (placed as { angleDeg?: number }).angleDeg ?? (placed.rotated ? 90 : 0);
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const cosA = Math.cos(angleRad);
+        const sinA = Math.sin(angleRad);
+        // Centre of bbox in source space
+        const srcCx = bb.min.x + bbW / 2;
+        const srcCy = bb.min.y + bbH / 2;
+        // After rotation, bbox dims swap for 90°
+        const rotBbW = Math.abs(bbW * cosA) + Math.abs(bbH * sinA);
+        const rotBbH = Math.abs(bbW * sinA) + Math.abs(bbH * cosA);
+        // Placement origin (bottom-left of rotated bbox) in DXF sheet coords
+        // nesting Y=0 is bottom of sheet, DXF Y=0 is bottom → same convention
+        const destCx = placed.x + rotBbW / 2;
+        const destCy = sheetOffsetY + placed.y + rotBbH / 2;
 
-      // Линия 1: (x, y) -> (x+w, y)
-      entities.push(createLine(x, y, x + w, y, handleCounter++, placed.name));
-      // Линия 2: (x+w, y) -> (x+w, y+h)
-      entities.push(createLine(x + w, y, x + w, y + h, handleCounter++, placed.name));
-      // Линия 3: (x+w, y+h) -> (x, y+h)
-      entities.push(createLine(x + w, y + h, x, y + h, handleCounter++, placed.name));
-      // Линия 4: (x, y+h) -> (x, y)
-      entities.push(createLine(x, y + h, x, y, handleCounter++, placed.name));
+        for (const fe of itemDoc.flatEntities) {
+          const transformed = transformEntity(fe, srcCx, srcCy, cosA, sinA, destCx, destCy, placed.name, handleCounter);
+          if (transformed.length > 0) {
+            for (const e of transformed) entities.push(e);
+            handleCounter += transformed.length;
+          }
+        }
+      } else {
+        // Fallback: bbox rectangle
+        const x = placed.x;
+        const y = placed.y + sheetOffsetY;
+        const w = placed.width;
+        const h = placed.height;
+        entities.push(createLine(x, y, x + w, y, handleCounter++, placed.name));
+        entities.push(createLine(x + w, y, x + w, y + h, handleCounter++, placed.name));
+        entities.push(createLine(x + w, y + h, x, y + h, handleCounter++, placed.name));
+        entities.push(createLine(x, y + h, x, y, handleCounter++, placed.name));
+      }
     }
 
     const sharedSegments = createCommonLineSegments(
@@ -130,6 +168,61 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
 
   const dxfDoc = createDXFDocument(entities);
   return dxfDocToAscii(dxfDoc);
+}
+
+/**
+ * Apply 2D rotation (around srcCx,srcCy) + translation (to destCx,destCy) to a FlattenedEntity.
+ * Returns array of DXFEntity (LINE, ARC, CIRCLE, or LWPOLYLINE).
+ */
+function transformEntity(
+  fe: FlattenedEntity,
+  srcCx: number, srcCy: number,
+  cosA: number, sinA: number,
+  destCx: number, destCy: number,
+  layer: string,
+  baseHandle: number,
+): DXFEntity[] {
+  const e = fe.entity;
+
+  function tx(x: number, y: number): { x: number; y: number } {
+    // Apply source transform matrix first
+    const p = mat4TransformPoint(fe.transform, { x, y, z: 0 });
+    // Rotate around srcCx, srcCy
+    const dx = p.x - srcCx;
+    const dy = p.y - srcCy;
+    const rx = dx * cosA - dy * sinA;
+    const ry = dx * sinA + dy * cosA;
+    return { x: destCx + rx, y: destCy + ry };
+  }
+
+  if (e.type === DXFEntityType.LINE) {
+    const l = e as DXFLineEntity;
+    const s = tx(l.start.x, l.start.y);
+    const en = tx(l.end.x, l.end.y);
+    return [{ type: DXFEntityType.LINE, handle: String(baseHandle), layer, visible: true, start: { ...s, z: 0 }, end: { ...en, z: 0 } } as DXFLineEntity];
+  }
+
+  if (e.type === DXFEntityType.CIRCLE) {
+    const c = e as DXFCircleEntity;
+    const ctr = tx(c.center.x, c.center.y);
+    return [{ type: DXFEntityType.CIRCLE, handle: String(baseHandle), layer, visible: true, center: { ...ctr, z: 0 }, radius: c.radius } as DXFCircleEntity];
+  }
+
+  if (e.type === DXFEntityType.ARC) {
+    const a = e as DXFArcEntity;
+    const ctr = tx(a.center.x, a.center.y);
+    const rotDeg = Math.atan2(sinA, cosA) * (180 / Math.PI);
+    return [{ type: DXFEntityType.ARC, handle: String(baseHandle), layer, visible: true, center: { ...ctr, z: 0 }, radius: a.radius, startAngle: a.startAngle + rotDeg, endAngle: a.endAngle + rotDeg } as DXFArcEntity];
+  }
+
+  if (e.type === DXFEntityType.LWPOLYLINE) {
+    const lw = e as DXFLWPolylineEntity;
+    const verts = lw.vertices.map(v => tx(v.x, v.y));
+    return [{ type: DXFEntityType.LWPOLYLINE, handle: String(baseHandle), layer, visible: true, vertices: verts, closed: lw.closed, constantWidth: lw.constantWidth } as DXFLWPolylineEntity];
+  }
+
+  // Fallback: tessellate to line segments via bbox representation — skip unsupported types silently
+  return [];
 }
 
 function createLine(x1: number, y1: number, x2: number, y2: number, handle: number, layer: string): DXFEntity {
@@ -229,26 +322,31 @@ function dxfDocToAscii(doc: DXFDocument): string {
   lines.push('ENTITIES');
   
   for (const entity of doc.entities) {
+    const e = entity as any;
+    const h = e.handle || '100';
+    const lay = e.layer || '0';
+
     if (entity.type === DXFEntityType.LINE) {
-      const line = entity as any;
-      lines.push('0');
-      lines.push('LINE');
-      lines.push('5');
-      lines.push(line.handle || '100');
-      lines.push('8');
-      lines.push(line.layer || '0');
-      lines.push('10');
-      lines.push(String(line.start.x));
-      lines.push('20');
-      lines.push(String(line.start.y));
-      lines.push('30');
-      lines.push(String(line.start.z || 0));
-      lines.push('11');
-      lines.push(String(line.end.x));
-      lines.push('21');
-      lines.push(String(line.end.y));
-      lines.push('31');
-      lines.push(String(line.end.z || 0));
+      lines.push('0', 'LINE', '5', h, '8', lay);
+      lines.push('10', String(e.start.x), '20', String(e.start.y), '30', String(e.start.z || 0));
+      lines.push('11', String(e.end.x),   '21', String(e.end.y),   '31', String(e.end.z   || 0));
+    } else if (entity.type === DXFEntityType.CIRCLE) {
+      lines.push('0', 'CIRCLE', '5', h, '8', lay);
+      lines.push('10', String(e.center.x), '20', String(e.center.y), '30', String(e.center.z || 0));
+      lines.push('40', String(e.radius));
+    } else if (entity.type === DXFEntityType.ARC) {
+      lines.push('0', 'ARC', '5', h, '8', lay);
+      lines.push('10', String(e.center.x), '20', String(e.center.y), '30', String(e.center.z || 0));
+      lines.push('40', String(e.radius));
+      lines.push('50', String(e.startAngle), '51', String(e.endAngle));
+    } else if (entity.type === DXFEntityType.LWPOLYLINE) {
+      lines.push('0', 'LWPOLYLINE', '5', h, '8', lay);
+      lines.push('90', String(e.vertices.length));
+      lines.push('70', e.closed ? '1' : '0');
+      for (const v of e.vertices) {
+        lines.push('10', String(v.x), '20', String(v.y));
+      }
+      if (e.constantWidth != null) lines.push('43', String(e.constantWidth));
     }
   }
   
