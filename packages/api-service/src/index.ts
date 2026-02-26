@@ -657,7 +657,7 @@ app.post('/api/nest', nestingRateLimit, async (req: Request, res: Response): Pro
     const rotationEnabled = typeof params.rotationEnabled === 'boolean' ? params.rotationEnabled : true;
     const rawStep = params.rotationAngleStepDeg;
     const rotationAngleStepDeg: 1 | 2 | 5 = rawStep === 1 || rawStep === 5 ? rawStep : 2;
-    const strategy = params.strategy === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
+    const strategy = params.strategy === 'true_shape' ? 'true_shape' : params.strategy === 'maxrects_bbox' ? 'maxrects_bbox' : 'blf_bbox';
     const multiStart = typeof params.multiStart === 'boolean' ? params.multiStart : false;
     const seed = typeof params.seed === 'number' && Number.isFinite(params.seed) ? Math.trunc(params.seed) : 0;
     const commonLineInput = (typeof params.commonLine === 'object' && params.commonLine !== null)
