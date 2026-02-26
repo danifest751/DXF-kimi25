@@ -170,16 +170,25 @@ export async function runNesting(): Promise<void> {
   try {
     if (useTrueShape) {
       // Run in Web Worker to avoid blocking the main thread
-      const result = await new Promise<NestingResult>((resolve, reject) => {
-        const worker = new NestingWorker();
-        worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: NestingResult; error?: string }>) => {
-          worker.terminate();
-          if (e.data.ok && e.data.result) resolve(e.data.result);
-          else reject(new Error(e.data.error ?? 'Worker error'));
-        };
-        worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message)); };
-        worker.postMessage({ items, sheet, gap: effectiveGap, options });
-      });
+      // Falls back to synchronous local if Worker fails
+      let result: NestingResult;
+      try {
+        result = await new Promise<NestingResult>((resolve, reject) => {
+          const worker = new NestingWorker();
+          const tid = setTimeout(() => { worker.terminate(); reject(new Error('Worker timeout (60s)')); }, 60_000);
+          worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: NestingResult; error?: string }>) => {
+            clearTimeout(tid);
+            worker.terminate();
+            if (e.data.ok && e.data.result) resolve(e.data.result);
+            else reject(new Error(e.data.error ?? 'Worker error'));
+          };
+          worker.onerror = (ev) => { clearTimeout(tid); worker.terminate(); reject(new Error(ev.message)); };
+          worker.postMessage({ items, sheet, gap: effectiveGap, options });
+        });
+      } catch (workerErr) {
+        console.warn('[nesting] Worker failed, running synchronously:', workerErr);
+        result = nestItems(items, sheet, effectiveGap, options);
+      }
       setCurrentNestResult(result);
       setNestingComputeMode('local');
     } else {
@@ -226,9 +235,11 @@ export async function runNesting(): Promise<void> {
   enterNestingMode();
 }
 
+let _autoRerunTimer: ReturnType<typeof setTimeout> | null = null;
 export function autoRerunNesting(): void {
   if (!nestingMode && !currentNestResult) return;
-  void runNesting();
+  if (_autoRerunTimer !== null) clearTimeout(_autoRerunTimer);
+  _autoRerunTimer = setTimeout(() => { _autoRerunTimer = null; void runNesting(); }, 400);
 }
 
 // ─── Nesting mode ─────────────────────────────────────────────────────
