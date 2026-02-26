@@ -464,21 +464,25 @@ let applyingModePreset = false;
 
 function applyNestingModePreset(mode: 'precise' | 'common' | 'true_shape'): void {
   applyingModePreset = true;
-  nestCommonLineEnabled.checked = mode === 'common';
-  updateCommonLineControls();
-  applyingModePreset = false;
+  try {
+    nestCommonLineEnabled.checked = mode === 'common';
+    updateCommonLineControls();
+    setNestModeValue(mode === 'true_shape' ? 'true_shape' : mode === 'common' ? 'common' : 'precise');
 
-  // Show/hide true_shape warning
-  let warnEl = document.getElementById('nest-trueshape-warning');
-  if (!warnEl) {
-    warnEl = document.createElement('div');
-    warnEl.id = 'nest-trueshape-warning';
-    warnEl.className = 'np-warning';
-    const modeGroup = document.getElementById('nest-mode-group');
-    modeGroup?.parentElement?.insertAdjacentElement('afterend', warnEl);
+    // Show/hide true_shape warning
+    let warnEl = document.getElementById('nest-trueshape-warning');
+    if (!warnEl) {
+      warnEl = document.createElement('div');
+      warnEl.id = 'nest-trueshape-warning';
+      warnEl.className = 'np-warning';
+      const modeGroup = document.getElementById('nest-mode-group');
+      modeGroup?.parentElement?.insertAdjacentElement('afterend', warnEl);
+    }
+    warnEl.textContent = mode === 'true_shape' ? t('nesting.mode.trueShape.warning') : '';
+    warnEl.style.display = mode === 'true_shape' ? '' : 'none';
+  } finally {
+    applyingModePreset = false;
   }
-  warnEl.textContent = mode === 'true_shape' ? t('nesting.mode.trueShape.warning') : '';
-  warnEl.style.display = mode === 'true_shape' ? '' : 'none';
 }
 
 function syncModeByAdvancedControls(): void {
@@ -492,6 +496,7 @@ updateCommonLineControls();
 
 for (const radio of nestModeRadios) {
   radio.addEventListener('change', () => {
+    if (applyingModePreset) return;
     const mode = getNestModeValue();
     applyNestingModePreset(mode === 'common' ? 'common' : mode === 'true_shape' ? 'true_shape' : 'precise');
     autoRerunNesting();
