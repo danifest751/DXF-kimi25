@@ -9,7 +9,7 @@ import type { CuttingStats } from '../cutting/index.js';
 import { DXFEntityType, DXFFormat, DXFVersion } from '../types/index.js';
 import type { DXFDocument, DXFEntity, DXFLayer, DXFLineEntity, DXFArcEntity, DXFCircleEntity, DXFLWPolylineEntity, BoundingBox } from '../types/index.js';
 import type { FlattenedEntity } from '../normalize/index.js';
-import { mat4TransformPoint } from '../geometry/index.js';
+import { mat4TransformPoint, tessellateArc, tessellateEllipse, tessellateSpline, tessellateLWPolyline } from '../geometry/index.js';
 
 // ─── Экспорт в DXF ──────────────────────────────────────────────────
 
@@ -93,6 +93,8 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   const { itemDocs } = options;
   const sheetH = nestingResult.sheet.height;
 
+  console.log('[exportDXF] itemDocs size:', itemDocs?.size ?? 'undefined');
+
   // Y-flip helper: nesting stores Y=0 at bottom (grows up), but visually
   // (in UI canvas) items appear at the top. Mirror Y within each sheet so
   // the exported DXF matches the on-screen layout (items at the top).
@@ -104,6 +106,7 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
   for (const sheet of nestingResult.sheets) {
     const sheetOffsetY = sheet.sheetIndex * (sheetH + nestingResult.gap);
     for (const placed of sheet.placed) {
+      console.log('[exportDXF] placed.itemId:', placed.itemId, 'has doc:', itemDocs?.has(placed.itemId));
       const itemDoc = itemDocs?.get(placed.itemId);
       if (itemDoc) {
         // Draw real entities from source DXF, transformed to placement position
@@ -180,7 +183,7 @@ export function exportNestingToDXF(options: ExportDXFOptions): string {
 
 /**
  * Apply 2D rotation (around srcCx,srcCy) + translation (to destCx,destCy) to a FlattenedEntity.
- * Returns array of DXFEntity (LINE, ARC, CIRCLE, or LWPOLYLINE).
+ * Returns array of DXFEntity. Unsupported types are tessellated into LWPOLYLINE segments.
  */
 function transformEntity(
   fe: FlattenedEntity,
@@ -192,15 +195,18 @@ function transformEntity(
 ): DXFEntity[] {
   const e = fe.entity;
 
+  // Transform a point: apply fe.transform (local→world), then rotate+translate to dest
   function tx(x: number, y: number): { x: number; y: number } {
-    // Apply source transform matrix first
     const p = mat4TransformPoint(fe.transform, { x, y, z: 0 });
-    // Rotate around srcCx, srcCy
     const dx = p.x - srcCx;
     const dy = p.y - srcCy;
-    const rx = dx * cosA - dy * sinA;
-    const ry = dx * sinA + dy * cosA;
-    return { x: destCx + rx, y: destCy + ry };
+    return { x: destCx + dx * cosA - dy * sinA, y: destCy + dx * sinA + dy * cosA };
+  }
+
+  // Build a LWPOLYLINE from an array of 2D points
+  function makePoly(pts2d: readonly { x: number; y: number }[], closed: boolean): DXFEntity {
+    const verts = pts2d.map(p => tx(p.x, p.y));
+    return { type: DXFEntityType.LWPOLYLINE, handle: String(baseHandle), layer, visible: true, vertices: verts, closed, constantWidth: 0 } as DXFLWPolylineEntity;
   }
 
   if (e.type === DXFEntityType.LINE) {
@@ -218,18 +224,40 @@ function transformEntity(
 
   if (e.type === DXFEntityType.ARC) {
     const a = e as DXFArcEntity;
-    const ctr = tx(a.center.x, a.center.y);
-    const rotDeg = Math.atan2(sinA, cosA) * (180 / Math.PI);
-    return [{ type: DXFEntityType.ARC, handle: String(baseHandle), layer, visible: true, center: { ...ctr, z: 0 }, radius: a.radius, startAngle: a.startAngle + rotDeg, endAngle: a.endAngle + rotDeg } as DXFArcEntity];
+    const pts = tessellateArc(a.center, a.radius, a.startAngle, a.endAngle, 64);
+    if (pts.length < 2) return [];
+    return [makePoly(pts, false)];
   }
 
   if (e.type === DXFEntityType.LWPOLYLINE) {
     const lw = e as DXFLWPolylineEntity;
-    const verts = lw.vertices.map(v => tx(v.x, v.y));
-    return [{ type: DXFEntityType.LWPOLYLINE, handle: String(baseHandle), layer, visible: true, vertices: verts, closed: lw.closed, constantWidth: lw.constantWidth } as DXFLWPolylineEntity];
+    const pts = tessellateLWPolyline(lw.vertices, (lw as { bulges?: number[] }).bulges, lw.closed, 32);
+    if (pts.length < 2) return [];
+    return [makePoly(pts, lw.closed)];
   }
 
-  // Fallback: tessellate to line segments via bbox representation — skip unsupported types silently
+  if (e.type === DXFEntityType.ELLIPSE) {
+    const el = e as import('../types/index.js').DXFEllipseEntity;
+    const pts = tessellateEllipse(el.center, el.majorAxis, el.minorAxisRatio, el.startAngle, el.endAngle, 64);
+    if (pts.length < 2) return [];
+    const isFull = Math.abs(el.endAngle - el.startAngle) >= Math.PI * 2 - 0.01;
+    return [makePoly(pts, isFull)];
+  }
+
+  if (e.type === DXFEntityType.SPLINE) {
+    const sp = e as import('../types/index.js').DXFSplineEntity;
+    if (sp.controlPoints.length < 2) return [];
+    const pts = tessellateSpline(sp.degree, sp.controlPoints, sp.knots, sp.weights, 128);
+    if (pts.length < 2) return [];
+    return [makePoly(pts, sp.closed)];
+  }
+
+  if (e.type === DXFEntityType.POLYLINE) {
+    const pl = e as import('../types/index.js').DXFPolylineEntity;
+    if (pl.vertices.length < 2) return [];
+    return [makePoly(pl.vertices, pl.closed)];
+  }
+
   return [];
 }
 
