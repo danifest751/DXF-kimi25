@@ -187,8 +187,8 @@ export async function runNesting(): Promise<void> {
           worker.postMessage({ items, sheet, gap: effectiveGap, options });
         });
       } catch (workerErr) {
-        console.warn('[nesting] Worker failed, running synchronously:', workerErr);
-        result = nestItems(items, sheet, effectiveGap, options);
+        console.error('[nesting] Worker failed:', workerErr);
+        throw workerErr;
       }
       setCurrentNestResult(result);
       setNestingComputeMode('local');
