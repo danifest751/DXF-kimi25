@@ -242,9 +242,89 @@ const strings = {
     variantLabel: (active: boolean, name: string, sheets: number, fill: number) =>
       `${active ? '● ' : ''}${name} — ${sheets}sh. ${fill}%`,
   },
-} as const;
+};
 
-export type BotStrings = typeof strings.ru;
+export interface BotStrings {
+  readonly notDxf: string;
+  readonly fileReceived: string;
+  readonly fileTooBig: (mb: string) => string;
+  readonly dxfError: (details: string) => string;
+  readonly fileCaption: (name: string, pierces: number, cutLen: string, isFirst: boolean, totalFiles: number) => string;
+  readonly loginCode: (code: string, ttl: number) => string;
+  readonly loginError: (details: string) => string;
+  readonly startWithContext: string;
+  readonly startNoContext: string;
+  readonly unknownText: string;
+  readonly sendDxfFirst: string;
+  readonly variantNotFound: string;
+  readonly invalidQuantity: string;
+  readonly noVariants: string;
+  readonly invalidGap: string;
+  readonly unknownCommand: string;
+  readonly needQuantityFirst: string;
+  readonly runNestingFirst: string;
+  readonly noContextForMenu: string;
+  readonly hintAddFile: string;
+  readonly selectQuantity: string;
+  readonly selectSheet: string;
+  readonly enterCustomSheet: string;
+  readonly gapPrompt: (current: number) => string;
+  readonly invalidSheetSize: string;
+  readonly selectSheetPrompt: string;
+  readonly invalidSheetFormat: string;
+  readonly invalidQuantityFormat: string;
+  readonly resetConfirm: (files: number, variants: number) => string;
+  readonly resetDone: string;
+  readonly resetYes: string;
+  readonly resetCancel: string;
+  readonly whatNext: string;
+  readonly selectVariant: string;
+  readonly hashNotFound: (multi: boolean) => string;
+  readonly hashPartial: (found: number, total: number) => string;
+  readonly hashCaption: (idx: number, hash: string, w: number, h: number, placed: number, fill: number) => string;
+  readonly homeStats: (pierces: number, cutLen: string, parts: number) => string;
+  readonly homeParams: (qty: number | null, w: number, h: number, mode: string) => string;
+  readonly homeVariant: (name: string, sheets: number, fill: number, placed: number, required: number) => string;
+  readonly settingsTitle: string;
+  readonly settingsQty: (v: number | null) => string;
+  readonly settingsSheet: (w: number, h: number) => string;
+  readonly settingsGap: (g: number) => string;
+  readonly settingsMode: (m: string) => string;
+  readonly resultTitle: (name: string, file: string) => string;
+  readonly resultStats: (sheets: number, fill: number, placed: number, required: number) => string;
+  readonly resultCommonLine: (sharedMm: number, pierceDelta: number) => string;
+  readonly resultParams: (qty: number | null, w: number, h: number, mode: string, gap: number) => string;
+  readonly modeFast: string;
+  readonly modePrecise: string;
+  readonly modeCommon: string;
+  readonly modeContour: string;
+  readonly btnModeContour: string;
+  readonly nestingModeContour: string;
+  readonly nestingModeContourWarning: string;
+  readonly btnNesting: string;
+  readonly btnSettings: string;
+  readonly btnPreview: string;
+  readonly btnAddFile: string;
+  readonly btnDXF: string;
+  readonly btnCSV: string;
+  readonly btnVariants: (n: number) => string;
+  readonly btnReset: string;
+  readonly btnQty: string;
+  readonly btnSheet: string;
+  readonly btnRun: string;
+  readonly btnBack: string;
+  readonly btnHome: string;
+  readonly btnBackSettings: string;
+  readonly btnOtherParams: string;
+  readonly btnCustomSheet: string;
+  readonly btnBackMenu: string;
+  readonly btnGap: (g: number) => string;
+  readonly btnGapMm: (g: number, current: boolean) => string;
+  readonly btnModeLabel: (label: string, active: boolean) => string;
+  readonly previewCaption: (name: string) => string;
+  readonly fileLabel: (first: string, rest: number) => string;
+  readonly variantLabel: (active: boolean, name: string, sheets: number, fill: number) => string;
+}
 
 export function getBotStrings(locale: BotLocale): BotStrings {
   return strings[locale];

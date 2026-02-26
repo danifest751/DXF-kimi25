@@ -38,7 +38,7 @@ export interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: {
     readonly chat: { readonly id: number };
-    readonly from?: { readonly id: number; readonly username?: string };
+    readonly from?: { readonly id: number; readonly username?: string; readonly language_code?: string };
     readonly text?: string;
     readonly document?: {
       readonly file_id: string;
