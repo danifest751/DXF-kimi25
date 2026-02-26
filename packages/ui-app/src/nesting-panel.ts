@@ -58,15 +58,16 @@ export function updateNestItems(): void {
   nestItemsEl.innerHTML = '';
 
   for (const f of checked) {
-    const bb = f.doc.totalBBox;
+    const bb = f.doc?.totalBBox ?? null;
     const w = bb ? Math.abs(bb.max.x - bb.min.x) : 0;
     const h = bb ? Math.abs(bb.max.y - bb.min.y) : 0;
+    const sizeLabel = f.loading ? '…' : `${w.toFixed(0)}×${h.toFixed(0)}`;
 
     const row = document.createElement('div');
     row.className = 'np-item-row';
     row.innerHTML = `
       <span class="np-item-name"></span>
-      <span class="np-item-size">${w.toFixed(0)}×${h.toFixed(0)}</span>
+      <span class="np-item-size">${sizeLabel}</span>
       <button class="np-qty-btn" data-delta="-10">−10</button>
       <input type="number" class="np-item-qty" min="1" value="${f.quantity}" />
       <button class="np-qty-btn" data-delta="10">+10</button>
@@ -140,12 +141,14 @@ export async function runNesting(): Promise<void> {
   const effectiveGap = options.commonLine?.enabled ? 0 : gap;
   setLastNestingOptions({ ...options, commonLine: options.commonLine ? { ...options.commonLine } : undefined });
 
-  const items = checked.map(f => {
-    const bb = f.doc.totalBBox;
-    const w = bb ? Math.abs(bb.max.x - bb.min.x) : 0;
-    const h = bb ? Math.abs(bb.max.y - bb.min.y) : 0;
-    return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity };
-  });
+  const items = checked
+    .filter((f) => !f.loading && f.doc != null)
+    .map(f => {
+      const bb = f.doc.totalBBox;
+      const w = bb ? Math.abs(bb.max.x - bb.min.x) : 0;
+      const h = bb ? Math.abs(bb.max.y - bb.min.y) : 0;
+      return { id: f.id, name: f.name, width: w, height: h, quantity: f.quantity };
+    });
 
   try {
     const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {

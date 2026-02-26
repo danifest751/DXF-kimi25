@@ -419,14 +419,21 @@ function buildCatalogRow(
 // ─── File item builder ────────────────────────────────────────────────
 
 function buildFileItem(f: LoadedFile, isGuest: boolean): HTMLDivElement {
-  const cutLen = f.stats.totalCutLength;
-  const lenStr = cutLen >= 1000
-    ? (cutLen / 1000).toFixed(2) + 'м'
-    : cutLen.toFixed(0) + 'мм';
-  const info = `${f.stats.totalPierces}p · ${lenStr}`;
+  let info: string;
+  if (f.loading) {
+    info = '…';
+  } else if (f.loadError) {
+    info = '⚠ ошибка';
+  } else {
+    const cutLen = f.stats.totalCutLength;
+    const lenStr = cutLen >= 1000
+      ? (cutLen / 1000).toFixed(2) + 'м'
+      : cutLen.toFixed(0) + 'мм';
+    info = `${f.stats.totalPierces}p · ${lenStr}`;
+  }
 
   const item = document.createElement('div');
-  item.className = `file-item${isGuest ? '' : ' in-catalog'}${f.id === activeFileId ? ' active' : ''}`;
+  item.className = `file-item${isGuest ? '' : ' in-catalog'}${f.id === activeFileId ? ' active' : ''}${f.loading ? ' loading' : ''}`;
 
   if (!isGuest) {
     item.draggable = true;
@@ -469,7 +476,7 @@ export function recalcTotals(): void {
   let totalEntities   = 0;
 
   for (const f of loadedFiles) {
-    if (!f.checked) continue;
+    if (!f.checked || f.loading) continue;
     totalPierces    += f.stats.totalPierces;
     totalCutLength  += f.stats.totalCutLength;
     totalEntities   += f.stats.cuttingEntityCount;

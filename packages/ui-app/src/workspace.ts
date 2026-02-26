@@ -112,9 +112,9 @@ export async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<
     `/api/library-files-download?fileId=${encodeURIComponent(meta.id)}`,
     getAuthHeaders(),
   );
-  const binary = atob(dl.base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  // base64 → ArrayBuffer без побайтового цикла
+  const binStr = atob(dl.base64);
+  const bytes = Uint8Array.from(binStr, (c) => c.charCodeAt(0));
   const buffer = bytes.buffer;
   const parsed = await parseDXFInWorker(buffer);
   const stats = await _computeStats(dl.base64, parsed.document);
@@ -142,48 +142,87 @@ export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
     for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
     if (tree.files.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
 
-    _renderCatalogFilter();
-    _renderFileList();
-    _syncWelcomeVisibility();
+    // ── Шаг 1: сразу показываем все файлы в списке с loading=true ────────
+    const EMPTY_STATS: import('./types.js').UICuttingStats = {
+      totalPierces: 0, totalCutLength: 0, cuttingEntityCount: 0, chains: [],
+    };
 
-    const CONCURRENCY = 3;
-    let pending = 0;
-    let nextIdx = 0;
-    const metas = tree.files;
+    for (const meta of tree.files) {
+      const placeholder: import('./types.js').LoadedFile = {
+        id: bumpNextFileId(),
+        remoteId: meta.id,
+        workspaceId: meta.workspaceId,
+        catalogId: meta.catalogId,
+        name: meta.name,
+        doc: null as unknown as import('../../core-engine/src/normalize/index.js').NormalizedDocument,
+        stats: EMPTY_STATS,
+        checked: meta.checked,
+        quantity: meta.quantity,
+        loading: true,
+      };
+      loadedFiles.push(placeholder);
+    }
 
-    await new Promise<void>((resolve) => {
-      function onFileReady(loaded: LoadedFile | null): void {
-        pending--;
-        if (loaded) {
-          loadedFiles.push(loaded);
-          if (loadedFiles.length === 1) _setActiveFile(loaded.id);
-          _renderCatalogFilter();
-          _renderFileList();
-          _recalcTotals();
-          _updateNestItems();
-        }
-        scheduleNext();
-      }
-
-      function scheduleNext(): void {
-        while (pending < CONCURRENCY && nextIdx < metas.length) {
-          const meta = metas[nextIdx++]!;
-          pending++;
-          loadRemoteWorkspaceFile(meta)
-            .then((loaded) => onFileReady(loaded))
-            .catch((err) => { console.warn(`Failed to load file "${meta.name}":`, err); onFileReady(null); });
-        }
-        if (pending === 0) resolve();
-      }
-
-      scheduleNext();
-    });
-
-    if (loadedFiles.length === 0) {
+    if (loadedFiles.length > 0) {
+      _setActiveFile(loadedFiles[0]!.id);
+    } else {
       setActiveFileId(-1);
       renderer.clearDocument();
-      _syncWelcomeVisibility();
     }
+    _renderCatalogFilter();
+    _renderFileList();
+    _recalcTotals();
+    _updateNestItems();
+    _syncWelcomeVisibility();
+
+    // ── Шаг 2: парсим файлы фоново, параллельность CONCURRENCY ───────────
+    const CONCURRENCY = 4;
+    let nextIdx = 0;
+    let active = 0;
+
+    await new Promise<void>((resolve) => {
+      function startNext(): void {
+        while (active < CONCURRENCY && nextIdx < tree.files.length) {
+          const meta = tree.files[nextIdx]!;
+          const placeholder = loadedFiles.find((f) => f.remoteId === meta.id);
+          nextIdx++;
+          active++;
+
+          loadRemoteWorkspaceFile(meta)
+            .then((loaded) => {
+              if (placeholder) {
+                placeholder.doc        = loaded.doc;
+                placeholder.stats      = loaded.stats;
+                placeholder.loading    = false;
+                placeholder.loadError  = undefined;
+                // Если это активный файл — рендерим
+                if (placeholder.id === loadedFiles[0]?.id) {
+                  _setActiveFile(placeholder.id);
+                }
+                _renderFileList();
+                _recalcTotals();
+                _updateNestItems();
+              }
+            })
+            .catch((err) => {
+              console.warn(`Failed to load file "${meta.name}":`, err);
+              if (placeholder) {
+                placeholder.loading   = false;
+                placeholder.loadError = err instanceof Error ? err.message : String(err);
+                _renderFileList();
+              }
+            })
+            .finally(() => {
+              active--;
+              startNext();
+              if (active === 0) resolve();
+            });
+        }
+        if (active === 0) resolve();
+      }
+      startNext();
+    });
+
   } catch (err) {
     console.error('reloadWorkspaceLibraryFromServer failed:', err);
   }

@@ -124,6 +124,13 @@ function setActiveFile(id: number): void {
   const entry = loadedFiles.find(f => f.id === id);
   if (!entry) return;
   welcome.classList.toggle('hidden', loadedFiles.length > 0);
+  if (entry.loading || entry.doc == null) {
+    renderer.clearDocument();
+    statusEntities.textContent = '…';
+    statusVersion.textContent  = '';
+    renderFileList();
+    return;
+  }
   renderer.setDocument(entry.doc);
   renderer.setPiercePoints(entry.stats.chains.map(c => c.piercePoint));
   updateStatusBar();

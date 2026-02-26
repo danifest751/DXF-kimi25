@@ -237,6 +237,24 @@
 .file-item.dragging {
   opacity: 0.4;
 }
+.file-item.loading {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+.file-item.loading .file-item-info {
+  display: inline-block;
+  width: 48px;
+  height: 9px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--bg-hover) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+  vertical-align: middle;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 .catalog-system-label {
   font-size: 10px;

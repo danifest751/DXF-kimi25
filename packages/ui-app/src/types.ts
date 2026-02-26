@@ -36,6 +36,12 @@ export interface LoadedFile {
   stats: UICuttingStats;
   checked: boolean;
   quantity: number;
+  /** true пока DXF ещё скачивается/парсится (lazy load из библиотеки) */
+  loading?: boolean;
+  /** Promise, который резолвится когда загрузка завершена */
+  loadPromise?: Promise<void>;
+  /** Сообщение об ошибке загрузки */
+  loadError?: string;
 }
 
 export type ComputeMode = 'api' | 'local';
