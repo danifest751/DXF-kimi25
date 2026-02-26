@@ -66,7 +66,7 @@ import {
 import {
   initNestingPanelCallbacks,
   updateNestItems, runNesting, autoRerunNesting, exitNestingMode,
-  exportAllSheetsDXF, copyAllHashes,
+  exportAllSheetsDXF, exportFullNestingDXF, copyAllHashes,
   renderAllNestingSheets,
   applyZoomWheel, renderZoomSheet, showZoomPopup, hideZoomPopup, scheduleHideZoomPopup,
   positionPopup,
@@ -509,15 +509,7 @@ nestClose.addEventListener('click', exitNestingMode);
 
 // ─── Export ───────────────────────────────────────────────────────────
 
-btnExportDXF.addEventListener('click', () => {
-  if (!currentNestResult) return;
-  void (async () => {
-    try {
-      const blob = await apiPostBlob('/api/export/dxf', { nestingResult: currentNestResult });
-      downloadBlob(blob, 'nesting.dxf');
-    } catch (err) { alert(`Ошибка экспорта DXF: ${err instanceof Error ? err.message : String(err)}`); }
-  })();
-});
+btnExportDXF.addEventListener('click', exportFullNestingDXF);
 
 btnExportCSV.addEventListener('click', () => {
   if (!currentNestResult) return;

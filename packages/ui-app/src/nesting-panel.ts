@@ -494,6 +494,13 @@ export function exportAllSheetsDXF(): void {
   for (let i = 0; i < currentNestResult.sheets.length; i++) exportSingleSheetDXF(i);
 }
 
+export function exportFullNestingDXF(): void {
+  if (!currentNestResult) return;
+  const dxfStr = exportNestingToDXF({ nestingResult: currentNestResult, itemDocs: buildItemDocs() });
+  const blob = new Blob([dxfStr], { type: 'application/dxf' });
+  downloadBlob(blob, 'nesting.dxf');
+}
+
 export function copyAllHashes(feedbackEl: HTMLElement): void {
   if (nestSheetHashes.length === 0) return;
   void navigator.clipboard.writeText(nestSheetHashes.join('\n')).then(() => {
