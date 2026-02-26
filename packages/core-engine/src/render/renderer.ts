@@ -588,170 +588,158 @@ export class DXFRenderer {
   }
 
   /**
-   * Рисует габаритные размеры (bounding box + метка W×H) для каждой группы
-   * сущностей. Группировка: по handle верхнего уровня (INSERT/LWPOLYLINE/etc.).
-   * Если таких нет — рисует общий bbox документа.
+   * Рисует габаритные размеры документа (один общий bbox W×H).
+   * Линии рисуются в мировых координатах (через камеру),
+   * текст и стрелки — в экранных (сброс трансформации) чтобы не зеркалиться.
    */
   private renderDimensions(ctx: CanvasRenderingContext2D): void {
-    if (this.doc === null) return;
+    if (this.doc === null || this.doc.totalBBox === null) return;
 
-    const pixelSize = 1 / this.camera.zoom;
-    const visibleBounds = this.camera.getVisibleBounds();
+    const bb = this.doc.totalBBox;
+    const w = bb.max.x - bb.min.x;
+    const h = bb.max.y - bb.min.y;
+    if (w <= 0 || h <= 0) return;
 
-    // Минимальный размер bbox в пикселях экрана для отображения подписи
-    const MIN_SCREEN_PX = 20;
+    const MIN_SCREEN_PX = 60;   // не рисуем если деталь слишком мала на экране
+    const screenW = w * this.camera.zoom;
+    const screenH = h * this.camera.zoom;
+    if (screenW < MIN_SCREEN_PX && screenH < MIN_SCREEN_PX) return;
 
-    // Стиль размерных линий
-    const dimColor = 'rgba(96, 165, 250, 0.85)';   // синий
-    const textColor = '#bfdbfe';
-    const dashLen = 4 * pixelSize;
-    const fontSize = Math.max(9 * pixelSize, 3);
+    // Экранные координаты углов bbox
+    const scrBL = this.camera.worldToScreen(bb.min.x, bb.min.y); // bottom-left world → screen
+    const scrBR = this.camera.worldToScreen(bb.max.x, bb.min.y);
+    const scrTL = this.camera.worldToScreen(bb.min.x, bb.max.y);
+    // scrTR не нужна
 
+    const OFFSET = 28;          // отступ размерной линии от геометрии, пикселей
+    const TICK   = 6;           // длина засечки
+    const ARROW  = 7;           // размер стрелки
+    const FONT_SIZE = 12;
+
+    const dimColor  = 'rgba(96, 165, 250, 0.9)';
+    const textColor = '#e0f2fe';
+    const dashPx    = [5, 3] as const;
+
+    // Переключаемся в экранные координаты
     ctx.save();
-    ctx.setLineDash([dashLen, dashLen * 0.6]);
-    ctx.lineWidth = pixelSize;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);   // сброс — всё в пикселях экрана
+
     ctx.strokeStyle = dimColor;
-    ctx.fillStyle = textColor;
-    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-    ctx.textBaseline = 'bottom';
+    ctx.fillStyle   = dimColor;
+    ctx.lineWidth   = 1;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.font        = `${FONT_SIZE}px "JetBrains Mono", "Courier New", monospace`;
 
-    // Собираем bounding boxes: группируем flatEntities по blockHandle / handle верхнего уровня.
-    // Используем totalBBox если один объект (простой DXF без вставок блоков).
-    const groups = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+    // ─── Горизонтальная размерная линия (под деталью) ────────────────
+    if (screenW >= MIN_SCREEN_PX) {
+      const yDim  = Math.max(scrBL.y, scrBR.y) + OFFSET;  // ниже детали
+      const xLeft  = Math.min(scrBL.x, scrTL.x);
+      const xRight = Math.max(scrBR.x, this.camera.worldToScreen(bb.max.x, bb.max.y).x);
 
-    for (const fe of this.doc.flatEntities) {
-      const bb = fe.entity.boundingBox;
-      if (bb === null || bb === undefined) continue;
-      if (!this.isLayerVisible(fe.effectiveLayer)) continue;
-      if (!fe.entity.visible) continue;
+      // Выносные линии
+      ctx.setLineDash(dashPx as unknown as number[]);
+      ctx.beginPath();
+      ctx.moveTo(xLeft,  Math.max(scrBL.y, scrBR.y));
+      ctx.lineTo(xLeft,  yDim + TICK);
+      ctx.moveTo(xRight, Math.max(scrBL.y, scrBR.y));
+      ctx.lineTo(xRight, yDim + TICK);
+      ctx.stroke();
 
-      // Ключ группы — blockHandle если есть, иначе handle сущности
-      const key = (fe as { blockHandle?: string }).blockHandle ?? fe.entity.handle;
+      // Размерная линия
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(xLeft,  yDim);
+      ctx.lineTo(xRight, yDim);
+      ctx.stroke();
 
-      let g = groups.get(key);
-      if (g === undefined) {
-        g = { minX: bb.min.x, minY: bb.min.y, maxX: bb.max.x, maxY: bb.max.y };
-        groups.set(key, g);
-      } else {
-        if (bb.min.x < g.minX) g.minX = bb.min.x;
-        if (bb.min.y < g.minY) g.minY = bb.min.y;
-        if (bb.max.x > g.maxX) g.maxX = bb.max.x;
-        if (bb.max.y > g.maxY) g.maxY = bb.max.y;
-      }
+      // Стрелки
+      this._drawArrowH(ctx, xLeft,  yDim, +1, ARROW);
+      this._drawArrowH(ctx, xRight, yDim, -1, ARROW);
+
+      // Подпись
+      const wLabel = this._dimLabel(w);
+      ctx.fillStyle   = textColor;
+      ctx.textAlign   = 'center';
+      ctx.textBaseline = 'top';
+      // Фон под текстом
+      const tw = ctx.measureText(wLabel).width;
+      const tx = (xLeft + xRight) / 2;
+      const ty = yDim + 4;
+      ctx.fillStyle = 'rgba(15,17,23,0.75)';
+      ctx.fillRect(tx - tw / 2 - 4, ty - 1, tw + 8, FONT_SIZE + 4);
+      ctx.fillStyle = textColor;
+      ctx.fillText(wLabel, tx, ty);
     }
 
-    // Если нет групп — рисуем по totalBBox
-    if (groups.size === 0 && this.doc.totalBBox !== null) {
-      const bb = this.doc.totalBBox;
-      groups.set('__total__', { minX: bb.min.x, minY: bb.min.y, maxX: bb.max.x, maxY: bb.max.y });
-    }
+    // ─── Вертикальная размерная линия (слева от детали) ──────────────
+    if (screenH >= MIN_SCREEN_PX) {
+      const xDim  = Math.min(scrBL.x, scrTL.x) - OFFSET;  // левее детали
+      const yTop    = Math.min(scrBL.y, scrTL.y);   // верх в экране = min Y
+      const yBottom = Math.max(scrBL.y, scrTL.y);   // низ в экране = max Y
 
-    const arrowSize = 5 * pixelSize;
-    const offset = 10 * pixelSize;
+      // Выносные линии
+      ctx.setLineDash(dashPx as unknown as number[]);
+      ctx.beginPath();
+      ctx.moveTo(Math.min(scrBL.x, scrTL.x), yTop);
+      ctx.lineTo(xDim - TICK, yTop);
+      ctx.moveTo(Math.min(scrBL.x, scrTL.x), yBottom);
+      ctx.lineTo(xDim - TICK, yBottom);
+      ctx.stroke();
 
-    for (const g of groups.values()) {
-      const w = g.maxX - g.minX;
-      const h = g.maxY - g.minY;
-      if (w <= 0 || h <= 0) continue;
+      // Размерная линия
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(xDim, yTop);
+      ctx.lineTo(xDim, yBottom);
+      ctx.stroke();
 
-      // Проверяем видимость — bbox должен пересекаться с viewport
-      if (g.maxX < visibleBounds.min.x || g.minX > visibleBounds.max.x) continue;
-      if (g.maxY < visibleBounds.min.y || g.minY > visibleBounds.max.y) continue;
+      // Стрелки вертикальные
+      this._drawArrowV(ctx, xDim, yTop,    +1, ARROW);
+      this._drawArrowV(ctx, xDim, yBottom, -1, ARROW);
 
-      // Проверяем минимальный размер в пикселях
-      const screenW = w * this.camera.zoom;
-      const screenH = h * this.camera.zoom;
-      if (screenW < MIN_SCREEN_PX && screenH < MIN_SCREEN_PX) continue;
-
-      const x0 = g.minX;
-      const y0 = g.minY;
-      const x1 = g.maxX;
-      const y1 = g.maxY;
-
-      // ─── Горизонтальная размерная линия (снизу) ─────────────────────
-      if (screenW >= MIN_SCREEN_PX) {
-        const yDim = y0 - offset;
-        ctx.beginPath();
-        // Выносные линии
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x0, yDim - offset * 0.3);
-        ctx.moveTo(x1, y0);
-        ctx.lineTo(x1, yDim - offset * 0.3);
-        // Размерная линия
-        ctx.moveTo(x0, yDim);
-        ctx.lineTo(x1, yDim);
-        ctx.stroke();
-
-        // Стрелки
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(x0, yDim);
-        ctx.lineTo(x0 + arrowSize, yDim - arrowSize * 0.5);
-        ctx.lineTo(x0 + arrowSize, yDim + arrowSize * 0.5);
-        ctx.closePath();
-        ctx.fillStyle = dimColor;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.moveTo(x1, yDim);
-        ctx.lineTo(x1 - arrowSize, yDim - arrowSize * 0.5);
-        ctx.lineTo(x1 - arrowSize, yDim + arrowSize * 0.5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.setLineDash([dashLen, dashLen * 0.6]);
-
-        // Подпись ширины
-        const wLabel = w >= 1 ? `${w.toFixed(1)} мм` : `${(w * 1000).toFixed(0)} мкм`;
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(wLabel, (x0 + x1) / 2, yDim - arrowSize * 0.3);
-      }
-
-      // ─── Вертикальная размерная линия (слева) ────────────────────────
-      if (screenH >= MIN_SCREEN_PX) {
-        const xDim = x0 - offset;
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(xDim - offset * 0.3, y0);
-        ctx.moveTo(x0, y1);
-        ctx.lineTo(xDim - offset * 0.3, y1);
-        ctx.moveTo(xDim, y0);
-        ctx.lineTo(xDim, y1);
-        ctx.stroke();
-
-        // Стрелки
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(xDim, y0);
-        ctx.lineTo(xDim - arrowSize * 0.5, y0 + arrowSize);
-        ctx.lineTo(xDim + arrowSize * 0.5, y0 + arrowSize);
-        ctx.closePath();
-        ctx.fillStyle = dimColor;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.moveTo(xDim, y1);
-        ctx.lineTo(xDim - arrowSize * 0.5, y1 - arrowSize);
-        ctx.lineTo(xDim + arrowSize * 0.5, y1 - arrowSize);
-        ctx.closePath();
-        ctx.fill();
-        ctx.setLineDash([dashLen, dashLen * 0.6]);
-
-        // Подпись высоты (повёрнута)
-        ctx.save();
-        ctx.translate(xDim - arrowSize * 0.3, (y0 + y1) / 2);
-        ctx.rotate(-Math.PI / 2);
-        const hLabel = h >= 1 ? `${h.toFixed(1)} мм` : `${(h * 1000).toFixed(0)} мкм`;
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(hLabel, 0, 0);
-        ctx.restore();
-      }
+      // Подпись (повёрнута -90°)
+      const hLabel = this._dimLabel(h);
+      const tx = xDim - 4;
+      const ty = (yTop + yBottom) / 2;
+      ctx.save();
+      ctx.translate(tx, ty);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign   = 'center';
+      ctx.textBaseline = 'bottom';
+      const tw = ctx.measureText(hLabel).width;
+      ctx.fillStyle = 'rgba(15,17,23,0.75)';
+      ctx.fillRect(-tw / 2 - 4, -FONT_SIZE - 3, tw + 8, FONT_SIZE + 4);
+      ctx.fillStyle = textColor;
+      ctx.fillText(hLabel, 0, -2);
+      ctx.restore();
     }
 
     ctx.restore();
+  }
+
+  private _dimLabel(mm: number): string {
+    if (mm >= 1000) return `${(mm / 1000).toFixed(3)} м`;
+    if (mm >= 1)    return `${mm.toFixed(1)} мм`;
+    return `${(mm * 1000).toFixed(0)} мкм`;
+  }
+
+  private _drawArrowH(ctx: CanvasRenderingContext2D, x: number, y: number, dir: 1 | -1, size: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * size, y - size * 0.45);
+    ctx.lineTo(x + dir * size, y + size * 0.45);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  private _drawArrowV(ctx: CanvasRenderingContext2D, x: number, y: number, dir: 1 | -1, size: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - size * 0.45, y + dir * size);
+    ctx.lineTo(x + size * 0.45, y + dir * size);
+    ctx.closePath();
+    ctx.fill();
   }
 
   private renderPierceMarkers(ctx: CanvasRenderingContext2D): void {
