@@ -1287,7 +1287,10 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       for (const hash of uniqueHashes) {
         const entry = await getSharedSheet(hash);
         if (entry) {
-          const dxf = exportNestingToDXF({ nestingResult: entry.singleResult });
+          const itemDocsMap = entry.itemDocs
+            ? new Map(Object.entries(entry.itemDocs).map(([k, v]) => [Number(k), v] as const))
+            : undefined;
+          const dxf = exportNestingToDXF({ nestingResult: entry.singleResult, itemDocs: itemDocsMap });
           const s = entry.singleResult;
           const caption = ts.hashCaption(entry.sheetIndex + 1, hash, s.sheet.width, s.sheet.height, s.totalPlaced, s.avgFillPercent);
           await telegramSendDocument(
