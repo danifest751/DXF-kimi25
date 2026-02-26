@@ -22,6 +22,7 @@ import {
   btnAdvancedToggle, nestAdvanced, nestSeed,
   nestCommonLineEnabled, nestCommonLineStatus, nestCommonLineDist, nestCommonLineMinLen,
   nestItemsEl, nestItemsEmpty,
+  btnNestRun,
   nestResults, nestResultCards, nestResultSummary,
   btnExportDXF, btnExportCSV,
   nestingScroll, nestingCanvas,
