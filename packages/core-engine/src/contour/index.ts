@@ -12,7 +12,7 @@
  *     → NestingPoint[] (largest outer ring)
  */
 
-import type { Point2D, Point3D } from '../types/index.js';
+import type { Point3D } from '../types/index.js';
 import { DXFEntityType } from '../types/index.js';
 import type {
   DXFLineEntity,
@@ -63,10 +63,6 @@ function dist2(a: Pt, b: Pt): number {
 function transformPt(fe: FlattenedEntity, p: Point3D): Pt {
   const t = mat4TransformPoint(fe.transform, p);
   return { x: t.x, y: t.y };
-}
-
-function pt3to2(p: Point3D): Pt {
-  return { x: p.x, y: p.y };
 }
 
 /** Signed area via shoelace formula. Positive = CCW (standard math), negative = CW. */
