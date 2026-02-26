@@ -467,14 +467,12 @@ export function recalcTotals(): void {
   let totalPierces    = 0;
   let totalCutLength  = 0;
   let totalEntities   = 0;
-  const allPiercePoints: Point3D[] = [];
 
   for (const f of loadedFiles) {
     if (!f.checked) continue;
     totalPierces    += f.stats.totalPierces;
     totalCutLength  += f.stats.totalCutLength;
     totalEntities   += f.stats.cuttingEntityCount;
-    for (const chain of f.stats.chains) allPiercePoints.push(chain.piercePoint);
   }
 
   const cutM = totalCutLength / 1000;
@@ -491,5 +489,11 @@ export function recalcTotals(): void {
     : '';
 
   updateBulkControlsUi();
-  renderer.setPiercePoints(allPiercePoints);
+
+  // Pierce points belong to the active file only — the renderer shows one file at a time
+  const activeFile = loadedFiles.find(f => f.id === activeFileId);
+  const activePiercePoints: Point3D[] = activeFile
+    ? activeFile.stats.chains.map(c => c.piercePoint)
+    : [];
+  renderer.setPiercePoints(activePiercePoints);
 }

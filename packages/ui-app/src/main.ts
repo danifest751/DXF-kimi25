@@ -124,6 +124,7 @@ function setActiveFile(id: number): void {
   if (!entry) return;
   welcome.classList.toggle('hidden', loadedFiles.length > 0);
   renderer.setDocument(entry.doc);
+  renderer.setPiercePoints(entry.stats.chains.map(c => c.piercePoint));
   updateStatusBar();
   statusEntities.textContent = `${entry.doc.entityCount} obj`;
   statusVersion.textContent  = entry.doc.source.metadata.version;
