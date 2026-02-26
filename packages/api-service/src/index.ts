@@ -669,15 +669,19 @@ app.post('/api/nest', nestingRateLimit, async (req: Request, res: Response): Pro
       minSharedLenMm: typeof commonLineInput?.minSharedLenMm === 'number' ? commonLineInput.minSharedLenMm : 20,
     };
     const NESTING_TIMEOUT_MS = 30_000; // 30 сек — защита от бесконечного нестинга
-    const nestPromise = new Promise<ReturnType<typeof nestItems>>((resolve) => {
-      resolve(nestItems(items, sheet, gap, {
-        rotationEnabled,
-        rotationAngleStepDeg,
-        strategy,
-        multiStart,
-        seed,
-        commonLine,
-      }));
+    const nestPromise = new Promise<ReturnType<typeof nestItems>>((resolve, reject) => {
+      try {
+        resolve(nestItems(items, sheet, gap, {
+          rotationEnabled,
+          rotationAngleStepDeg,
+          strategy,
+          multiStart,
+          seed,
+          commonLine,
+        }));
+      } catch (e) {
+        reject(e);
+      }
     });
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Nesting timeout (30s)')), NESTING_TIMEOUT_MS),

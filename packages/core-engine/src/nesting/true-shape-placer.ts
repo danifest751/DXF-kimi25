@@ -215,7 +215,11 @@ function tryPlaceOnSheet(
       const cacheKeyAngle = pe.angleDeg * 1000 + angle;
       let nfp: Poly2D[] | undefined = cache.get(pe.itemId, copy.itemId, cacheKeyAngle);
       if (nfp === undefined) {
-        nfp = computeNFP(pe.originContour, rotated);
+        try {
+          nfp = computeNFP(pe.originContour, rotated);
+        } catch {
+          nfp = [];
+        }
         cache.set(pe.itemId, copy.itemId, cacheKeyAngle, nfp);
       }
       // NFP is relative to stationary A's origin → translate to A's absolute position on sheet
@@ -225,7 +229,12 @@ function tryPlaceOnSheet(
     }
 
     // 4. Subtract NFPs from IFP to get valid placement area
-    const remainder = subtractNFPsFromIFP(ifp, nfps);
+    let remainder: Poly2D[];
+    try {
+      remainder = subtractNFPsFromIFP(ifp, nfps);
+    } catch {
+      remainder = [ifp]; // fallback: use full IFP if clipper fails
+    }
     if (remainder.length === 0) continue;
 
     // 5. Pick bottom-left point

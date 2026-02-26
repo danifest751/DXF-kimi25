@@ -139,6 +139,9 @@ export async function runNesting(): Promise<void> {
   const checked = loadedFiles.filter((f) => f.checked);
   if (checked.length === 0) return;
 
+  btnNestRun.disabled = true;
+  btnNestRun.textContent = '…';
+
   const sheet = getSheetSize();
   const gap = Number(nestGap.value) || 5;
   const options = getNestingOptions();
@@ -174,9 +177,22 @@ export async function runNesting(): Promise<void> {
     });
     setCurrentNestResult(resp.data);
     setNestingComputeMode('api');
-  } catch {
-    setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
-    setNestingComputeMode('local');
+  } catch (apiErr) {
+    console.warn('[nesting] API failed, falling back to local:', apiErr);
+    try {
+      setCurrentNestResult(nestItems(items, sheet, effectiveGap, options));
+      setNestingComputeMode('local');
+    } catch (localErr) {
+      console.error('[nesting] local nestItems also failed:', localErr);
+      nestResultSummary.innerHTML = `<span style="color:#f87171">Ошибка раскладки: ${localErr instanceof Error ? localErr.message : String(localErr)}</span>`;
+      nestResults.classList.remove('hidden');
+      btnNestRun.disabled = false;
+      btnNestRun.textContent = t('nesting.run');
+      return;
+    }
+  } finally {
+    btnNestRun.disabled = false;
+    btnNestRun.textContent = t('nesting.run');
   }
   _updateModeBadge();
 
