@@ -857,8 +857,9 @@ app.get('/api/nesting/sheet/:hash', heavyRateLimit, async (req: Request, res: Re
       ? new Map(Object.entries(entry.itemDocs).map(([k, v]) => [Number(k), v] as const))
       : undefined;
     const dxf = exportNestingToDXF({ nestingResult: entry.singleResult, itemDocs: itemDocsMap });
+    const safeHash = entry.hash.replace(/[^0-9a-f]/gi, '').slice(0, 8) || 'unknown';
     res.setHeader('Content-Type', 'application/dxf');
-    res.setHeader('Content-Disposition', `attachment; filename="sheet_${entry.sheetIndex + 1}_${hash}.dxf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="sheet_${entry.sheetIndex + 1}_${safeHash}.dxf"`);
     res.send(dxf);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

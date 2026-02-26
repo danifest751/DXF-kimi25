@@ -216,7 +216,16 @@ function transformEntity(
   if (e.type === DXFEntityType.CIRCLE) {
     const c = e as DXFCircleEntity;
     const ctr = tx(c.center.x, c.center.y);
-    return [{ type: DXFEntityType.CIRCLE, handle: String(baseHandle), layer, visible: true, center: { ...ctr, z: 0 }, radius: c.radius } as DXFCircleEntity];
+    const edgeX = tx(c.center.x + c.radius, c.center.y);
+    const edgeY = tx(c.center.x, c.center.y + c.radius);
+    const rx = Math.hypot(edgeX.x - ctr.x, edgeX.y - ctr.y);
+    const ry = Math.hypot(edgeY.x - ctr.x, edgeY.y - ctr.y);
+    if (Math.abs(rx - ry) <= 1e-6) {
+      return [{ type: DXFEntityType.CIRCLE, handle: String(baseHandle), layer, visible: true, center: { ...ctr, z: 0 }, radius: (rx + ry) / 2 } as DXFCircleEntity];
+    }
+    const pts = tessellateArc(c.center, c.radius, 0, 360, 96);
+    if (pts.length < 2) return [];
+    return [makePoly(pts, true)];
   }
 
   if (e.type === DXFEntityType.ARC) {
@@ -270,6 +279,25 @@ function createLine(x1: number, y1: number, x2: number, y2: number, handle: numb
 }
 
 function createDXFDocument(entities: DXFEntity[]): DXFDocument {
+  const layers = new Map<string, DXFLayer>([
+    ['0', { name: '0', color: { r: 255, g: 255, b: 255 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
+    ['SHEET', { name: 'SHEET', color: { r: 128, g: 128, b: 128 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
+    ['COMMON_LINE', { name: 'COMMON_LINE', color: { r: 0, g: 255, b: 157 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
+  ]);
+  for (const entity of entities) {
+    if (!layers.has(entity.layer)) {
+      layers.set(entity.layer, {
+        name: entity.layer,
+        color: { r: 255, g: 255, b: 255 },
+        lineType: 'Continuous',
+        lineWeight: 0,
+        visible: true,
+        frozen: false,
+        locked: false,
+      });
+    }
+  }
+
   return {
     header: new Map(),
     metadata: {
@@ -279,15 +307,11 @@ function createDXFDocument(entities: DXFEntity[]): DXFDocument {
       units: 1,
       extents: { min: { x: 0, y: 0, z: 0 }, max: { x: 1000, y: 1000, z: 0 } },
       entityCount: entities.length,
-      layerCount: 3,
+      layerCount: layers.size,
       blockCount: 0,
     },
     entities,
-    layers: new Map<string, DXFLayer>([
-      ['0', { name: '0', color: { r: 255, g: 255, b: 255 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
-      ['SHEET', { name: 'SHEET', color: { r: 128, g: 128, b: 128 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
-      ['COMMON_LINE', { name: 'COMMON_LINE', color: { r: 0, g: 255, b: 157 }, lineType: 'Continuous', lineWeight: 0, visible: true, frozen: false, locked: false }],
-    ]),
+    layers,
     blocks: new Map(),
     lineTypes: new Map(),
     textStyles: new Map(),

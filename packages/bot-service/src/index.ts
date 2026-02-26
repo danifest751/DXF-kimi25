@@ -9,7 +9,7 @@ import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument, type FlattenedEntity, type NormalizedDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats, formatCutLength } from '../../core-engine/src/cutting/index.js';
 import { nestItems, SHEET_PRESETS, type NestingItem, type NestingOptions, type NestingResult, type SheetSize } from '../../core-engine/src/nesting/index.js';
-import { exportNestingToDXF, exportNestingToCSV } from '../../core-engine/src/export/index.js';
+import { exportNestingToDXF, exportNestingToCSV, type ItemDocData } from '../../core-engine/src/export/index.js';
 import { mat4TransformPoint } from '../../core-engine/src/geometry/math.js';
 import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.js';
 import { createTelegramLoginCode } from '../../api-service/src/telegram-auth.js';
@@ -68,12 +68,16 @@ interface BotCuttingSummary {
 interface BotAnalysisResult {
   readonly previewJpeg: Buffer;
   readonly summary: BotCuttingSummary;
-  readonly nestingItems: readonly NestingItem[];
+  readonly nestingItems: readonly {
+    readonly item: NestingItem;
+    readonly itemDoc: ItemDocData;
+  }[];
 }
 
 interface SavedNestingVariant {
   readonly name: string;
   readonly nesting: NestingResult;
+  readonly itemDocs: ReadonlyMap<number, ItemDocData>;
 }
 
 interface PendingNestingContext {
@@ -87,6 +91,7 @@ interface PendingNestingContext {
   readonly gap: number;
   readonly mode: 'fast' | 'precise' | 'common';
   readonly previewJpeg: Buffer;
+  readonly itemDocs: ReadonlyMap<number, ItemDocData>;
   readonly lastNesting: NestingResult | null;
   readonly variants: readonly SavedNestingVariant[];
   readonly activeVariantIndex: number | null;
@@ -379,9 +384,14 @@ function getEntityWorldBBox(fe: FlattenedEntity): { minX: number; minY: number; 
   };
 }
 
-function extractNestingItems(normalized: NormalizedDocument): readonly NestingItem[] {
-  const stats = computeCuttingStats(normalized);
-  const items: NestingItem[] = [];
+function extractNestingItems(normalized: NormalizedDocument, stats: ReturnType<typeof computeCuttingStats>): readonly {
+  readonly item: NestingItem;
+  readonly itemDoc: ItemDocData;
+}[] {
+  const items: {
+    item: NestingItem;
+    itemDoc: ItemDocData;
+  }[] = [];
 
   for (let i = 0; i < stats.chains.length; i++) {
     const chain = stats.chains[i]!;
@@ -389,10 +399,12 @@ function extractNestingItems(normalized: NormalizedDocument): readonly NestingIt
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
+    const chainEntities: FlattenedEntity[] = [];
 
     for (const entityIndex of chain.entityIndices) {
       const fe = normalized.flatEntities[entityIndex];
       if (fe === undefined) continue;
+      chainEntities.push(fe);
       const bb = getEntityWorldBBox(fe);
       if (bb === null) continue;
       minX = Math.min(minX, bb.minX);
@@ -408,11 +420,20 @@ function extractNestingItems(normalized: NormalizedDocument): readonly NestingIt
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     items.push({
-      id: i + 1,
-      name: `Part ${i + 1}`,
-      width,
-      height,
-      quantity: 1,
+      item: {
+        id: i + 1,
+        name: `Part ${i + 1}`,
+        width,
+        height,
+        quantity: 1,
+      },
+      itemDoc: {
+        flatEntities: chainEntities,
+        bbox: {
+          min: { x: minX, y: minY, z: 0 },
+          max: { x: maxX, y: maxY, z: 0 },
+        },
+      },
     });
   }
 
@@ -424,11 +445,17 @@ function extractNestingItems(normalized: NormalizedDocument): readonly NestingIt
   if (total === null) return [];
 
   return [{
-    id: 1,
-    name: 'Part 1',
-    width: Math.max(1, total.max.x - total.min.x),
-    height: Math.max(1, total.max.y - total.min.y),
-    quantity: 1,
+    item: {
+      id: 1,
+      name: 'Part 1',
+      width: Math.max(1, total.max.x - total.min.x),
+      height: Math.max(1, total.max.y - total.min.y),
+      quantity: 1,
+    },
+    itemDoc: {
+      flatEntities: normalized.flatEntities,
+      bbox: total,
+    },
   }];
 }
 
@@ -490,7 +517,7 @@ function analyzeDXF(buffer: Buffer): BotAnalysisResult {
       totalPierces: stats.totalPierces,
       totalCutLength: stats.totalCutLength,
     },
-    nestingItems: extractNestingItems(normalized),
+    nestingItems: extractNestingItems(normalized, stats),
   };
 }
 
@@ -827,11 +854,15 @@ function appendAnalysisToContext(
   fileName: string,
   analysis: BotAnalysisResult,
 ): PendingNestingContext {
-  const remappedItems: NestingItem[] = analysis.nestingItems.map((item, index) => ({
-    ...item,
+  const remappedItems: NestingItem[] = analysis.nestingItems.map((entry, index) => ({
+    ...entry.item,
     id: context.nextItemId + index,
-    name: `${toSafeBaseName(fileName)}:${item.name}`,
+    name: `${toSafeBaseName(fileName)}:${entry.item.name}`,
   }));
+  const remappedDocs = new Map<number, ItemDocData>();
+  for (let i = 0; i < analysis.nestingItems.length; i++) {
+    remappedDocs.set(context.nextItemId + i, analysis.nestingItems[i]!.itemDoc);
+  }
 
   return {
     ...context,
@@ -841,6 +872,7 @@ function appendAnalysisToContext(
       totalCutLength: context.summary.totalCutLength + analysis.summary.totalCutLength,
     },
     items: [...context.items, ...remappedItems],
+    itemDocs: new Map([...context.itemDocs, ...remappedDocs]),
     nextItemId: context.nextItemId + remappedItems.length,
     mode: context.mode,
     previewJpeg: analysis.previewJpeg,
@@ -891,6 +923,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         ...context,
         activeVariantIndex: idx,
         lastNesting: context.variants[idx]!.nesting,
+        itemDocs: context.variants[idx]!.itemDocs,
       };
       setNestingContext(chatId, nextContext);
       await sendDashboard(token, chatId, nextContext);
@@ -1044,7 +1077,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
         await telegramSendPhoto(token, chatId, renderNestingPreview(nesting), composeResultCaption(context, variantName, nesting));
 
-        const variants = [...context.variants, { name: variantName, nesting }];
+        const variants = [...context.variants, { name: variantName, nesting, itemDocs: new Map(context.itemDocs) }];
         const next: PendingNestingContext = {
           ...context,
           lastNesting: nesting,
@@ -1102,7 +1135,10 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         }
         const safe = toSafeBaseName(getPrimaryFileLabel(context));
         if (action === 'export_dxf') {
-          const dxf = exportNestingToDXF({ nestingResult: activeVariant.nesting });
+          const dxf = exportNestingToDXF({
+            nestingResult: activeVariant.nesting,
+            itemDocs: activeVariant.itemDocs.size > 0 ? activeVariant.itemDocs : undefined,
+          });
           await telegramSendDocument(token, chatId, Buffer.from(dxf, 'utf-8'), `${safe}-${activeVariant.name}.dxf`, `DXF (${activeVariant.name})`, 'application/dxf');
         } else {
           const csv = exportNestingToCSV({ nestingResult: activeVariant.nesting, fileName: `${safe}-${activeVariant.name}` });
@@ -1174,7 +1210,8 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
             locale: userLocale,
             fileNames: [fileName],
             summary: result.summary,
-            items: result.nestingItems,
+            items: result.nestingItems.map((entry) => entry.item),
+            itemDocs: new Map(result.nestingItems.map((entry) => [entry.item.id, entry.itemDoc] as const)),
             nextItemId: result.nestingItems.length + 1,
             quantity: 1,
             sheet: { ...defaultSheet },

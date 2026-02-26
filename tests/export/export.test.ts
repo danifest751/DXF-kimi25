@@ -129,6 +129,7 @@ describe('exportNestingToDXF', () => {
     expect(dxf).toContain('LAYER');
     expect(dxf).toContain('0');
     expect(dxf).toContain('SHEET');
+    expect(dxf).toMatch(/TABLE\n2\nLAYER[\s\S]*\n2\nPart1\n/);
   });
 
   it('экспортирует несколько листов', () => {

@@ -23,6 +23,7 @@ const pruneExpiredSheetsMock = vi.fn();
 const hasSharedSheetMock = vi.fn();
 const saveSharedSheetMock = vi.fn();
 const generateShortHashMock = vi.fn();
+const getSharedSheetMock = vi.fn();
 
 vi.mock('../../packages/core-engine/src/dxf/reader/index.js', () => ({ parseDXF: vi.fn() }));
 vi.mock('../../packages/core-engine/src/normalize/index.js', () => ({ normalizeDocument: vi.fn() }));
@@ -43,7 +44,7 @@ vi.mock('../../packages/bot-service/src/index.js', () => ({
 }));
 vi.mock('../../packages/api-service/src/shared-sheets.js', () => ({
   generateShortHash: generateShortHashMock,
-  getSharedSheet: vi.fn(),
+  getSharedSheet: getSharedSheetMock,
   hasSharedSheet: hasSharedSheetMock,
   pruneExpiredSheets: pruneExpiredSheetsMock,
   saveSharedSheet: saveSharedSheetMock,
@@ -93,11 +94,47 @@ beforeEach(() => {
   pruneExpiredSheetsMock.mockResolvedValue(undefined);
   hasSharedSheetMock.mockResolvedValue(false);
   saveSharedSheetMock.mockResolvedValue(undefined);
+  getSharedSheetMock.mockResolvedValue(null);
   generateShortHashMock.mockReturnValue('abcd1234');
   getAuthSessionByTokenMock.mockResolvedValue({
     userId: 'u1',
     workspaceId: 'ws-1',
     expiresAt: Date.now() + 60_000,
+  });
+});
+
+describe('S1: shared sheet DXF filename header sanitization', () => {
+  it('uses sanitized hash from stored entry in Content-Disposition', async () => {
+    getSharedSheetMock.mockResolvedValue({
+      hash: 'ab12cd34',
+      sheetIndex: 0,
+      singleResult: {
+        sheet: { width: 1000, height: 2000 },
+        gap: 5,
+        sheets: [{ sheetIndex: 0, placed: [], usedArea: 0, fillPercent: 0 }],
+        totalSheets: 1,
+        totalPlaced: 0,
+        totalRequired: 0,
+        avgFillPercent: 0,
+        cutLengthEstimate: 0,
+        sharedCutLength: 0,
+        cutLengthAfterMerge: 0,
+        pierceEstimate: 0,
+        pierceDelta: 0,
+      },
+      createdAt: Date.now(),
+      itemDocs: undefined,
+    });
+
+    const response = await fetch(`${baseUrl}/api/nesting/sheet/%22..%2F..%2Fevil`, {
+      method: 'GET',
+      headers: { 'x-forwarded-for': '10.9.9.9' },
+    });
+
+    expect(response.status).toBe(200);
+    const cd = response.headers.get('content-disposition') ?? '';
+    expect(cd).toContain('sheet_1_ab12cd34.dxf');
+    expect(cd).not.toContain('evil');
   });
 });
 
