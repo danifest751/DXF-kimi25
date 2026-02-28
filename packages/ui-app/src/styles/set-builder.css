@@ -17,9 +17,9 @@
 }
 
 .sb-topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   padding: 10px 12px 12px;
   border-bottom: 1px solid var(--border-light);
@@ -28,9 +28,9 @@
 }
 
 .sb-top-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) auto auto;
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   min-width: 0;
 }
@@ -48,22 +48,24 @@
 }
 
 .sb-top-group--library {
-  display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) minmax(160px, 210px) auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  flex: 1 1 520px;
 }
 
 .sb-top-group--view,
 .sb-top-group--nest {
-  align-self: stretch;
+  align-self: center;
+  flex: 0 1 auto;
 }
 
 .sb-top-actions {
   display: inline-flex;
   gap: 8px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-self: stretch;
   flex-wrap: wrap;
   padding: 7px;
@@ -295,8 +297,8 @@
 .sb-input--search { min-width: 220px; width: 100%; }
 
 .sb-select--catalog {
-  min-width: 170px;
-  max-width: 220px;
+  min-width: 180px;
+  max-width: 260px;
 }
 
 .sb-select--mini {
@@ -551,11 +553,7 @@
 
 @media (max-width: 1100px) {
   .sb-main { grid-template-columns: minmax(0, 1fr) 320px; }
-  .sb-topbar { grid-template-columns: 1fr; }
-  .sb-top-main { grid-template-columns: 1fr; }
-  .sb-top-group--library {
-    grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px);
-  }
+  .sb-top-group--library { flex-basis: 100%; }
 }
 
 @media (max-width: 960px) {
@@ -566,9 +564,8 @@
     grid-template-columns: 22px 82px minmax(140px, 1fr) 76px 70px 60px 74px 160px;
   }
   .sb-modal-body { grid-template-columns: 1fr; }
-  .sb-top-group--library {
-    grid-template-columns: 1fr;
-  }
+  .sb-top-main { gap: 8px; }
+  .sb-top-group--library { flex-basis: 100%; }
   .sb-top-group--view,
   .sb-top-group--nest,
   .sb-top-actions {

@@ -196,6 +196,7 @@ function sheetSvg(sheet: SheetResult): string {
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const state = createInitialState();
+  state.library = [];
   let toastText = '';
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPickedLibraryId: number | null = null;
@@ -319,7 +320,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       }
     }
 
-    state.library = state.library.filter((item) => item.sourceFileId === undefined || loadedIds.has(item.sourceFileId));
+    state.library = state.library.filter((item) => item.sourceFileId !== undefined && loadedIds.has(item.sourceFileId));
 
     let nextLibraryId = Math.max(0, ...state.library.map((i) => i.id)) + 1;
     for (const lf of loadedFiles) {
