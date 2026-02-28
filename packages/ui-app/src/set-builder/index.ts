@@ -1,0 +1,1421 @@
+import { SHEET_PRESETS } from './mock-data.js';
+import { apiGetJSON, apiPatchJSON, apiPostJSON, downloadBlob } from '../api.js';
+import { authSessionToken, loadedFiles, workspaceCatalogs, UNCATEGORIZED_CATALOG_ID } from '../state.js';
+import { fileInput } from '../dom.js';
+import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
+import { AUTH_SESSION_EVENT, getAuthHeaders, logoutWorkspace, runTelegramLoginFlow, saveGuestDraft } from '../auth.js';
+import { nestItems } from '../../../core-engine/src/nesting/index.js';
+import type { NestingItem, NestingOptions, NestingResult } from '../../../core-engine/src/nesting/index.js';
+import { exportNestingToDXF } from '../../../core-engine/src/export/index.js';
+import type { ItemDocData } from '../../../core-engine/src/export/index.js';
+import {
+  canRunNesting,
+  createInitialState,
+  getAggregatedIssues,
+  getFilteredLibrary,
+  getLibraryItem,
+  getSetRows,
+  getSetItem,
+  getTotals,
+  removeFromSet,
+  setQty,
+  upsertSetItem,
+} from './state.js';
+import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
+
+const STORAGE_KEY = 'dxf_set_builder_state_v1';
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getActiveSheetPreset(state: SetBuilderState): { w: number; h: number } {
+  const p = SHEET_PRESETS.find((it) => it.id === state.sheetPresetId) ?? SHEET_PRESETS[0]!;
+  return { w: p.w, h: p.h };
+}
+
+function buildSetNestingItems(state: SetBuilderState): { items: NestingItem[]; skipped: number } {
+  const rows = getSetRows(state).filter((r) => r.set.enabled && r.set.qty > 0);
+  let skipped = 0;
+  const items: NestingItem[] = [];
+
+  for (const row of rows) {
+    if (row.item.sourceFileId === undefined) {
+      skipped++;
+      continue;
+    }
+    const lf = loadedFiles.find((f) => f.id === row.item.sourceFileId);
+    if (!lf || lf.loading || lf.doc == null) {
+      skipped++;
+      continue;
+    }
+
+    const bb = lf.doc.totalBBox;
+    const width = bb ? Math.max(0, Math.abs(bb.max.x - bb.min.x)) : 0;
+    const height = bb ? Math.max(0, Math.abs(bb.max.y - bb.min.y)) : 0;
+    if (width <= 0 || height <= 0) {
+      skipped++;
+      continue;
+    }
+
+    items.push({
+      id: lf.id,
+      name: lf.name,
+      width,
+      height,
+      quantity: row.set.qty,
+    });
+  }
+
+  return { items, skipped };
+}
+
+function buildItemDocsForSet(state: SetBuilderState): Map<number, ItemDocData> {
+  const docs = new Map<number, ItemDocData>();
+  for (const row of getSetRows(state)) {
+    if (!row.set.enabled || row.item.sourceFileId === undefined) continue;
+    const lf = loadedFiles.find((f) => f.id === row.item.sourceFileId);
+    if (!lf || lf.loading || lf.doc == null || docs.has(lf.id)) continue;
+    const bbox = lf.doc.totalBBox ?? { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
+    docs.set(lf.id, { flatEntities: lf.doc.flatEntities, bbox });
+  }
+  return docs;
+}
+
+function createNestingOptions(state: SetBuilderState): NestingOptions {
+  const strategy = state.nestStrategy;
+  const multiStart = strategy === 'true_shape' ? false : state.multiStart;
+  return {
+    rotationEnabled: state.rotationEnabled,
+    rotationAngleStepDeg: state.rotationStepDeg,
+    strategy,
+    multiStart,
+    seed: state.seed,
+    commonLine: {
+      enabled: state.mode === 'commonLine',
+      maxMergeDistanceMm: state.commonLineMaxMergeDistanceMm,
+      minSharedLenMm: state.commonLineMinSharedLenMm,
+    },
+  };
+}
+
+function mapEngineResultToSetBuilder(result: NestingResult, hashes: readonly string[]): { sheets: SheetResult[] } {
+  const sheetW = Math.max(1, result.sheet.width);
+  const sheetH = Math.max(1, result.sheet.height);
+  const drawW = 100;
+  const drawH = 60;
+
+  return {
+    sheets: result.sheets.map((sheet, idx) => ({
+      id: `sheet-${sheet.sheetIndex + 1}`,
+      utilization: Math.max(0, Math.min(100, Math.round(sheet.fillPercent))),
+      partCount: sheet.placed.length,
+      hash: hashes[idx] ?? '',
+      blocks: sheet.placed.slice(0, 16).map((p) => ({
+        x: 5 + (p.x / sheetW) * drawW,
+        y: 5 + (p.y / sheetH) * drawH,
+        w: Math.max(2, (p.width / sheetW) * drawW),
+        h: Math.max(2, (p.height / sheetH) * drawH),
+      })),
+    })),
+  };
+}
+
+function mapLoadedCatalogName(catalogId: string | null): string {
+  if (catalogId === null || catalogId === UNCATEGORIZED_CATALOG_ID) return 'Uncategorized';
+  return workspaceCatalogs.find((c) => c.id === catalogId)?.name ?? 'Workspace';
+}
+
+function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: number): LibraryItem | null {
+  const lf = loadedFiles.find((f) => f.id === sourceId);
+  if (!lf || lf.doc == null) return null;
+
+  const bb = lf.doc.totalBBox;
+  const w = bb !== null ? Math.max(1, Math.round(bb.max.x - bb.min.x)) : 0;
+  const h = bb !== null ? Math.max(1, Math.round(bb.max.y - bb.min.y)) : 0;
+  const status = lf.loadError ? 'error' : lf.loading ? 'warn' : 'ok';
+  const issues = lf.loadError
+    ? [lf.loadError]
+    : lf.loading
+      ? [t('setBuilder.fileLoading')]
+      : [];
+
+  return {
+    id: nextLibraryId,
+    sourceFileId: sourceId,
+    name: lf.name,
+    catalog: mapLoadedCatalogName(lf.catalogId),
+    w,
+    h,
+    pierces: Math.max(0, lf.stats.totalPierces),
+    cutLen: Math.max(0, lf.stats.totalCutLength),
+    layersCount: lf.doc.layerNames.length,
+    status,
+    issues,
+    thumbVariant: 1000 + sourceId,
+  };
+}
+
+function sortMark(state: SetBuilderState, key: 'name' | 'area' | 'pierces' | 'cutLen'): string {
+  if (state.sortBy !== key) return '';
+  return state.sortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
+function fmtLen(mm: number): string {
+  return mm >= 1000 ? `${(mm / 1000).toFixed(2)}${t('unit.m')}` : `${mm.toFixed(0)}${t('unit.mm')}`;
+}
+
+function statusLabel(item: LibraryItem): string {
+  return item.status === 'ok' ? t('setBuilder.status.ok') : item.status === 'warn' ? t('setBuilder.status.warn') : t('setBuilder.status.error');
+}
+
+function thumbSvg(item: LibraryItem, large = false): string {
+  const w = large ? 220 : 84;
+  const h = large ? 140 : 56;
+  const p = item.thumbVariant % 7;
+  const lines = [
+    `<rect x="6" y="6" width="${w - 12}" height="${h - 12}" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.9"/>`,
+    `<circle cx="${22 + p * 4}" cy="${18 + p * 2}" r="3" fill="none" stroke="currentColor" opacity="0.7"/>`,
+    `<circle cx="${w - 24 - p * 2}" cy="${h - 20}" r="3" fill="none" stroke="currentColor" opacity="0.7"/>`,
+    `<path d="M18 ${h - 22} L${w - 18} 22" stroke="currentColor" opacity="0.45"/>`,
+  ];
+  return `<svg viewBox="0 0 ${w} ${h}" class="sb-thumb-svg">${lines.join('')}</svg>`;
+}
+
+function sheetSvg(sheet: SheetResult): string {
+  const blocks = sheet.blocks
+    .map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="1.2" fill="rgba(0,212,255,.20)" stroke="rgba(0,212,255,.65)"/>`)
+    .join('');
+  return `<svg viewBox="0 0 110 70" class="sb-sheet-svg"><rect x="2" y="2" width="106" height="66" rx="3" fill="none" stroke="rgba(255,255,255,.25)"/>${blocks}</svg>`;
+}
+
+export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
+  const state = createInitialState();
+  let toastText = '';
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPickedLibraryId: number | null = null;
+  let lastEngineResult: NestingResult | null = null;
+  let lastItemDocs = new Map<number, ItemDocData>();
+
+  function buildSingleSheetResult(sheetIndex: number): NestingResult | null {
+    if (!lastEngineResult) return null;
+    const sheet = lastEngineResult.sheets[sheetIndex];
+    if (!sheet) return null;
+    return {
+      sheet: lastEngineResult.sheet,
+      gap: lastEngineResult.gap,
+      sheets: [{ ...sheet, sheetIndex: 0 }],
+      totalSheets: 1,
+      totalPlaced: sheet.placed.length,
+      totalRequired: sheet.placed.length,
+      avgFillPercent: sheet.fillPercent,
+      cutLengthEstimate: lastEngineResult.cutLengthEstimate,
+      sharedCutLength: lastEngineResult.sharedCutLength,
+      cutLengthAfterMerge: lastEngineResult.cutLengthAfterMerge,
+      pierceEstimate: sheet.placed.length,
+      pierceDelta: 0,
+      strategy: lastEngineResult.strategy,
+    };
+  }
+
+  function exportSheetByIndex(sheetIndex: number): boolean {
+    const singleResult = buildSingleSheetResult(sheetIndex);
+    if (!singleResult) return false;
+    const dxfStr = exportNestingToDXF({ nestingResult: singleResult, itemDocs: lastItemDocs });
+    const blob = new Blob([dxfStr], { type: 'application/dxf' });
+    downloadBlob(blob, `set_builder_sheet_${sheetIndex + 1}.dxf`);
+    return true;
+  }
+
+  function hydrateState(): void {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        search?: string;
+        catalogFilter?: string;
+        sheetPresetId?: string;
+        gapMm?: number;
+        mode?: 'normal' | 'commonLine';
+        nestStrategy?: 'maxrects_bbox' | 'true_shape';
+        rotationEnabled?: boolean;
+        rotationStepDeg?: 1 | 2 | 5;
+        multiStart?: boolean;
+        seed?: number;
+        commonLineMaxMergeDistanceMm?: number;
+        commonLineMinSharedLenMm?: number;
+        layout?: 'gallery' | 'table';
+        sortBy?: 'name' | 'area' | 'pierces' | 'cutLen';
+        sortDir?: 'asc' | 'desc';
+        set?: Array<{ libraryId: number; qty: number; enabled: boolean }>;
+      };
+      state.search = typeof parsed.search === 'string' ? parsed.search : '';
+      state.catalogFilter = typeof parsed.catalogFilter === 'string' ? parsed.catalogFilter : 'All';
+      state.sheetPresetId = typeof parsed.sheetPresetId === 'string' ? parsed.sheetPresetId : state.sheetPresetId;
+      state.gapMm = Number.isFinite(parsed.gapMm) ? Math.max(0, parsed.gapMm ?? 0) : 5;
+      state.mode = parsed.mode === 'commonLine' ? 'commonLine' : 'normal';
+      state.nestStrategy = parsed.nestStrategy === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
+      state.rotationEnabled = parsed.rotationEnabled !== false;
+      state.rotationStepDeg = parsed.rotationStepDeg === 1 || parsed.rotationStepDeg === 5 ? parsed.rotationStepDeg : 2;
+      state.multiStart = parsed.multiStart !== false;
+      state.seed = Number.isFinite(parsed.seed) ? Math.trunc(parsed.seed ?? 0) : 0;
+      state.commonLineMaxMergeDistanceMm = Number.isFinite(parsed.commonLineMaxMergeDistanceMm)
+        ? Math.max(0, parsed.commonLineMaxMergeDistanceMm ?? 0)
+        : 0.2;
+      state.commonLineMinSharedLenMm = Number.isFinite(parsed.commonLineMinSharedLenMm)
+        ? Math.max(0, parsed.commonLineMinSharedLenMm ?? 0)
+        : 20;
+      state.layout = parsed.layout === 'table' ? 'table' : 'gallery';
+      state.sortBy = parsed.sortBy === 'area' || parsed.sortBy === 'pierces' || parsed.sortBy === 'cutLen' ? parsed.sortBy : 'name';
+      state.sortDir = parsed.sortDir === 'desc' ? 'desc' : 'asc';
+      state.set.clear();
+      for (const row of parsed.set ?? []) {
+        if (!Number.isFinite(row.libraryId) || !Number.isFinite(row.qty)) continue;
+        if (row.qty <= 0) continue;
+        state.set.set(row.libraryId, {
+          libraryId: row.libraryId,
+          qty: Math.max(1, Math.round(row.qty)),
+          enabled: row.enabled !== false,
+        });
+      }
+    } catch {
+      // ignore malformed persisted state
+    }
+  }
+
+  function persistState(): void {
+    const payload = {
+      search: state.search,
+      catalogFilter: state.catalogFilter,
+      sheetPresetId: state.sheetPresetId,
+      gapMm: state.gapMm,
+      mode: state.mode,
+      nestStrategy: state.nestStrategy,
+      rotationEnabled: state.rotationEnabled,
+      rotationStepDeg: state.rotationStepDeg,
+      multiStart: state.multiStart,
+      seed: state.seed,
+      commonLineMaxMergeDistanceMm: state.commonLineMaxMergeDistanceMm,
+      commonLineMinSharedLenMm: state.commonLineMinSharedLenMm,
+      layout: state.layout,
+      sortBy: state.sortBy,
+      sortDir: state.sortDir,
+      set: [...state.set.values()].map((s) => ({ libraryId: s.libraryId, qty: s.qty, enabled: s.enabled })),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function syncLoadedFilesIntoLibrary(): void {
+    const loadedIds = new Set<number>(loadedFiles.map((f) => f.id));
+    const existingLoadedBySource = new Map<number, LibraryItem>();
+    for (const item of state.library) {
+      if (item.sourceFileId !== undefined) {
+        existingLoadedBySource.set(item.sourceFileId, item);
+      }
+    }
+
+    state.library = state.library.filter((item) => item.sourceFileId === undefined || loadedIds.has(item.sourceFileId));
+
+    let nextLibraryId = Math.max(0, ...state.library.map((i) => i.id)) + 1;
+    for (const lf of loadedFiles) {
+      const existing = existingLoadedBySource.get(lf.id);
+      const mapped = mapLoadedFileToLibraryItem(lf.id, existing?.id ?? nextLibraryId);
+      if (!mapped) continue;
+
+      if (existing) {
+        const idx = state.library.findIndex((i) => i.id === existing.id);
+        if (idx >= 0) state.library[idx] = mapped;
+      } else {
+        state.library.push(mapped);
+        nextLibraryId++;
+      }
+    }
+
+    const availableCatalogs = new Set(['All', ...state.library.map((i) => i.catalog)]);
+    if (!availableCatalogs.has(state.catalogFilter)) {
+      state.catalogFilter = 'All';
+    }
+  }
+
+  function showToast(msg: string): void {
+    toastText = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastText = '';
+      render();
+    }, 1800);
+    render();
+  }
+
+  async function copyHash(hash: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(hash);
+      showToast(t('setBuilder.toast.hashCopied'));
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = hash;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast(t('setBuilder.toast.hashCopied'));
+    }
+  }
+
+  async function copyAllHashes(): Promise<void> {
+    const hashes = state.results?.sheets.map((s) => s.hash).filter((h) => h.length > 0) ?? [];
+    if (hashes.length === 0) {
+      showToast(t('setBuilder.toast.noHashes'));
+      return;
+    }
+
+    const text = hashes.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(t('setBuilder.toast.allHashesCopied'));
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast(t('setBuilder.toast.allHashesCopied'));
+    }
+  }
+
+  function toggleOpen(next?: boolean): void {
+    state.open = typeof next === 'boolean' ? next : !state.open;
+    render();
+  }
+
+  async function runNesting(): Promise<void> {
+    if (!canRunNesting(state)) return;
+
+    const sheet = getActiveSheetPreset(state);
+    const options = createNestingOptions(state);
+    const gap = options.commonLine?.enabled ? 0 : Math.max(0, state.gapMm);
+    const { items, skipped } = buildSetNestingItems(state);
+
+    if (items.length === 0) {
+      state.loading = false;
+      render();
+      showToast(t('setBuilder.toast.noEligible'));
+      return;
+    }
+
+    state.loading = true;
+    render();
+
+    let result: NestingResult | null = null;
+    try {
+      try {
+        const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+          items,
+          sheet: { width: sheet.w, height: sheet.h },
+          gap,
+          rotationEnabled: options.rotationEnabled,
+          rotationAngleStepDeg: options.rotationAngleStepDeg,
+          strategy: options.strategy,
+          multiStart: options.multiStart,
+          seed: options.seed,
+          commonLine: options.commonLine,
+        });
+        result = resp.data;
+      } catch (apiErr) {
+        console.warn('[set-builder] API nesting failed, falling back to local:', apiErr);
+        result = nestItems(items, { width: sheet.w, height: sheet.h }, gap, options);
+      }
+
+      if (!result) {
+        showToast(t('setBuilder.toast.nestingFailed'));
+        return;
+      }
+
+      lastEngineResult = result;
+      lastItemDocs = buildItemDocsForSet(state);
+
+      let hashes: string[] = [];
+      try {
+        const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting-share', {
+          nestingResult: result,
+          itemDocs: Object.fromEntries(lastItemDocs),
+        });
+        hashes = shareResp.hashes;
+      } catch (shareErr) {
+        console.warn('[set-builder] sharing hashes failed:', shareErr);
+      }
+
+      state.results = mapEngineResultToSetBuilder(result, hashes);
+      state.activeTab = 'results';
+      showToast(skipped > 0 ? `${t('setBuilder.toast.nestingFinished')} (${skipped} ${t('setBuilder.toast.skipped')})` : t('setBuilder.toast.nestingFinished'));
+    } finally {
+      state.loading = false;
+      render();
+    }
+  }
+
+  function buildLibraryRow(item: LibraryItem): string {
+    const inSet = getSetItem(state, item.id);
+    const checked = state.selectedLibraryIds.has(item.id) ? 'checked' : '';
+    const selectedClass = checked ? 'sb-lib-row--selected' : '';
+    const menuOpen = state.openMenuLibraryId === item.id;
+    return `
+      <div class="sb-lib-row ${selectedClass} ${state.layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}">
+        <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
+        <div class="sb-thumb">${thumbSvg(item)}</div>
+        <div class="sb-meta">
+          <div class="sb-name">${esc(item.name)}</div>
+          <div class="sb-sub">${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
+          <span class="sb-badge sb-badge--${item.status}">${statusLabel(item)}</span>
+        </div>
+        ${state.layout === 'table' ? `
+          <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
+            <button data-a="qty-minus" data-id="${item.id}">-</button>
+            <span>${inSet?.qty ?? 0}</span>
+            <button data-a="qty-plus" data-id="${item.id}">+</button>
+          </div>
+          <div class="sb-col">${item.w}×${item.h}</div>
+          <div class="sb-col">${item.pierces}</div>
+          <div class="sb-col">${fmtLen(item.cutLen)}</div>
+        ` : ''}
+        <div class="sb-actions">
+          <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
+          <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
+          <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">⋯</button>
+          <div class="sb-menu ${menuOpen ? 'open' : ''}">
+            <button data-a="menu-delete" data-id="${item.id}">${t('setBuilder.menu.delete')}</button>
+            <button data-a="menu-move" data-id="${item.id}">${t('setBuilder.menu.moveToCatalog')}</button>
+            <button data-a="menu-download" data-id="${item.id}">${t('setBuilder.menu.download')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function removeLibraryItem(libraryId: number): Promise<boolean> {
+    const item = getLibraryItem(state, libraryId);
+    if (!item) return false;
+
+    if (item.sourceFileId !== undefined) {
+      const fileIdx = loadedFiles.findIndex((f) => f.id === item.sourceFileId);
+      if (fileIdx >= 0) {
+        const target = loadedFiles[fileIdx]!;
+        if (target.remoteId) {
+          try {
+            await apiPostJSON<{ success: boolean }>('/api/library-files-delete', {
+              fileId: target.remoteId,
+            }, getAuthHeaders());
+          } catch {
+            showToast(t('setBuilder.toast.itemDeleteFailed'));
+            return false;
+          }
+        }
+        loadedFiles.splice(fileIdx, 1);
+      }
+    }
+
+    const idx = state.library.findIndex((it) => it.id === libraryId);
+    if (idx >= 0) state.library.splice(idx, 1);
+    state.set.delete(libraryId);
+    state.selectedLibraryIds.delete(libraryId);
+    if (state.previewLibraryId === libraryId) state.previewLibraryId = null;
+    saveGuestDraft();
+    return true;
+  }
+
+  async function moveLibraryItemToCatalog(libraryId: number): Promise<void> {
+    const item = getLibraryItem(state, libraryId);
+    if (!item) return;
+
+    const options = [t('sidebar.uncategorized'), ...workspaceCatalogs.map((c, i) => `${i + 1}: ${c.name}`)].join('\n');
+    const raw = prompt(`${t('setBuilder.prompt.moveToCatalog')}\n${options}`, item.catalog);
+    if (raw == null) return;
+
+    const val = raw.trim();
+    const lower = val.toLowerCase();
+
+    let nextCatalogId: string | null = null;
+    let nextCatalogName = 'Uncategorized';
+    if (!val || lower === t('sidebar.uncategorized').toLowerCase() || lower === '0' || lower === 'uncategorized') {
+      nextCatalogId = null;
+      nextCatalogName = 'Uncategorized';
+    } else {
+      const idx = Number(val);
+      if (Number.isFinite(idx) && idx >= 1 && idx <= workspaceCatalogs.length) {
+        nextCatalogId = workspaceCatalogs[idx - 1]!.id;
+        nextCatalogName = workspaceCatalogs[idx - 1]!.name;
+      } else {
+        const found = workspaceCatalogs.find((c) => c.name.toLowerCase() === lower);
+        if (!found) {
+          showToast(t('setBuilder.toast.catalogNotFound'));
+          return;
+        }
+        nextCatalogId = found.id;
+        nextCatalogName = found.name;
+      }
+    }
+
+    if (item.sourceFileId !== undefined) {
+      const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+      if (lf) {
+        const prevCatalogId = lf.catalogId;
+        if (prevCatalogId === nextCatalogId) return;
+        lf.catalogId = nextCatalogId;
+        if (lf.remoteId) {
+          try {
+            await apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
+              fileId: lf.remoteId,
+              catalogId: nextCatalogId,
+            }, getAuthHeaders());
+          } catch {
+            lf.catalogId = prevCatalogId;
+            showToast(t('setBuilder.toast.itemMoveFailed'));
+            return;
+          }
+        }
+      }
+    }
+
+    const libIdx = state.library.findIndex((it) => it.id === libraryId);
+    if (libIdx < 0) return;
+    state.library[libIdx] = { ...item, catalog: nextCatalogName };
+    saveGuestDraft();
+    showToast(t('setBuilder.toast.itemMoved'));
+  }
+
+  async function downloadLibraryItemSource(libraryId: number): Promise<void> {
+    const item = getLibraryItem(state, libraryId);
+    if (!item || item.sourceFileId === undefined) {
+      showToast(t('setBuilder.toast.sourceUnavailable'));
+      return;
+    }
+
+    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    if (!lf) {
+      showToast(t('setBuilder.toast.sourceUnavailable'));
+      return;
+    }
+
+    try {
+      if (lf.localBase64) {
+        const bin = atob(lf.localBase64);
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        downloadBlob(new Blob([bytes.buffer], { type: 'application/dxf' }), lf.name);
+        showToast(t('setBuilder.toast.downloadStarted'));
+        return;
+      }
+
+      if (!lf.remoteId) {
+        showToast(t('setBuilder.toast.sourceUnavailable'));
+        return;
+      }
+
+      const dl = await apiGetJSON<{ success: boolean; name: string; base64: string; sizeBytes: number }>(
+        `/api/library-files-download?fileId=${encodeURIComponent(lf.remoteId)}`,
+        getAuthHeaders(),
+      );
+      const bin = atob(dl.base64);
+      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      downloadBlob(new Blob([bytes.buffer], { type: 'application/dxf' }), dl.name || lf.name);
+      showToast(t('setBuilder.toast.downloadStarted'));
+    } catch {
+      showToast(t('setBuilder.toast.downloadFailed'));
+    }
+  }
+
+  function getCatalogByFilterName(): { id: string; name: string } | null {
+    if (state.catalogFilter === 'All' || state.catalogFilter === 'Uncategorized') return null;
+    const found = workspaceCatalogs.find((c) => c.name === state.catalogFilter);
+    return found ? { id: found.id, name: found.name } : null;
+  }
+
+  async function addCatalog(): Promise<void> {
+    if (!authSessionToken) {
+      showToast(t('catalog.add.authRequired'));
+      return;
+    }
+    const name = prompt(t('catalog.add.prompt'))?.trim() ?? '';
+    if (!name) return;
+    try {
+      const resp = await apiPostJSON<{ success: boolean; catalog: { id: string; name: string; workspaceId: string; createdAt: number; updatedAt: number } }>(
+        '/api/library-catalogs',
+        { name },
+        getAuthHeaders(),
+      );
+      workspaceCatalogs.push(resp.catalog);
+      state.catalogFilter = resp.catalog.name;
+      showToast(t('setBuilder.toast.catalogAdded'));
+      render();
+    } catch {
+      showToast(t('setBuilder.toast.catalogOpFailed'));
+    }
+  }
+
+  async function renameCurrentCatalog(): Promise<void> {
+    const current = getCatalogByFilterName();
+    if (!current) {
+      showToast(t('setBuilder.toast.catalogActionUnavailable'));
+      return;
+    }
+    const nextName = prompt(t('catalog.rename.prompt'), current.name)?.trim() ?? '';
+    if (!nextName || nextName === current.name) return;
+
+    const cat = workspaceCatalogs.find((c) => c.id === current.id);
+    if (!cat) return;
+    const prevName = cat.name;
+    (cat as { name: string }).name = nextName;
+    state.catalogFilter = nextName;
+    render();
+
+    try {
+      await apiPatchJSON<{ success: boolean }>(
+        '/api/library-catalogs-update',
+        { catalogId: current.id, name: nextName },
+        getAuthHeaders(),
+      );
+      showToast(t('setBuilder.toast.catalogRenamed'));
+    } catch {
+      (cat as { name: string }).name = prevName;
+      state.catalogFilter = prevName;
+      showToast(t('setBuilder.toast.catalogOpFailed'));
+      render();
+    }
+  }
+
+  async function deleteCurrentCatalog(): Promise<void> {
+    const current = getCatalogByFilterName();
+    if (!current) {
+      showToast(t('setBuilder.toast.catalogActionUnavailable'));
+      return;
+    }
+    const modeRaw = prompt(t('setBuilder.prompt.deleteCatalogMode'), 'move')?.trim().toLowerCase();
+    if (!modeRaw) return;
+    const mode: 'move_to_uncategorized' | 'delete_files' = modeRaw === 'delete' ? 'delete_files' : 'move_to_uncategorized';
+
+    const catIdx = workspaceCatalogs.findIndex((c) => c.id === current.id);
+    if (catIdx < 0) return;
+    const removedCat = workspaceCatalogs.splice(catIdx, 1)[0]!;
+    const affected: Array<{ fileId: number; oldCatalogId: string | null }> = [];
+    const deletedFiles: Array<{ file: typeof loadedFiles[number]; index: number }> = [];
+    const deletedFileIds = new Set<number>();
+
+    if (mode === 'move_to_uncategorized') {
+      for (const f of loadedFiles) {
+        if (f.catalogId !== current.id) continue;
+        affected.push({ fileId: f.id, oldCatalogId: f.catalogId });
+        f.catalogId = null;
+      }
+    } else {
+      for (let i = loadedFiles.length - 1; i >= 0; i--) {
+        const f = loadedFiles[i]!;
+        if (f.catalogId !== current.id) continue;
+        affected.push({ fileId: f.id, oldCatalogId: f.catalogId });
+        deletedFiles.push({ file: f, index: i });
+        deletedFileIds.add(f.id);
+        loadedFiles.splice(i, 1);
+      }
+      state.library = state.library.filter((it) => it.sourceFileId === undefined || !deletedFileIds.has(it.sourceFileId));
+      for (const id of deletedFileIds) {
+        const lib = state.library.find((it) => it.sourceFileId === id);
+        if (lib) {
+          state.set.delete(lib.id);
+          state.selectedLibraryIds.delete(lib.id);
+        }
+      }
+    }
+
+    state.catalogFilter = 'All';
+    saveGuestDraft();
+    render();
+
+    try {
+      await apiPostJSON<{ success: boolean }>(
+        '/api/library-catalogs-delete',
+        { catalogId: current.id, mode },
+        getAuthHeaders(),
+      );
+      showToast(t('setBuilder.toast.catalogDeleted'));
+    } catch {
+      workspaceCatalogs.splice(catIdx, 0, removedCat);
+      for (const a of affected) {
+        const file = loadedFiles.find((f) => f.id === a.fileId);
+        if (file) file.catalogId = a.oldCatalogId;
+      }
+      if (mode === 'delete_files') {
+        deletedFiles.sort((a, b) => a.index - b.index);
+        for (const d of deletedFiles) loadedFiles.splice(Math.min(d.index, loadedFiles.length), 0, d.file);
+      }
+      showToast(t('setBuilder.toast.catalogOpFailed'));
+      render();
+    }
+  }
+
+  function renderPreviewModal(): string {
+    const item = state.previewLibraryId !== null ? getLibraryItem(state, state.previewLibraryId) : null;
+    if (!item && !state.previewSheetId) return '';
+
+    if (item) {
+      const set = getSetItem(state, item.id);
+      return `
+        <div class="sb-modal-backdrop">
+          <div class="sb-modal">
+            <div class="sb-modal-head">
+              <strong>${esc(item.name)}</strong>
+              <button class="sb-icon" data-a="close-preview">✕</button>
+            </div>
+            <div class="sb-modal-body">
+              <div class="sb-modal-thumb">${thumbSvg(item, true)}</div>
+              <div class="sb-modal-meta">
+                <div><b>${t('setBuilder.size')}:</b> ${item.w}×${item.h}</div>
+                <div><b>${t('setBuilder.pierces')}:</b> ${item.pierces}</div>
+                <div><b>${t('setBuilder.cutLength')}:</b> ${fmtLen(item.cutLen)}</div>
+                <div><b>${t('setBuilder.layers')}:</b> ${item.layersCount}</div>
+                <div><b>${t('setBuilder.status')}:</b> ${statusLabel(item)}</div>
+                <div><b>${t('setBuilder.issues')}:</b> ${item.issues.length ? esc(item.issues.join(', ')) : t('setBuilder.none')}</div>
+              </div>
+            </div>
+            <div class="sb-modal-actions">
+              <button class="sb-btn" data-a="${set ? 'remove-set' : 'add-set'}" data-id="${item.id}">${set ? t('setBuilder.removeFromSet') : t('setBuilder.addToSet')}</button>
+              <div class="sb-stepper">
+                <button data-a="qty-minus" data-id="${item.id}">-</button>
+                <span>${set?.qty ?? 0}</span>
+                <button data-a="qty-plus" data-id="${item.id}">+</button>
+              </div>
+              <button class="sb-btn sb-btn--ghost" data-a="close-preview">${t('setBuilder.close')}</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const sheet = state.results?.sheets.find((s) => s.id === state.previewSheetId) ?? null;
+    if (!sheet) return '';
+    return `
+      <div class="sb-modal-backdrop">
+        <div class="sb-modal sb-modal--sheet">
+          <div class="sb-modal-head">
+            <strong>${sheet.id.toUpperCase()}</strong>
+            <button class="sb-icon" data-a="close-preview">✕</button>
+          </div>
+          <div class="sb-modal-body">
+            <div class="sb-modal-thumb">${sheetSvg(sheet)}</div>
+            <div class="sb-modal-meta">
+              <div><b>${t('setBuilder.utilization')}:</b> ${sheet.utilization}%</div>
+              <div><b>${t('setBuilder.partCount')}:</b> ${sheet.partCount}</div>
+              <div><b>${t('setBuilder.hash')}:</b> <code>${sheet.hash || '-'}</code></div>
+            </div>
+          </div>
+          <div class="sb-modal-actions">
+            <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
+            <button class="sb-btn sb-btn--ghost" data-a="close-preview">${t('setBuilder.close')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function render(): void {
+    syncLoadedFilesIntoLibrary();
+
+    const filtered = getFilteredLibrary(state);
+    const setRows = getSetRows(state);
+    const totals = getTotals(state);
+    const issues = getAggregatedIssues(state);
+    const catalogOptions = ['All', ...new Set(state.library.map((i) => i.catalog).sort((a, b) => a.localeCompare(b)))];
+    const commonLineActive = lastEngineResult?.gap === 0;
+    const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
+    const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
+
+    const libraryContent = filtered.length === 0
+      ? `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`
+      : state.layout === 'gallery'
+        ? filtered.map((item) => buildLibraryRow(item)).join('')
+        : `
+          <div class="sb-table-head">
+            <div></div><div></div>
+            <button class="sb-th" data-a="sort-col" data-sort="name">${t('setBuilder.name')}${sortMark(state, 'name')}</button>
+            <div>${t('setBuilder.qty')}</div>
+            <button class="sb-th" data-a="sort-col" data-sort="area">W×H${sortMark(state, 'area')}</button>
+            <button class="sb-th" data-a="sort-col" data-sort="pierces">${t('setBuilder.pierces')}${sortMark(state, 'pierces')}</button>
+            <button class="sb-th" data-a="sort-col" data-sort="cutLen">${t('setBuilder.cutLength')}${sortMark(state, 'cutLen')}</button>
+            <div>${t('setBuilder.actions')}</div>
+          </div>
+          ${filtered.map((item) => buildLibraryRow(item)).join('')}
+        `;
+
+    const selectedCount = state.selectedLibraryIds.size;
+    const runDisabled = canRunNesting(state) ? '' : 'disabled';
+    const authActive = authSessionToken.length > 0;
+    const localeLabel = getLocale().toUpperCase();
+
+    root.classList.toggle('hidden', !state.open);
+    root.setAttribute('aria-hidden', state.open ? 'false' : 'true');
+    trigger.classList.toggle('active', state.open);
+
+    root.innerHTML = state.open ? `
+      <div class="sb-shell">
+        <div class="sb-topbar">
+          <div class="sb-top-main">
+            <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
+            <input class="sb-input" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
+            <select class="sb-select" data-a="catalog">
+              ${catalogOptions.map((c) => {
+                const label = c === 'All' ? t('sidebar.allCatalogs') : c === 'Uncategorized' ? t('sidebar.uncategorized') : c;
+                return `<option value="${c}" ${state.catalogFilter === c ? 'selected' : ''}>${label}</option>`;
+              }).join('')}
+            </select>
+            <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
+            <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
+            <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
+            <select class="sb-select" data-a="preset">
+              ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+            </select>
+            <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
+              <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
+              <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
+            </select>
+            <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
+            <label class="sb-chk"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
+            <select class="sb-select" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
+              <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+              <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+              <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+            </select>
+            <label class="sb-chk"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
+            <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
+            <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
+            <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
+            <div class="sb-toggle">
+              <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
+              <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+            </div>
+            <div class="sb-toggle">
+              <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
+              <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
+            </div>
+            <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
+              <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
+              <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
+              <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
+              <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
+            </select>
+            <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
+              <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
+              <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
+            </select>
+          </div>
+          <div class="sb-top-actions">
+            <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
+            <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
+            ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
+            <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
+            <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
+          </div>
+        </div>
+
+        <div class="sb-main">
+          <div class="sb-left">
+            ${selectedCount > 0 ? `
+              <div class="sb-bulk">
+                <span>${selectedCount} ${t('setBuilder.selected')}</span>
+                <button class="sb-btn" data-a="bulk-add">${t('setBuilder.bulkAdd')}</button>
+                <button class="sb-btn" data-a="bulk-remove">${t('setBuilder.bulkRemove')}</button>
+                <button class="sb-btn" data-a="bulk-qty">${t('setBuilder.bulkSetQty')}</button>
+                <button class="sb-btn sb-btn--ghost" data-a="bulk-clear">${t('setBuilder.clear')}</button>
+              </div>
+            ` : ''}
+            <div class="sb-library ${state.layout === 'table' ? 'sb-library--table' : ''}">${libraryContent}</div>
+          </div>
+
+          <aside class="sb-right">
+            <div class="sb-tabs">
+              <button class="${state.activeTab === 'set' ? 'active' : ''}" data-a="tab" data-tab="set">${t('setBuilder.tabSet')}</button>
+              <button class="${state.activeTab === 'results' ? 'active' : ''}" data-a="tab" data-tab="results">${t('setBuilder.tabResults')}</button>
+            </div>
+
+            ${state.activeTab === 'set' ? `
+              <div class="sb-set-list">
+                ${setRows.length === 0
+                  ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
+                  : setRows.map(({ item, set }) => `
+                    <div class="sb-set-row">
+                      <div class="sb-set-name">${esc(item.name)}</div>
+                      <div class="sb-set-controls">
+                        <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
+                        <div class="sb-stepper">
+                          <button data-a="qty-minus" data-id="${item.id}">-</button>
+                          <span>${set.qty}</span>
+                          <button data-a="qty-plus" data-id="${item.id}">+</button>
+                        </div>
+                        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
+                        <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
+                      </div>
+                    </div>
+                  `).join('')}
+              </div>
+              <div class="sb-totals">
+                <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
+                <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
+                <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
+                <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
+              </div>
+              <div class="sb-issues">
+                <div class="sb-issues-title">${t('setBuilder.issues')}</div>
+                ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
+              </div>
+              <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
+            ` : `
+              <div class="sb-results">
+                ${lastEngineResult ? `
+                  <div class="sb-bulk">
+                    <button class="sb-btn" data-a="export-all">${t('setBuilder.exportAllSheets')}</button>
+                    <button class="sb-btn" data-a="copy-all-hashes">${t('setBuilder.copyAllHashes')}</button>
+                  </div>
+                  <div class="sb-totals">
+                    <div><span>${t('setBuilder.placedRequired')}:</span><b>${lastEngineResult.totalPlaced} / ${lastEngineResult.totalRequired}</b></div>
+                    <div><span>${t('setBuilder.avgUtilization')}:</span><b>${Math.round(lastEngineResult.avgFillPercent)}%</b></div>
+                    <div><span>${t('setBuilder.cutLenEst')}:</span><b>${fmtLen(lastEngineResult.cutLengthEstimate)}</b></div>
+                    <div><span>${t('setBuilder.pierces')}:</span><b>${lastEngineResult.pierceEstimate}</b></div>
+                    ${commonLineActive ? `<div><span>${t('setBuilder.savedCut')}:</span><b>−${fmtLen(Math.max(0, sharedCutLen))}</b></div>` : ''}
+                    ${commonLineActive ? `<div><span>${t('setBuilder.savedPierces')}:</span><b>−${Math.max(0, pierceDelta)}</b></div>` : ''}
+                  </div>
+                ` : ''}
+                ${!state.results ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>` : state.results.sheets.map((sheet, index) => `
+                  <div class="sb-sheet-card">
+                    <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
+                    ${sheetSvg(sheet)}
+                    <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
+                    <div class="sb-sheet-actions">
+                      <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
+                      <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
+                      <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </aside>
+        </div>
+
+        ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
+        ${renderPreviewModal()}
+      </div>
+    ` : '';
+
+    persistState();
+  }
+
+  root.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+
+    if (target.classList.contains('sb-modal-backdrop')) {
+      state.previewLibraryId = null;
+      state.previewSheetId = null;
+      render();
+      return;
+    }
+
+    let menuClosedByBackgroundClick = false;
+    if (state.openMenuLibraryId !== null && target.closest('.sb-actions') === null) {
+      state.openMenuLibraryId = null;
+      menuClosedByBackgroundClick = true;
+    }
+
+    const button = target.closest<HTMLElement>('[data-a]');
+    if (!button) {
+      if (menuClosedByBackgroundClick) render();
+      return;
+    }
+
+    const action = button.dataset.a;
+    const id = Number(button.dataset.id ?? '0');
+
+    if (action === 'pick-lib' && target instanceof HTMLInputElement) {
+      const shouldCheck = target.checked;
+      const currentId = Number(target.dataset.id ?? '0');
+      if (!Number.isFinite(currentId)) return;
+
+      const isShift = e instanceof MouseEvent && e.shiftKey;
+      if (isShift && lastPickedLibraryId !== null) {
+        const visibleIds = getFilteredLibrary(state).map((item) => item.id);
+        const a = visibleIds.indexOf(lastPickedLibraryId);
+        const b = visibleIds.indexOf(currentId);
+        if (a >= 0 && b >= 0) {
+          const from = Math.min(a, b);
+          const to = Math.max(a, b);
+          for (let i = from; i <= to; i++) {
+            const vid = visibleIds[i]!;
+            if (shouldCheck) state.selectedLibraryIds.add(vid);
+            else state.selectedLibraryIds.delete(vid);
+          }
+        } else if (shouldCheck) {
+          state.selectedLibraryIds.add(currentId);
+        } else {
+          state.selectedLibraryIds.delete(currentId);
+        }
+      } else if (shouldCheck) {
+        state.selectedLibraryIds.add(currentId);
+      } else {
+        state.selectedLibraryIds.delete(currentId);
+      }
+
+      lastPickedLibraryId = currentId;
+      render();
+      return;
+    }
+
+    if (action === 'close') return toggleOpen(false);
+    if (action === 'upload') {
+      fileInput.click();
+      return;
+    }
+    if (action === 'lang-toggle') {
+      setLocale(getLocale() === 'ru' ? 'en' : 'ru');
+      return;
+    }
+    if (action === 'tg-login') {
+      void runTelegramLoginFlow().then(() => render());
+      return;
+    }
+    if (action === 'tg-logout') {
+      void logoutWorkspace().then(() => render());
+      return;
+    }
+    if (action === 'catalog-add') {
+      void addCatalog();
+      return;
+    }
+    if (action === 'catalog-rename') {
+      void renameCurrentCatalog();
+      return;
+    }
+    if (action === 'catalog-delete') {
+      void deleteCurrentCatalog();
+      return;
+    }
+    if (action === 'tab') {
+      state.activeTab = button.dataset.tab === 'results' ? 'results' : 'set';
+      render();
+      return;
+    }
+    if (action === 'layout') {
+      state.layout = button.dataset.layout === 'table' ? 'table' : 'gallery';
+      render();
+      return;
+    }
+    if (action === 'sort-col') {
+      const nextSort = button.dataset.sort;
+      if (nextSort === 'name' || nextSort === 'area' || nextSort === 'pierces' || nextSort === 'cutLen') {
+        if (state.sortBy === nextSort) {
+          state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.sortBy = nextSort;
+          state.sortDir = 'asc';
+        }
+      }
+      render();
+      return;
+    }
+    if (action === 'mode') {
+      state.mode = button.dataset.mode === 'commonLine' ? 'commonLine' : 'normal';
+      render();
+      return;
+    }
+    if (action === 'strategy') return;
+    if (action === 'rotation') return;
+    if (action === 'rotation-step') return;
+    if (action === 'multi-start') return;
+    if (action === 'seed') return;
+    if (action === 'cl-dist') return;
+    if (action === 'cl-min') return;
+    if (action === 'run') {
+      void runNesting();
+      return;
+    }
+    if (action === 'add-set') {
+      upsertSetItem(state, id, 1);
+      showToast(t('setBuilder.toast.addedToSet'));
+      return;
+    }
+    if (action === 'remove-set') {
+      removeFromSet(state, id);
+      showToast(t('setBuilder.toast.removedFromSet'));
+      return;
+    }
+    if (action === 'qty-plus') {
+      upsertSetItem(state, id, 1);
+      render();
+      return;
+    }
+    if (action === 'qty-minus') {
+      const s = getSetItem(state, id);
+      if (!s) return;
+      if (s.qty <= 1) removeFromSet(state, id);
+      else s.qty -= 1;
+      render();
+      return;
+    }
+    if (action === 'set-enabled') return;
+    if (action === 'bulk-add') {
+      for (const sid of state.selectedLibraryIds) upsertSetItem(state, sid, 1);
+      showToast(t('setBuilder.toast.selectedAdded'));
+      return;
+    }
+    if (action === 'bulk-remove') {
+      for (const sid of state.selectedLibraryIds) removeFromSet(state, sid);
+      showToast(t('setBuilder.toast.selectedRemoved'));
+      return;
+    }
+    if (action === 'bulk-qty') {
+      const raw = prompt(t('setBuilder.prompt.setQtySelected'), '1');
+      if (!raw) return;
+      const qty = Number(raw);
+      if (!Number.isFinite(qty) || qty < 1) return;
+      for (const sid of state.selectedLibraryIds) setQty(state, sid, Math.round(qty));
+      showToast(t('setBuilder.toast.qtyUpdated'));
+      return;
+    }
+    if (action === 'bulk-clear') {
+      state.selectedLibraryIds.clear();
+      render();
+      return;
+    }
+    if (action === 'clear-set') {
+      state.set.clear();
+      render();
+      return;
+    }
+    if (action === 'preview-lib') {
+      state.previewLibraryId = id;
+      state.previewSheetId = null;
+      render();
+      return;
+    }
+    if (action === 'preview-sheet') {
+      state.previewSheetId = button.dataset.sheet ?? null;
+      state.previewLibraryId = null;
+      render();
+      return;
+    }
+    if (action === 'close-preview') {
+      state.previewLibraryId = null;
+      state.previewSheetId = null;
+      render();
+      return;
+    }
+    if (action === 'copy-hash') {
+      const hash = button.dataset.hash ?? '';
+      if (hash) void copyHash(hash);
+      else showToast(t('setBuilder.toast.hashUnavailable'));
+      return;
+    }
+    if (action === 'export-sheet') {
+      const sheetIndex = Number(button.dataset.index ?? '-1');
+      if (!Number.isFinite(sheetIndex) || sheetIndex < 0) return;
+      if (!lastEngineResult) {
+        showToast(t('setBuilder.toast.noResultToExport'));
+        return;
+      }
+      if (!exportSheetByIndex(sheetIndex)) return;
+      showToast(t('setBuilder.toast.sheetExported'));
+      return;
+    }
+    if (action === 'export-all') {
+      if (!lastEngineResult || lastEngineResult.sheets.length === 0) {
+        showToast(t('setBuilder.toast.noResultToExport'));
+        return;
+      }
+      for (let i = 0; i < lastEngineResult.sheets.length; i++) {
+        exportSheetByIndex(i);
+      }
+      showToast(t('setBuilder.toast.allSheetsExported'));
+      return;
+    }
+    if (action === 'copy-all-hashes') {
+      void copyAllHashes();
+      return;
+    }
+    if (action === 'toggle-menu') {
+      state.openMenuLibraryId = state.openMenuLibraryId === id ? null : id;
+      render();
+      return;
+    }
+    if (action === 'menu-delete') {
+      void removeLibraryItem(id).then((removed) => {
+        if (!removed) return;
+        state.openMenuLibraryId = null;
+        showToast(t('setBuilder.toast.itemDeleted'));
+        render();
+      });
+      return;
+    }
+    if (action === 'menu-move') {
+      state.openMenuLibraryId = null;
+      void moveLibraryItemToCatalog(id).then(() => render());
+      return;
+    }
+    if (action === 'menu-download') {
+      state.openMenuLibraryId = null;
+      void downloadLibraryItemSource(id);
+      return;
+    }
+    if (action === 'stub') {
+      showToast(`${t('setBuilder.action')} (${t('setBuilder.stub')})`);
+      state.openMenuLibraryId = null;
+      return;
+    }
+  });
+
+  root.addEventListener('input', (e) => {
+    const t = e.target as HTMLElement;
+    if (!(t instanceof HTMLInputElement)) return;
+    if (t.dataset.a === 'search') {
+      state.search = t.value;
+      render();
+    }
+  });
+
+  root.addEventListener('change', (e) => {
+    const t = e.target as HTMLElement;
+    if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+
+    const action = t.dataset.a;
+    if (action === 'search') {
+      state.search = t.value;
+      render();
+      return;
+    }
+    if (action === 'catalog' && t instanceof HTMLSelectElement) {
+      state.catalogFilter = t.value;
+      render();
+      return;
+    }
+    if (action === 'sort-by' && t instanceof HTMLSelectElement) {
+      state.sortBy = t.value === 'area' || t.value === 'pierces' || t.value === 'cutLen' ? t.value : 'name';
+      render();
+      return;
+    }
+    if (action === 'sort-dir' && t instanceof HTMLSelectElement) {
+      state.sortDir = t.value === 'desc' ? 'desc' : 'asc';
+      render();
+      return;
+    }
+    if (action === 'preset' && t instanceof HTMLSelectElement) {
+      state.sheetPresetId = t.value;
+      render();
+      return;
+    }
+    if (action === 'gap' && t instanceof HTMLInputElement) {
+      state.gapMm = Math.max(0, Number(t.value) || 0);
+      render();
+      return;
+    }
+    if (action === 'strategy' && t instanceof HTMLSelectElement) {
+      state.nestStrategy = t.value === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
+      if (state.nestStrategy === 'true_shape') state.multiStart = false;
+      render();
+      return;
+    }
+    if (action === 'rotation' && t instanceof HTMLInputElement) {
+      state.rotationEnabled = t.checked;
+      render();
+      return;
+    }
+    if (action === 'rotation-step' && t instanceof HTMLSelectElement) {
+      const step = Number(t.value);
+      state.rotationStepDeg = step === 1 || step === 5 ? step : 2;
+      render();
+      return;
+    }
+    if (action === 'multi-start' && t instanceof HTMLInputElement) {
+      state.multiStart = state.nestStrategy === 'true_shape' ? false : t.checked;
+      render();
+      return;
+    }
+    if (action === 'seed' && t instanceof HTMLInputElement) {
+      state.seed = Number.isFinite(Number(t.value)) ? Math.trunc(Number(t.value)) : 0;
+      render();
+      return;
+    }
+    if (action === 'cl-dist' && t instanceof HTMLInputElement) {
+      state.commonLineMaxMergeDistanceMm = Math.max(0, Number(t.value) || 0);
+      render();
+      return;
+    }
+    if (action === 'cl-min' && t instanceof HTMLInputElement) {
+      state.commonLineMinSharedLenMm = Math.max(0, Number(t.value) || 0);
+      render();
+      return;
+    }
+    if (action === 'set-enabled' && t instanceof HTMLInputElement) {
+      const id = Number(t.dataset.id ?? '0');
+      const s = getSetItem(state, id);
+      if (!s) return;
+      s.enabled = t.checked;
+      render();
+      return;
+    }
+
+  });
+
+  window.addEventListener('dxf-files-updated', () => {
+    if (!state.open) return;
+    render();
+    showToast(t('setBuilder.toast.filesSynced'));
+  });
+
+  window.addEventListener(AUTH_SESSION_EVENT, () => {
+    if (!state.open) return;
+    render();
+  });
+
+  onLocaleChange(() => {
+    if (!state.open) return;
+    render();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!state.open) return;
+    if (e.key === 'Escape') {
+      if (state.openMenuLibraryId !== null) {
+        state.openMenuLibraryId = null;
+        render();
+        return;
+      }
+      if (state.previewLibraryId !== null || state.previewSheetId !== null) {
+        state.previewLibraryId = null;
+        state.previewSheetId = null;
+        render();
+        return;
+      }
+      toggleOpen(false);
+      return;
+    }
+    if (e.key === '/') {
+      e.preventDefault();
+      (root.querySelector('#sb-search') as HTMLInputElement | null)?.focus();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!state.open || state.openMenuLibraryId === null) return;
+    const target = e.target as Node;
+    if (root.contains(target)) return;
+    state.openMenuLibraryId = null;
+    render();
+  });
+
+  hydrateState();
+  trigger.addEventListener('click', () => toggleOpen());
+  render();
+}

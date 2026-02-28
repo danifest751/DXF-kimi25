@@ -58,6 +58,7 @@ export const statusCutLength = document.getElementById('status-cutlength') as HT
 // ─── Nesting panel ───────────────────────────────────────────────────
 
 export const btnNesting          = document.getElementById('btn-nesting') as HTMLButtonElement;
+export const btnSetBuilder       = document.getElementById('btn-set-builder') as HTMLButtonElement;
 export const nestingPanel        = document.getElementById('nesting-panel') as HTMLDivElement;
 export const nestPreset          = document.getElementById('nest-preset') as HTMLSelectElement;
 export const nestCustomRow       = document.getElementById('nest-custom-row') as HTMLDivElement;
@@ -93,6 +94,7 @@ export const btnCopyAllHashesTop = document.getElementById('btn-copy-all-hashes-
 export const nestZoomPopup       = document.getElementById('nest-zoom-popup') as HTMLDivElement;
 export const nestZoomCanvas      = document.getElementById('nest-zoom-canvas') as HTMLCanvasElement;
 export const nestZoomLabel       = document.getElementById('nest-zoom-label') as HTMLDivElement;
+export const setBuilderRoot      = document.getElementById('set-builder-root') as HTMLDivElement;
 
 // ─── Mobile ──────────────────────────────────────────────────────────
 

@@ -21,6 +21,12 @@ import {
 } from './dom.js';
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 
+export const AUTH_SESSION_EVENT = 'dxf-auth-session-changed';
+
+function emitAuthSessionChanged(): void {
+  window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
+}
+
 // ─── Interfaces ──────────────────────────────────────────────────────
 
 export interface AuthExchangeResponse {
@@ -231,6 +237,7 @@ export async function logoutWorkspace(): Promise<void> {
   clearAuthSession();
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   _updateAuthUi();
+  emitAuthSessionChanged();
 
   workspaceCatalogs.splice(0, workspaceCatalogs.length);
   selectedCatalogIds.clear();
@@ -250,6 +257,7 @@ export async function restoreAuthSession(): Promise<void> {
   const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '';
   if (!savedToken) {
     _updateAuthUi();
+    emitAuthSessionChanged();
     await restoreGuestDraft();
     return;
   }
@@ -259,12 +267,14 @@ export async function restoreAuthSession(): Promise<void> {
     if (!me.authenticated) throw new Error('Session rejected');
     setAuthSession(savedToken, me.workspaceId);
     _updateAuthUi();
+    emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();
     await _reloadFromServer();
   } catch {
     clearAuthSession();
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     _updateAuthUi();
+    emitAuthSessionChanged();
     await restoreGuestDraft();
   }
 }
@@ -277,6 +287,7 @@ export async function runTelegramLoginFlow(): Promise<void> {
     setAuthSession(response.sessionToken, response.workspaceId);
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
     _updateAuthUi();
+    emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();
     await _reloadFromServer();
   } catch (error) {

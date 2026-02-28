@@ -12,6 +12,7 @@ import './styles/nesting.css';
 import './styles/statusbar.css';
 import './styles/animations.css';
 import './styles/responsive.css';
+import './styles/set-builder.css';
 
 import { apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
 import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
@@ -36,6 +37,7 @@ import {
   btnOpen, btnWelcomeOpen, btnFit, btnAddFiles, btnAddCatalog,
   btnSelectAllFiles, btnInspector, btnGrid,
   btnAuthLogin, btnAuthLogout,
+  btnSetBuilder, setBuilderRoot,
   sidebarInspector, inspectorContent,
   statusZoom, statusEntities, statusVersion,
   chkPierces, pierceToggle,
@@ -76,6 +78,7 @@ import {
   setZoomPanStartX, setZoomPanStartY, setZoomHideTimer,
 } from './nesting-panel.js';
 import * as NP from './nesting-panel.js';
+import { initSetBuilder } from './set-builder/index.js';
 import { t, applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
@@ -416,6 +419,7 @@ async function addFiles(
   files: File[],
   options?: { placeInScene?: boolean; dropClientX?: number; dropClientY?: number },
 ): Promise<void> {
+  const beforeTotal = loadedFiles.length;
   syncWelcomeVisibility();
   const pendingSceneAdds: Array<{ fileId: number; x: number; y: number }> = [];
   for (const file of files) {
@@ -435,6 +439,10 @@ async function addFiles(
     const baseX = options?.dropClientX ?? container.getBoundingClientRect().left + a.x;
     const baseY = options?.dropClientY ?? container.getBoundingClientRect().top + a.y;
     addFileToScene(a.fileId, baseX + pendingSceneAdds.indexOf(a) * 20, baseY + pendingSceneAdds.indexOf(a) * 20);
+  }
+  const added = loadedFiles.length - beforeTotal;
+  if (added > 0) {
+    window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added } }));
   }
 }
 
@@ -846,3 +854,5 @@ window.addEventListener('keydown', (e) => {
 
 updateNestingButtonState();
 void restoreAuthSession();
+
+initSetBuilder(setBuilderRoot, btnSetBuilder);
