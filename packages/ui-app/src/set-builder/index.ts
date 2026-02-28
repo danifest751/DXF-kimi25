@@ -1172,8 +1172,16 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'bulk-remove') {
-      for (const sid of state.selectedLibraryIds) removeFromSet(state, sid);
-      showToast(t('setBuilder.toast.selectedRemoved'));
+      void (async () => {
+        const ids = [...state.selectedLibraryIds];
+        let removedCount = 0;
+        for (const sid of ids) {
+          const removed = await removeLibraryItem(sid);
+          if (removed) removedCount += 1;
+        }
+        if (removedCount > 0) showToast(t('setBuilder.toast.selectedRemoved'));
+        render();
+      })();
       return;
     }
     if (action === 'bulk-qty') {
