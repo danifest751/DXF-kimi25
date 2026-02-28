@@ -8,6 +8,8 @@ import { nestItems } from '../../../core-engine/src/nesting/index.js';
 import type { NestingItem, NestingOptions, NestingResult } from '../../../core-engine/src/nesting/index.js';
 import { exportNestingToDXF } from '../../../core-engine/src/export/index.js';
 import type { ItemDocData } from '../../../core-engine/src/export/index.js';
+import { renderEntity } from '../../../core-engine/src/render/entity-renderer.js';
+import type { EntityRenderOptions } from '../../../core-engine/src/render/entity-renderer.js';
 import {
   canRunNesting,
   createInitialState,
@@ -207,6 +209,72 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let lastPickedLibraryId: number | null = null;
   let lastEngineResult: NestingResult | null = null;
   let lastItemDocs = new Map<number, ItemDocData>();
+  const dxfThumbCache = new Map<string, string>();
+
+  function renderDxfThumbDataUrl(sourceFileId: number, width: number, height: number): string | null {
+    const cacheKey = `${sourceFileId}:${width}x${height}`;
+    const cached = dxfThumbCache.get(cacheKey);
+    if (cached) return cached;
+
+    const lf = loadedFiles.find((f) => f.id === sourceFileId);
+    if (!lf || lf.loading || !lf.doc) return null;
+
+    const bb = lf.doc.totalBBox;
+    const bbW = bb ? Math.max(1e-6, bb.max.x - bb.min.x) : 0;
+    const bbH = bb ? Math.max(1e-6, bb.max.y - bb.min.y) : 0;
+    if (bbW <= 0 || bbH <= 0) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(7, 11, 18, 0.8)';
+    ctx.fillRect(0, 0, width, height);
+
+    const pad = Math.max(4, Math.round(Math.min(width, height) * 0.08));
+    const availW = Math.max(1, width - pad * 2);
+    const availH = Math.max(1, height - pad * 2);
+    const scale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
+
+    const cx = bb.min.x + bbW / 2;
+    const cy = bb.min.y + bbH / 2;
+    const pixelSize = 1 / scale;
+    const opts: EntityRenderOptions = {
+      arcSegments: 28,
+      splineSegments: 28,
+      ellipseSegments: 28,
+      pixelSize,
+      viewExtent: Math.max(bbW, bbH) * 2,
+    };
+
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(scale, -scale);
+    ctx.translate(-cx, -cy);
+    for (const fe of lf.doc.flatEntities) {
+      renderEntity(ctx, fe, opts);
+    }
+    ctx.restore();
+
+    const dataUrl = canvas.toDataURL('image/png');
+    dxfThumbCache.set(cacheKey, dataUrl);
+    return dataUrl;
+  }
+
+  function buildThumbMarkup(item: LibraryItem, large = false): string {
+    if (item.sourceFileId !== undefined) {
+      const width = large ? 760 : 112;
+      const height = large ? 460 : 72;
+      const dataUrl = renderDxfThumbDataUrl(item.sourceFileId, width, height);
+      if (dataUrl) {
+        return `<img class="sb-thumb-real" src="${dataUrl}" alt="${esc(item.name)}" loading="lazy" />`;
+      }
+    }
+    return thumbSvg(item, large);
+  }
 
   function buildSingleSheetResult(sheetIndex: number): NestingResult | null {
     if (!lastEngineResult) return null;
@@ -478,7 +546,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     return `
       <div class="sb-lib-row ${selectedClass} ${state.layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}">
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
-        <div class="sb-thumb">${thumbSvg(item)}</div>
+        <div class="sb-thumb">${buildThumbMarkup(item)}</div>
         <div class="sb-meta">
           <div class="sb-name">${esc(item.name)}</div>
           <div class="sb-sub">${t('setBuilder.catalog')}: ${esc(item.catalog)} · ${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
@@ -780,7 +848,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <button class="sb-icon" data-a="close-preview">✕</button>
             </div>
             <div class="sb-modal-body">
-              <div class="sb-modal-thumb">${thumbSvg(item, true)}</div>
+              <div class="sb-modal-thumb">${buildThumbMarkup(item, true)}</div>
               <div class="sb-modal-meta">
                 <div><b>${t('setBuilder.size')}:</b> ${item.w}×${item.h}</div>
                 <div><b>${t('setBuilder.pierces')}:</b> ${item.pierces}</div>
@@ -894,38 +962,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
               <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
             </div>
-
-            <div class="sb-top-group sb-top-group--nest">
-              <select class="sb-select" data-a="preset">
-                ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
-              </select>
-              <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
-                <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
-                <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
-              </select>
-              <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
-              <div class="sb-toggle">
-                <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
-                <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
-              </div>
-              <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
-              <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
-                <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
-                <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
-                <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
-              </select>
-              <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
-              <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
-              <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
-              <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
-            </div>
           </div>
           <div class="sb-top-actions">
             <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
             <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
             <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
             ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
-            <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
             <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
           </div>
         </div>
@@ -967,13 +1009,40 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             </div>
 
             ${state.activeTab === 'set' ? `
+              <div class="sb-set-nest-panel">
+                <div class="sb-set-nest-controls">
+                  <select class="sb-select" data-a="preset">
+                    ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                  </select>
+                  <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
+                    <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
+                    <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
+                  </select>
+                  <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
+                  <div class="sb-toggle">
+                    <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
+                    <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+                  </div>
+                  <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
+                  <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
+                    <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+                    <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+                    <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+                  </select>
+                  <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
+                  <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
+                  <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
+                  <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
+                </div>
+                <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
+              </div>
               <div class="sb-set-list">
                 ${setRows.length === 0
                   ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
                   : setRows.map(({ item, set }) => `
                     <div class="sb-set-row">
                       <div class="sb-set-head">
-                        <div class="sb-set-thumb">${thumbSvg(item)}</div>
+                        <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
                         <div class="sb-set-name">${esc(item.name)}</div>
                       </div>
                       <div class="sb-set-controls">
@@ -1404,6 +1473,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   window.addEventListener('dxf-files-updated', () => {
     if (!state.open) return;
+    dxfThumbCache.clear();
     render();
     showToast(t('setBuilder.toast.filesSynced'));
   });
