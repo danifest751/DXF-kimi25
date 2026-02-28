@@ -866,53 +866,61 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       <div class="sb-shell">
         <div class="sb-topbar">
           <div class="sb-top-main">
-            <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
-            <input class="sb-input" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
-            <select class="sb-select" data-a="catalog">
-              ${catalogOptions.map((c) => {
-                const label = c === 'All' ? t('sidebar.allCatalogs') : c === 'Uncategorized' ? t('sidebar.uncategorized') : c;
-                return `<option value="${c}" ${state.catalogFilter === c ? 'selected' : ''}>${label}</option>`;
-              }).join('')}
-            </select>
-            <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
-            <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
-            <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
-            <select class="sb-select" data-a="preset">
-              ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
-            </select>
-            <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
-              <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
-              <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
-            </select>
-            <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
-            <label class="sb-chk"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
-            <select class="sb-select" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
-              <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
-              <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
-              <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
-            </select>
-            <label class="sb-chk"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
-            <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
-            <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
-            <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
-            <div class="sb-toggle">
-              <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
-              <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+            <div class="sb-top-group sb-top-group--library">
+              <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
+              <input class="sb-input sb-input--search" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
+              <select class="sb-select sb-select--catalog" data-a="catalog">
+                ${catalogOptions.map((c) => {
+                  const label = c === 'All' ? t('sidebar.allCatalogs') : c === 'Uncategorized' ? t('sidebar.uncategorized') : c;
+                  return `<option value="${c}" ${state.catalogFilter === c ? 'selected' : ''}>${label}</option>`;
+                }).join('')}
+              </select>
+              <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
+              <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
+              <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
             </div>
-            <div class="sb-toggle">
-              <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
-              <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
+
+            <div class="sb-top-group sb-top-group--view">
+              <div class="sb-toggle">
+                <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
+                <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
+              </div>
+              <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
+                <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
+                <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
+                <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
+                <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
+              </select>
+              <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
+                <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
+                <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
+              </select>
             </div>
-            <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
-              <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
-              <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
-              <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
-              <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
-            </select>
-            <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
-              <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
-              <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
-            </select>
+
+            <div class="sb-top-group sb-top-group--nest">
+              <select class="sb-select" data-a="preset">
+                ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+              </select>
+              <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
+                <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
+                <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
+              </select>
+              <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
+              <div class="sb-toggle">
+                <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
+                <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+              </div>
+              <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
+              <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
+                <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+                <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+                <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+              </select>
+              <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
+              <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
+              <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
+              <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
+            </div>
           </div>
           <div class="sb-top-actions">
             <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
