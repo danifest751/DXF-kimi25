@@ -239,6 +239,7 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.menu.moveToCatalog': 'Move to catalog',
   'setBuilder.menu.download': 'Download',
   'setBuilder.size': 'Size',
+  'setBuilder.catalog': 'Catalog',
   'setBuilder.piercesShort': 'P',
   'setBuilder.cutLengthShort': 'L',
   'setBuilder.action': 'Action',

@@ -1,6 +1,6 @@
 import { SHEET_PRESETS } from './mock-data.js';
 import { apiGetJSON, apiPatchJSON, apiPostJSON, downloadBlob } from '../api.js';
-import { authSessionToken, loadedFiles, workspaceCatalogs, UNCATEGORIZED_CATALOG_ID } from '../state.js';
+import { authSessionToken, authWorkspaceId, loadedFiles, workspaceCatalogs, UNCATEGORIZED_CATALOG_ID } from '../state.js';
 import { fileInput } from '../dom.js';
 import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
 import { AUTH_SESSION_EVENT, getAuthHeaders, logoutWorkspace, runTelegramLoginFlow, saveGuestDraft } from '../auth.js';
@@ -177,14 +177,19 @@ function statusLabel(item: LibraryItem): string {
 function thumbSvg(item: LibraryItem, large = false): string {
   const w = large ? 220 : 84;
   const h = large ? 140 : 56;
-  const p = item.thumbVariant % 7;
-  const lines = [
-    `<rect x="6" y="6" width="${w - 12}" height="${h - 12}" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.9"/>`,
-    `<circle cx="${22 + p * 4}" cy="${18 + p * 2}" r="3" fill="none" stroke="currentColor" opacity="0.7"/>`,
-    `<circle cx="${w - 24 - p * 2}" cy="${h - 20}" r="3" fill="none" stroke="currentColor" opacity="0.7"/>`,
-    `<path d="M18 ${h - 22} L${w - 18} 22" stroke="currentColor" opacity="0.45"/>`,
-  ];
-  return `<svg viewBox="0 0 ${w} ${h}" class="sb-thumb-svg">${lines.join('')}</svg>`;
+  const iconW = large ? 52 : 30;
+  const iconH = large ? 62 : 36;
+  const iconX = Math.round((w - iconW) / 2);
+  const iconY = Math.round((h - iconH) / 2);
+  const fold = Math.round(iconW * 0.26);
+  return `
+    <svg viewBox="0 0 ${w} ${h}" class="sb-thumb-svg" role="img" aria-label="DXF">
+      <rect x="4" y="4" width="${w - 8}" height="${h - 8}" rx="7" fill="rgba(12,20,35,0.45)" stroke="rgba(255,255,255,0.12)"/>
+      <path d="M${iconX} ${iconY + 2} h${iconW - fold} l${fold} ${fold} v${iconH - fold - 2} a4 4 0 0 1 -4 4 h-${iconW - 4} a4 4 0 0 1 -4 -4 v-${iconH - 2} a4 4 0 0 1 4 -4 z" fill="rgba(20,36,62,0.95)" stroke="rgba(126,198,255,0.8)"/>
+      <path d="M${iconX + iconW - fold} ${iconY + 2} v${fold} h${fold}" fill="none" stroke="rgba(126,198,255,0.8)"/>
+      <text x="${Math.round(w / 2)}" y="${iconY + iconH - 8}" text-anchor="middle" font-size="${large ? 14 : 9}" font-family="'Segoe UI', sans-serif" font-weight="700" fill="rgba(126,198,255,0.95)">DXF</text>
+    </svg>
+  `;
 }
 
 function sheetSvg(sheet: SheetResult): string {
@@ -476,7 +481,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         <div class="sb-thumb">${thumbSvg(item)}</div>
         <div class="sb-meta">
           <div class="sb-name">${esc(item.name)}</div>
-          <div class="sb-sub">${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
+          <div class="sb-sub">${t('setBuilder.catalog')}: ${esc(item.catalog)} · ${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
           <span class="sb-badge sb-badge--${item.status}">${statusLabel(item)}</span>
         </div>
         ${state.layout === 'table' ? `
@@ -832,7 +837,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const setRows = getSetRows(state);
     const totals = getTotals(state);
     const issues = getAggregatedIssues(state);
-    const catalogOptions = ['All', ...new Set(state.library.map((i) => i.catalog).sort((a, b) => a.localeCompare(b)))];
+    const catalogNames = new Set<string>(['All', 'Uncategorized']);
+    for (const item of state.library) catalogNames.add(item.catalog);
+    for (const c of workspaceCatalogs) catalogNames.add(c.name);
+    const catalogOptions = [
+      'All',
+      ...[...catalogNames].filter((c) => c !== 'All').sort((a, b) => a.localeCompare(b)),
+    ];
     const commonLineActive = lastEngineResult?.gap === 0;
     const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
     const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
@@ -858,6 +869,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const runDisabled = canRunNesting(state) ? '' : 'disabled';
     const authActive = authSessionToken.length > 0;
     const localeLabel = getLocale().toUpperCase();
+    const authWorkspaceLabel = authActive
+      ? `WS: ${authWorkspaceId.length > 12 ? authWorkspaceId.slice(0, 12) + '…' : authWorkspaceId}`
+      : t('toolbar.guest');
 
     root.classList.toggle('hidden', !state.open);
     root.setAttribute('aria-hidden', state.open ? 'false' : 'true');
@@ -879,23 +893,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
               <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
               <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
-            </div>
-
-            <div class="sb-top-group sb-top-group--view">
-              <div class="sb-toggle">
-                <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
-                <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
-              </div>
-              <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
-                <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
-                <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
-                <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
-                <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
-              </select>
-              <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
-                <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
-                <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
-              </select>
             </div>
 
             <div class="sb-top-group sb-top-group--nest">
@@ -924,6 +921,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             </div>
           </div>
           <div class="sb-top-actions">
+            <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
             <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
             <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
             ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
@@ -934,6 +932,22 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
         <div class="sb-main">
           <div class="sb-left">
+            <div class="sb-list-toolbar">
+              <div class="sb-toggle">
+                <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
+                <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
+              </div>
+              <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
+                <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
+                <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
+                <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
+                <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
+              </select>
+              <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
+                <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
+                <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
+              </select>
+            </div>
             ${selectedCount > 0 ? `
               <div class="sb-bulk">
                 <span>${selectedCount} ${t('setBuilder.selected')}</span>
@@ -958,7 +972,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
                   : setRows.map(({ item, set }) => `
                     <div class="sb-set-row">
-                      <div class="sb-set-name">${esc(item.name)}</div>
+                      <div class="sb-set-head">
+                        <div class="sb-set-thumb">${thumbSvg(item)}</div>
+                        <div class="sb-set-name">${esc(item.name)}</div>
+                      </div>
                       <div class="sb-set-controls">
                         <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
                         <div class="sb-stepper">

@@ -237,6 +237,7 @@ export const ru = {
   'setBuilder.menu.moveToCatalog': 'Переместить в каталог',
   'setBuilder.menu.download': 'Скачать',
   'setBuilder.size': 'Размер',
+  'setBuilder.catalog': 'Каталог',
   'setBuilder.piercesShort': 'В',
   'setBuilder.cutLengthShort': 'Р',
   'setBuilder.action': 'Действие',
