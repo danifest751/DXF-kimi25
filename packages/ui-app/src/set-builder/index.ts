@@ -951,6 +951,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const statusClass = item.status === 'ok' ? 'sb-badge--ok' : item.status === 'warn' ? 'sb-badge--warn' : 'sb-badge--error';
       const area = Math.round(item.w * item.h / 100) / 100;
 
+      const hasPierces = item.pierces > 0 && item.sourceFileId !== undefined;
       return `
         <div class="sb-modal-backdrop">
           <div class="sb-modal sb-modal--dxf">
@@ -964,12 +965,20 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${nextItem?.id ?? ''}" ${!nextItem ? 'disabled' : ''} title="${nextItem ? esc(nextItem.name) : ''}">›</button>
               </div>
               <div class="sb-modal-head-right">
+                ${hasPierces ? `
+                <label class="sb-pierce-toggle ${state.previewShowPierces ? 'on' : ''}" title="${t('setBuilder.pierces')}">
+                  <input type="checkbox" data-a="toggle-pierces" ${state.previewShowPierces ? 'checked' : ''} />
+                  <span class="sb-pierce-toggle-dot"></span>
+                  <span>${t('setBuilder.pierces')}</span>
+                </label>` : ''}
                 <span class="sb-badge ${statusClass}">${statusLabel(item)}</span>
                 <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">✕</button>
               </div>
             </div>
             <div class="sb-modal-dxf-body">
-              <div class="sb-modal-dxf-preview">${buildThumbMarkup(item, true)}</div>
+              <div class="sb-modal-dxf-preview">
+                <canvas id="sb-modal-dxf-canvas" class="sb-modal-dxf-canvas" data-source-id="${item.sourceFileId ?? ''}"></canvas>
+              </div>
               <div class="sb-modal-dxf-side">
                 <div class="sb-modal-stats">
                   <div class="sb-modal-stat">
@@ -980,14 +989,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                     <div class="sb-modal-stat-label">${t('setBuilder.area')}</div>
                     <div class="sb-modal-stat-value">${area} ${t('unit.cm2')}</div>
                   </div>
-                  <div class="sb-modal-stat sb-modal-stat--full">
-                    <div class="sb-modal-stat-label">${t('setBuilder.pierces')}: <b>${item.pierces}</b></div>
-                    <div class="sb-modal-pierces-dots">
-                      ${Array.from({ length: Math.min(item.pierces, 60) }, (_, i) =>
-                        `<span class="sb-pierce-dot"${item.pierces > 60 && i === 59 ? ` title="+${item.pierces - 59}"` : ''}></span>`
-                      ).join('')}
-                      ${item.pierces > 60 ? `<span class="sb-pierce-more">+${item.pierces - 59}</span>` : ''}
-                    </div>
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.pierces')}</div>
+                    <div class="sb-modal-stat-value">${item.pierces}</div>
                   </div>
                   <div class="sb-modal-stat">
                     <div class="sb-modal-stat-label">${t('setBuilder.cutLength')}</div>
@@ -1087,6 +1091,90 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         </div>
       </div>
     `;
+  }
+
+  function applyModalPierceCanvas(): void {
+    const canvas = root.querySelector<HTMLCanvasElement>('#sb-modal-dxf-canvas');
+    if (!canvas) return;
+    const sourceFileId = Number(canvas.dataset.sourceId);
+    if (!Number.isFinite(sourceFileId) || sourceFileId <= 0) return;
+
+    const lf = loadedFiles.find((f) => f.id === sourceFileId);
+    if (!lf || lf.loading || !lf.doc) return;
+
+    const bb = lf.doc.totalBBox;
+    const bbW = bb ? Math.max(1e-6, bb.max.x - bb.min.x) : 0;
+    const bbH = bb ? Math.max(1e-6, bb.max.y - bb.min.y) : 0;
+    if (bbW <= 0 || bbH <= 0) return;
+
+    const container = canvas.parentElement;
+    const cw = container ? Math.max(100, container.clientWidth) : 760;
+    const ch = container ? Math.max(100, container.clientHeight) : 460;
+    canvas.width = cw;
+    canvas.height = ch;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = 'rgba(7, 11, 18, 0.85)';
+    ctx.fillRect(0, 0, cw, ch);
+
+    const pad = Math.max(4, Math.round(Math.min(cw, ch) * 0.06));
+    const availW = Math.max(1, cw - pad * 2);
+    const availH = Math.max(1, ch - pad * 2);
+    const scale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
+
+    const cx = bb!.min.x + bbW / 2;
+    const cy = bb!.min.y + bbH / 2;
+    const pixelSize = 1 / scale;
+    const opts: EntityRenderOptions = {
+      arcSegments: 32,
+      splineSegments: 32,
+      ellipseSegments: 32,
+      pixelSize,
+      viewExtent: Math.max(bbW, bbH) * 2,
+    };
+
+    ctx.save();
+    ctx.translate(cw / 2, ch / 2);
+    ctx.scale(scale, -scale);
+    ctx.translate(-cx, -cy);
+    for (const fe of lf.doc.flatEntities) {
+      renderEntity(ctx, fe, opts);
+    }
+    ctx.restore();
+
+    if (state.previewShowPierces && lf.stats.chains.length > 0) {
+      const dotR = Math.max(3, Math.min(8, scale * 1.5));
+      ctx.save();
+      ctx.translate(cw / 2, ch / 2);
+      ctx.scale(scale, -scale);
+      ctx.translate(-cx, -cy);
+
+      for (const chain of lf.stats.chains) {
+        const p = chain.piercePoint;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(1 / scale, -1 / scale);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, dotR + 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 255, 157, 0.25)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = '#00ff9d';
+        ctx.shadowColor = '#00ff9d';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+      }
+      ctx.restore();
+    }
   }
 
   function render(): void {
@@ -1347,7 +1435,19 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     ` : '';
 
     persistState();
+    applyModalPierceCanvas();
   }
+
+  root.addEventListener('change', (e) => {
+    const target = e.target as HTMLElement;
+    if (target instanceof HTMLInputElement && target.dataset.a === 'toggle-pierces') {
+      state.previewShowPierces = target.checked;
+      const label = target.closest('.sb-pierce-toggle');
+      if (label) label.classList.toggle('on', target.checked);
+      applyModalPierceCanvas();
+      return;
+    }
+  });
 
   root.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;

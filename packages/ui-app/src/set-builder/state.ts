@@ -28,6 +28,7 @@ export function createInitialState(): SetBuilderState {
     loading: false,
     previewLibraryId: null,
     previewSheetId: null,
+    previewShowPierces: false,
     openMenuLibraryId: null,
     results: null,
   };

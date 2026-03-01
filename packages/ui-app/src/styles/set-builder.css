@@ -860,6 +860,52 @@
   white-space: nowrap;
 }
 
+/* ─── Pierce toggle in modal head ─── */
+.sb-pierce-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.sb-pierce-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.sb-pierce-toggle.on {
+  background: rgba(0, 255, 157, 0.1);
+  color: #00ff9d;
+  border-color: rgba(0, 255, 157, 0.3);
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.15);
+}
+
+.sb-pierce-toggle input {
+  display: none;
+}
+
+.sb-pierce-toggle-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  flex-shrink: 0;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.sb-pierce-toggle.on .sb-pierce-toggle-dot {
+  background: #00ff9d;
+  border-color: #00ff9d;
+  box-shadow: 0 0 8px #00ff9d;
+}
+
 /* ─── DXF file preview modal ─── */
 .sb-modal--dxf {
   width: min(1060px, calc(100% - 24px));
@@ -879,6 +925,13 @@
   border-right: 1px solid var(--border);
   display: flex;
   align-items: stretch;
+  min-height: 380px;
+}
+
+.sb-modal-dxf-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .sb-modal-dxf-preview .sb-thumb-real {

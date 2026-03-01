@@ -83,6 +83,7 @@ export interface SetBuilderState {
   loading: boolean;
   previewLibraryId: number | null;
   previewSheetId: string | null;
+  previewShowPierces: boolean;
   openMenuLibraryId: number | null;
   results: NestingResults | null;
 }
