@@ -1470,8 +1470,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   <select class="sb-select sb-select--preset" data-a="preset">
                     ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
                   </select>
-                  ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">✎</button>
-                  <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">✕</button>` : ''}
+                  <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">✎</button>
+                  ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">✕</button>` : ''}
                 </div>
                 <div class="sb-custom-sheet">
                   <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
@@ -1670,12 +1670,19 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'preset-rename') {
       const preset = sheetPresets.find((p) => p.id === state.sheetPresetId);
-      if (!preset || !preset.id.startsWith('custom_')) return;
+      if (!preset) return;
       const newLabel = window.prompt(t('setBuilder.renamePreset'), preset.label);
       if (newLabel === null) return;
       const trimmed = newLabel.trim();
       if (!trimmed) return;
-      sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: trimmed } : p);
+      if (preset.id.startsWith('custom_')) {
+        sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: trimmed } : p);
+      } else {
+        const newId = `custom_${preset.w}x${preset.h}_${Date.now()}`;
+        const newPreset = { id: newId, label: trimmed, w: preset.w, h: preset.h };
+        sheetPresets = [...sheetPresets, newPreset];
+        state.sheetPresetId = newId;
+      }
       render();
       return;
     }
