@@ -253,6 +253,8 @@ export const ru = {
   'setBuilder.empty.noItems': 'Нет элементов для текущих фильтров',
   'setBuilder.empty.set': 'Набор пуст',
   'setBuilder.empty.noIssues': 'Нет проблем у включённых элементов',
+  'setBuilder.issues.title': 'Проблемы',
+  'setBuilder.issues.none': 'Нет',
   'setBuilder.empty.runToSee': 'Запустите раскладку, чтобы увидеть результаты',
   'setBuilder.toast.hashCopied': 'Код скопирован',
   'setBuilder.toast.noHashes': 'Нет кодов для копирования',

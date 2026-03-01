@@ -5,7 +5,7 @@
  */
 
 import { apiGetJSON, apiPatchJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
-import { t, tx } from './i18n/index.js';
+import { tx } from './i18n/index.js';
 import type { LoadedFile, UICuttingStats, WorkspaceCatalog } from './types.js';
 import {
   authSessionToken, UNCATEGORIZED_CATALOG_ID,
@@ -25,7 +25,6 @@ import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
 // ─── Callbacks ───────────────────────────────────────────────────────
 
 type VoidFn = () => void;
-type AsyncVoidFn = () => Promise<void>;
 
 let _renderCatalogFilter: VoidFn = () => {};
 let _renderFileList: VoidFn = () => {};

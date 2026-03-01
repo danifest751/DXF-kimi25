@@ -255,6 +255,8 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.empty.noItems': 'No items for current filters',
   'setBuilder.empty.set': 'Set is empty',
   'setBuilder.empty.noIssues': 'No issues for enabled items',
+  'setBuilder.issues.title': 'Issues',
+  'setBuilder.issues.none': 'None',
   'setBuilder.empty.runToSee': 'Run nesting to see results',
   'setBuilder.toast.hashCopied': 'Hash copied',
   'setBuilder.toast.noHashes': 'No hashes available',
@@ -289,4 +291,4 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.toast.sourceUnavailable': 'DXF source is unavailable',
   'setBuilder.toast.downloadStarted': 'Download started',
   'setBuilder.toast.downloadFailed': 'Failed to download source file',
-};
+} as const;

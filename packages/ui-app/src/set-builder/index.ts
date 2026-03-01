@@ -37,7 +37,7 @@ function esc(s: string): string {
 
 function getActiveSheetPreset(
   state: SetBuilderState,
-  presets: readonly Array<{ id: string; w: number; h: number }>,
+  presets: ReadonlyArray<{ id: string; w: number; h: number }>,
 ): { w: number; h: number } {
   const p = presets.find((it) => it.id === state.sheetPresetId) ?? presets[0] ?? SHEET_PRESETS[0]!;
   return { w: p.w, h: p.h };
@@ -178,7 +178,7 @@ function statusLabel(item: LibraryItem): string {
   return item.status === 'ok' ? t('setBuilder.status.ok') : item.status === 'warn' ? t('setBuilder.status.warn') : t('setBuilder.status.error');
 }
 
-function thumbSvg(item: LibraryItem, large = false): string {
+function thumbSvg(_item: LibraryItem, large = false): string {
   const w = large ? 220 : 84;
   const h = large ? 140 : 56;
   const iconW = large ? 52 : 30;
@@ -240,8 +240,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const availH = Math.max(1, height - pad * 2);
     const scale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
 
-    const cx = bb.min.x + bbW / 2;
-    const cy = bb.min.y + bbH / 2;
+    const cx = bb!.min.x + bbW / 2;
+    const cy = bb!.min.y + bbH / 2;
     const pixelSize = 1 / scale;
     const opts: EntityRenderOptions = {
       arcSegments: 28,
@@ -382,7 +382,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         && parsed.viewTabOrder.includes('viewA')
         && parsed.viewTabOrder.includes('viewB');
       state.viewTabOrder = validViewOrder
-        ? [parsed.viewTabOrder[0] as SetBuilderViewTab, parsed.viewTabOrder[1] as SetBuilderViewTab]
+        ? [parsed.viewTabOrder![0] as SetBuilderViewTab, parsed.viewTabOrder![1] as SetBuilderViewTab]
         : ['viewA', 'viewB'];
       const customPresets = (parsed.customSheetPresets ?? []).filter((p) => {
         return typeof p.id === 'string'
@@ -845,7 +845,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       showToast(t('setBuilder.toast.catalogActionUnavailable'));
       return;
     }
-    const nextName = prompt(t('catalog.rename.prompt'), current.name)?.trim() ?? '';
+    const nextName = prompt(t('catalog.rename.title'), current.name)?.trim() ?? '';
     if (!nextName || nextName === current.name) return;
 
     const cat = workspaceCatalogs.find((c) => c.id === current.id);
@@ -959,7 +959,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 <div><b>${t('setBuilder.cutLength')}:</b> ${fmtLen(item.cutLen)}</div>
                 <div><b>${t('setBuilder.layers')}:</b> ${item.layersCount}</div>
                 <div><b>${t('setBuilder.status')}:</b> ${statusLabel(item)}</div>
-                <div><b>${t('setBuilder.issues')}:</b> ${item.issues.length ? esc(item.issues.join(', ')) : t('setBuilder.none')}</div>
+                <div><b>${t('setBuilder.issues.title')}:</b> ${item.issues.length ? esc(item.issues.join(', ')) : t('setBuilder.issues.none')}</div>
               </div>
             </div>
             <div class="sb-modal-actions">
@@ -1096,14 +1096,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     root.innerHTML = state.open ? `
       <div class="sb-shell">
         <div class="sb-topbar">
-          <div class="sb-top-main"></div>
-          <div class="sb-top-actions">
-            <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
-            <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
-            <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
-            ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
-            <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
-          </div>
+          <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
+          <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
+          <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
+          ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
+          <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
         </div>
 
         <div class="sb-main">
@@ -1250,7 +1247,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
             </div>
             <div class="sb-issues">
-              <div class="sb-issues-title">${t('setBuilder.issues')}</div>
+              <div class="sb-issues-title">${t('setBuilder.issues.title')}</div>
               ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
             </div>
             <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
