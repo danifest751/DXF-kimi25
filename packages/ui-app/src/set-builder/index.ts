@@ -14,7 +14,6 @@ import {
   canRunNesting,
   createInitialState,
   getAggregatedIssues,
-  getFilteredLibrary,
   getLibraryItem,
   getSetRows,
   getSetItem,
@@ -799,6 +798,25 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     return found ? { id: found.id, name: found.name } : null;
   }
 
+  function getCatalogByName(catalogName: string | null | undefined): { id: string; name: string } | null {
+    const name = (catalogName ?? '').trim();
+    if (!name || name === 'All' || name === t('setBuilder.unnamedCatalog')) return null;
+    const found = workspaceCatalogs.find((c) => c.name === name);
+    return found ? { id: found.id, name: found.name } : null;
+  }
+
+  function getVisibleLibraryItems(): LibraryItem[] {
+    const q = state.search.trim().toLowerCase();
+    const filtered = state.library.filter((item) => q.length === 0 || item.name.toLowerCase().includes(q));
+    const sorted = [...filtered].sort((a, b) => {
+      if (state.sortBy === 'name') return a.name.localeCompare(b.name);
+      if (state.sortBy === 'pierces') return a.pierces - b.pierces;
+      if (state.sortBy === 'cutLen') return a.cutLen - b.cutLen;
+      return a.w * a.h - b.w * b.h;
+    });
+    return state.sortDir === 'asc' ? sorted : sorted.reverse();
+  }
+
   async function addCatalog(): Promise<void> {
     if (!authSessionToken) {
       showToast(t('catalog.add.authRequired'));
@@ -813,7 +831,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         getAuthHeaders(),
       );
       workspaceCatalogs.push(resp.catalog);
-      state.catalogFilter = resp.catalog.name;
+      state.catalogFilter = 'All';
       showToast(t('setBuilder.toast.catalogAdded'));
       render();
     } catch {
@@ -821,8 +839,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
-  async function renameCurrentCatalog(): Promise<void> {
-    const current = getCatalogByFilterName();
+  async function renameCurrentCatalog(catalogName?: string): Promise<void> {
+    const current = getCatalogByName(catalogName) ?? getCatalogByFilterName();
     if (!current) {
       showToast(t('setBuilder.toast.catalogActionUnavailable'));
       return;
@@ -852,8 +870,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
-  async function deleteCurrentCatalog(): Promise<void> {
-    const current = getCatalogByFilterName();
+  async function deleteCurrentCatalog(catalogName?: string): Promise<void> {
+    const current = getCatalogByName(catalogName) ?? getCatalogByFilterName();
     if (!current) {
       showToast(t('setBuilder.toast.catalogActionUnavailable'));
       return;
@@ -987,18 +1005,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   function render(): void {
     syncLoadedFilesIntoLibrary();
 
-    const filtered = getFilteredLibrary(state);
+    const filtered = getVisibleLibraryItems();
     const setRows = getSetRows(state);
     const totals = getTotals(state);
     const issues = getAggregatedIssues(state);
     const unnamedCatalogName = t('setBuilder.unnamedCatalog');
-    const catalogNames = new Set<string>(['All', unnamedCatalogName]);
-    for (const item of state.library) catalogNames.add(item.catalog);
-    for (const c of workspaceCatalogs) catalogNames.add(c.name);
-    const catalogOptions = [
-      'All',
-      ...[...catalogNames].filter((c) => c !== 'All').sort((a, b) => a.localeCompare(b)),
-    ];
     const commonLineActive = lastEngineResult?.gap === 0;
     const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
     const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
@@ -1018,14 +1029,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       </div>
     `;
     const renderCatalogItems = (items: LibraryItem[]): string => {
-      if (items.length === 0) return `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`;
       if (activeLibraryLayout === 'gallery') return items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('');
       return `${tableHead}${items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')}`;
     };
 
     const groupedCatalogContent = (() => {
-      if (filtered.length === 0) return `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`;
-
       const groups = new Map<string, LibraryItem[]>();
       for (const item of filtered) {
         const list = groups.get(item.catalog);
@@ -1033,24 +1041,39 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         else groups.set(item.catalog, [item]);
       }
 
+      const allCatalogNames = new Set<string>();
+      for (const c of workspaceCatalogs) allCatalogNames.add(c.name);
+      for (const item of state.library) allCatalogNames.add(item.catalog);
+      allCatalogNames.add(unnamedCatalogName);
+
       const orderedCatalogs = [
         ...workspaceCatalogs.map((c) => c.name),
         unnamedCatalogName,
-        ...[...groups.keys()].filter((name) => name !== unnamedCatalogName && !workspaceCatalogs.some((c) => c.name === name)),
+        ...[...allCatalogNames].filter((name) => name !== unnamedCatalogName && !workspaceCatalogs.some((c) => c.name === name)),
       ];
 
       return orderedCatalogs
-        .filter((catalogName) => groups.has(catalogName))
         .map((catalogName) => {
           const items = groups.get(catalogName) ?? [];
+          const canManageCatalog = catalogName !== unnamedCatalogName && workspaceCatalogs.some((c) => c.name === catalogName);
           return `
             <section class="sb-catalog-group">
               <div class="sb-catalog-group-head" data-a="catalog-drop" data-catalog="${esc(catalogName)}">
-                <span class="sb-catalog-group-name">${esc(catalogName)}</span>
-                <span class="sb-catalog-group-count">${items.length}</span>
+                <div class="sb-catalog-group-meta">
+                  <span class="sb-catalog-group-name">${esc(catalogName)}</span>
+                  <span class="sb-catalog-group-count">${items.length}</span>
+                </div>
+                ${canManageCatalog ? `
+                  <div class="sb-catalog-group-actions">
+                    <button class="sb-icon" data-a="catalog-rename" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogRename')}">✎</button>
+                    <button class="sb-icon" data-a="catalog-delete" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogDelete')}">🗑</button>
+                  </div>
+                ` : ''}
               </div>
               <div class="sb-catalog-group-body ${activeLibraryLayout === 'table' ? 'sb-library--table' : ''}">
-                ${renderCatalogItems(items)}
+                ${items.length === 0
+                  ? `<div class="sb-catalog-empty">${t('setBuilder.empty.noItems')}</div>`
+                  : renderCatalogItems(items)}
               </div>
             </section>
           `;
@@ -1073,21 +1096,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     root.innerHTML = state.open ? `
       <div class="sb-shell">
         <div class="sb-topbar">
-          <div class="sb-top-main">
-            <div class="sb-top-group sb-top-group--library">
-              <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
-              <input class="sb-input sb-input--search" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
-              <select class="sb-select sb-select--catalog" data-a="catalog">
-                ${catalogOptions.map((c) => {
-                  const label = c === 'All' ? t('sidebar.allCatalogs') : c;
-                  return `<option value="${c}" ${state.catalogFilter === c ? 'selected' : ''}>${label}</option>`;
-                }).join('')}
-              </select>
-              <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
-              <button class="sb-btn sb-btn--ghost" data-a="catalog-rename">${t('setBuilder.catalogRename')}</button>
-              <button class="sb-btn sb-btn--ghost" data-a="catalog-delete">${t('setBuilder.catalogDelete')}</button>
-            </div>
-          </div>
+          <div class="sb-top-main"></div>
           <div class="sb-top-actions">
             <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
             <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
@@ -1112,6 +1121,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 }).join('')}
               </div>
               ${showResultsInMain ? '' : `
+                <div class="sb-list-toolbar-main">
+                  <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
+                  <input class="sb-input sb-input--search" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
+                  <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
+                </div>
                 <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
                   <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
                   <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
@@ -1169,7 +1183,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 </div>
               </div>
             ` : `
-              <div class="sb-library">${state.catalogFilter === 'All' ? groupedCatalogContent : renderCatalogItems(filtered)}</div>
+              <div class="sb-library">${groupedCatalogContent}</div>
             `}
           </div>
 
@@ -1283,7 +1297,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
       const isShift = e instanceof MouseEvent && e.shiftKey;
       if (isShift && lastPickedLibraryId !== null) {
-        const visibleIds = getFilteredLibrary(state).map((item) => item.id);
+        const visibleIds = getVisibleLibraryItems().map((item) => item.id);
         const a = visibleIds.indexOf(lastPickedLibraryId);
         const b = visibleIds.indexOf(currentId);
         if (a >= 0 && b >= 0) {
@@ -1332,11 +1346,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'catalog-rename') {
-      void renameCurrentCatalog();
+      void renameCurrentCatalog(button.dataset.catalog);
       return;
     }
     if (action === 'catalog-delete') {
-      void deleteCurrentCatalog();
+      void deleteCurrentCatalog(button.dataset.catalog);
       return;
     }
     if (action === 'sheet-custom-add') {
@@ -1653,11 +1667,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const action = t.dataset.a;
     if (action === 'search') {
       state.search = t.value;
-      render();
-      return;
-    }
-    if (action === 'catalog' && t instanceof HTMLSelectElement) {
-      state.catalogFilter = t.value;
       render();
       return;
     }
