@@ -1928,94 +1928,94 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   });
 
   root.addEventListener('input', (e) => {
-    const t = e.target as HTMLElement;
-    if (!(t instanceof HTMLInputElement)) return;
-    if (t.dataset.a === 'search') {
-      state.search = t.value;
+    const el = e.target as HTMLElement;
+    if (!(el instanceof HTMLInputElement)) return;
+    if (el.dataset.a === 'search') {
+      state.search = el.value;
       render();
     }
   });
 
   root.addEventListener('change', (e) => {
-    const t = e.target as HTMLElement;
-    if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+    const el = e.target as HTMLElement;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) return;
 
-    const action = t.dataset.a;
+    const action = el.dataset.a;
     if (action === 'search') {
-      state.search = t.value;
+      state.search = (el as HTMLInputElement).value;
       render();
       return;
     }
-    if (action === 'sort-by' && t instanceof HTMLSelectElement) {
-      state.sortBy = t.value === 'area' || t.value === 'pierces' || t.value === 'cutLen' ? t.value : 'name';
+    if (action === 'sort-by' && el instanceof HTMLSelectElement) {
+      state.sortBy = el.value === 'area' || el.value === 'pierces' || el.value === 'cutLen' ? el.value : 'name';
       render();
       return;
     }
-    if (action === 'sort-dir' && t instanceof HTMLSelectElement) {
-      state.sortDir = t.value === 'desc' ? 'desc' : 'asc';
+    if (action === 'sort-dir' && el instanceof HTMLSelectElement) {
+      state.sortDir = el.value === 'desc' ? 'desc' : 'asc';
       render();
       return;
     }
-    if (action === 'preset' && t instanceof HTMLSelectElement) {
-      state.sheetPresetId = t.value;
+    if (action === 'preset' && el instanceof HTMLSelectElement) {
+      state.sheetPresetId = el.value;
       render();
       return;
     }
-    if (action === 'sheet-custom-w' && t instanceof HTMLInputElement) {
-      customSheetWidthMm = Math.max(1, Number(t.value) || 1);
+    if (action === 'sheet-custom-w' && el instanceof HTMLInputElement) {
+      customSheetWidthMm = Math.max(1, Number(el.value) || 1);
       return;
     }
-    if (action === 'sheet-custom-h' && t instanceof HTMLInputElement) {
-      customSheetHeightMm = Math.max(1, Number(t.value) || 1);
+    if (action === 'sheet-custom-h' && el instanceof HTMLInputElement) {
+      customSheetHeightMm = Math.max(1, Number(el.value) || 1);
       return;
     }
-    if (action === 'gap' && t instanceof HTMLInputElement) {
-      state.gapMm = Math.max(0, Number(t.value) || 0);
+    if (action === 'gap' && el instanceof HTMLInputElement) {
+      state.gapMm = Math.max(0, Number(el.value) || 0);
       render();
       return;
     }
-    if (action === 'strategy' && t instanceof HTMLSelectElement) {
-      state.nestStrategy = t.value === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
+    if (action === 'strategy' && el instanceof HTMLSelectElement) {
+      state.nestStrategy = el.value === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
       if (state.nestStrategy === 'true_shape') state.multiStart = false;
       render();
       return;
     }
-    if (action === 'rotation' && t instanceof HTMLInputElement) {
-      state.rotationEnabled = t.checked;
+    if (action === 'rotation' && el instanceof HTMLInputElement) {
+      state.rotationEnabled = el.checked;
       render();
       return;
     }
-    if (action === 'rotation-step' && t instanceof HTMLSelectElement) {
-      const step = Number(t.value);
+    if (action === 'rotation-step' && el instanceof HTMLSelectElement) {
+      const step = Number(el.value);
       state.rotationStepDeg = step === 1 || step === 5 ? step : 2;
       render();
       return;
     }
-    if (action === 'multi-start' && t instanceof HTMLInputElement) {
-      state.multiStart = state.nestStrategy === 'true_shape' ? false : t.checked;
+    if (action === 'multi-start' && el instanceof HTMLInputElement) {
+      state.multiStart = state.nestStrategy === 'true_shape' ? false : el.checked;
       render();
       return;
     }
-    if (action === 'seed' && t instanceof HTMLInputElement) {
-      state.seed = Number.isFinite(Number(t.value)) ? Math.trunc(Number(t.value)) : 0;
+    if (action === 'seed' && el instanceof HTMLInputElement) {
+      state.seed = Number.isFinite(Number(el.value)) ? Math.trunc(Number(el.value)) : 0;
       render();
       return;
     }
-    if (action === 'cl-dist' && t instanceof HTMLInputElement) {
-      state.commonLineMaxMergeDistanceMm = Math.max(0, Number(t.value) || 0);
+    if (action === 'cl-dist' && el instanceof HTMLInputElement) {
+      state.commonLineMaxMergeDistanceMm = Math.max(0, Number(el.value) || 0);
       render();
       return;
     }
-    if (action === 'cl-min' && t instanceof HTMLInputElement) {
-      state.commonLineMinSharedLenMm = Math.max(0, Number(t.value) || 0);
+    if (action === 'cl-min' && el instanceof HTMLInputElement) {
+      state.commonLineMinSharedLenMm = Math.max(0, Number(el.value) || 0);
       render();
       return;
     }
-    if (action === 'set-enabled' && t instanceof HTMLInputElement) {
-      const id = Number(t.dataset.id ?? '0');
+    if (action === 'set-enabled' && el instanceof HTMLInputElement) {
+      const id = Number(el.dataset.id ?? '0');
       const s = getSetItem(state, id);
       if (!s) return;
-      s.enabled = t.checked;
+      s.enabled = el.checked;
       render();
       return;
     }
