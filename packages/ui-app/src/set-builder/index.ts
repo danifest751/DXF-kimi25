@@ -1093,6 +1093,148 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     `;
   }
 
+  // ─── Modal canvas view state (zoom/pan) ─────────────────────────────
+  let _modalZoom = 1;
+  let _modalPanX = 0;
+  let _modalPanY = 0;
+  let _modalBaseScale = 1;
+  let _modalCx = 0;
+  let _modalCy = 0;
+  let _modalCanvasW = 0;
+  let _modalCanvasH = 0;
+  let _modalInteractionAttached = false;
+
+  function drawModalCanvas(
+    ctx: CanvasRenderingContext2D,
+    lf: typeof loadedFiles[number],
+    cw: number,
+    ch: number,
+  ): void {
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = 'rgba(7, 11, 18, 0.85)';
+    ctx.fillRect(0, 0, cw, ch);
+
+    const totalScale = _modalBaseScale * _modalZoom;
+    const pixelSize = 1 / totalScale;
+    const opts: EntityRenderOptions = {
+      arcSegments: 32,
+      splineSegments: 32,
+      ellipseSegments: 32,
+      pixelSize,
+      viewExtent: Math.max(
+        (lf.doc.totalBBox?.max.x ?? 0) - (lf.doc.totalBBox?.min.x ?? 0),
+        (lf.doc.totalBBox?.max.y ?? 0) - (lf.doc.totalBBox?.min.y ?? 0),
+      ) * 2,
+    };
+
+    ctx.save();
+    ctx.translate(cw / 2 + _modalPanX, ch / 2 + _modalPanY);
+    ctx.scale(totalScale, -totalScale);
+    ctx.translate(-_modalCx, -_modalCy);
+    for (const fe of lf.doc.flatEntities) {
+      renderEntity(ctx, fe, opts);
+    }
+    ctx.restore();
+
+    if (state.previewShowPierces && lf.stats.chains.length > 0) {
+      const dotR = Math.max(2, Math.min(10, totalScale * 1.5));
+      ctx.save();
+      ctx.translate(cw / 2 + _modalPanX, ch / 2 + _modalPanY);
+      ctx.scale(totalScale, -totalScale);
+      ctx.translate(-_modalCx, -_modalCy);
+
+      for (const chain of lf.stats.chains) {
+        const p = chain.piercePoint;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(1 / totalScale, -1 / totalScale);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, dotR + 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 255, 157, 0.25)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = '#00ff9d';
+        ctx.shadowColor = '#00ff9d';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+  }
+
+  function setupModalCanvasInteraction(canvas: HTMLCanvasElement, lf: typeof loadedFiles[number]): void {
+    if (_modalInteractionAttached) return;
+    _modalInteractionAttached = true;
+
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartPanX = 0;
+    let dragStartPanY = 0;
+
+    function redraw(): void {
+      const ctx = canvas.getContext('2d');
+      if (ctx) drawModalCanvas(ctx, lf, canvas.width, canvas.height);
+    }
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const newZoom = Math.max(0.05, Math.min(200, _modalZoom * factor));
+
+      // Keep point under cursor fixed: offset from canvas center
+      const ocx = mx - canvas.width / 2;
+      const ocy = my - canvas.height / 2;
+      const ratio = newZoom / _modalZoom;
+      _modalPanX = ocx - ratio * (ocx - _modalPanX);
+      _modalPanY = ocy - ratio * (ocy - _modalPanY);
+      _modalZoom = newZoom;
+      redraw();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragStartPanX = _modalPanX;
+      dragStartPanY = _modalPanY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      _modalPanX = dragStartPanX + e.clientX - dragStartX;
+      _modalPanY = dragStartPanY + e.clientY - dragStartY;
+      redraw();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('dblclick', () => {
+      _modalZoom = 1;
+      _modalPanX = 0;
+      _modalPanY = 0;
+      redraw();
+    });
+
+    canvas.style.cursor = 'grab';
+  }
+
   function applyModalPierceCanvas(): void {
     const canvas = root.querySelector<HTMLCanvasElement>('#sb-modal-dxf-canvas');
     if (!canvas) return;
@@ -1116,65 +1258,18 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.fillStyle = 'rgba(7, 11, 18, 0.85)';
-    ctx.fillRect(0, 0, cw, ch);
-
+    // Recalculate base scale (fit to canvas) and document center
     const pad = Math.max(4, Math.round(Math.min(cw, ch) * 0.06));
     const availW = Math.max(1, cw - pad * 2);
     const availH = Math.max(1, ch - pad * 2);
-    const scale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
+    _modalBaseScale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
+    _modalCx = bb!.min.x + bbW / 2;
+    _modalCy = bb!.min.y + bbH / 2;
+    _modalCanvasW = cw;
+    _modalCanvasH = ch;
 
-    const cx = bb!.min.x + bbW / 2;
-    const cy = bb!.min.y + bbH / 2;
-    const pixelSize = 1 / scale;
-    const opts: EntityRenderOptions = {
-      arcSegments: 32,
-      splineSegments: 32,
-      ellipseSegments: 32,
-      pixelSize,
-      viewExtent: Math.max(bbW, bbH) * 2,
-    };
-
-    ctx.save();
-    ctx.translate(cw / 2, ch / 2);
-    ctx.scale(scale, -scale);
-    ctx.translate(-cx, -cy);
-    for (const fe of lf.doc.flatEntities) {
-      renderEntity(ctx, fe, opts);
-    }
-    ctx.restore();
-
-    if (state.previewShowPierces && lf.stats.chains.length > 0) {
-      const dotR = Math.max(3, Math.min(8, scale * 1.5));
-      ctx.save();
-      ctx.translate(cw / 2, ch / 2);
-      ctx.scale(scale, -scale);
-      ctx.translate(-cx, -cy);
-
-      for (const chain of lf.stats.chains) {
-        const p = chain.piercePoint;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.scale(1 / scale, -1 / scale);
-
-        ctx.beginPath();
-        ctx.arc(0, 0, dotR + 2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 255, 157, 0.25)';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(0, 0, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = '#00ff9d';
-        ctx.shadowColor = '#00ff9d';
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        ctx.restore();
-      }
-      ctx.restore();
-    }
+    drawModalCanvas(ctx, lf, cw, ch);
+    setupModalCanvasInteraction(canvas, lf);
   }
 
   function render(): void {
@@ -1655,6 +1750,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'preview-lib') {
       state.previewLibraryId = id;
       state.previewSheetId = null;
+      _modalZoom = 1;
+      _modalPanX = 0;
+      _modalPanY = 0;
+      _modalInteractionAttached = false;
       render();
       return;
     }
