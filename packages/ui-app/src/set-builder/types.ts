@@ -1,10 +1,11 @@
 export type ItemStatus = 'ok' | 'warn' | 'error';
 export type LayoutMode = 'gallery' | 'table';
-export type SetBuilderTab = 'set' | 'results';
+export type SetBuilderTab = 'viewA' | 'viewB' | 'results';
 export type NestMode = 'normal' | 'commonLine';
 export type SetBuilderNestingStrategy = 'maxrects_bbox' | 'true_shape';
 export type LibrarySortBy = 'name' | 'area' | 'pierces' | 'cutLen';
 export type LibrarySortDir = 'asc' | 'desc';
+export type SetBuilderViewTab = 'viewA' | 'viewB';
 
 export interface LibraryItem {
   readonly id: number;
@@ -40,7 +41,17 @@ export interface SheetResult {
   readonly utilization: number;
   readonly partCount: number;
   readonly hash: string;
-  readonly blocks: readonly { x: number; y: number; w: number; h: number }[];
+  readonly sheetWidth: number;
+  readonly sheetHeight: number;
+  readonly placements: readonly {
+    itemId: number;
+    name: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    angleDeg: number;
+  }[];
 }
 
 export interface NestingResults {
@@ -67,6 +78,7 @@ export interface SetBuilderState {
   sortBy: LibrarySortBy;
   sortDir: LibrarySortDir;
   activeTab: SetBuilderTab;
+  viewTabOrder: [SetBuilderViewTab, SetBuilderViewTab];
   open: boolean;
   loading: boolean;
   previewLibraryId: number | null;

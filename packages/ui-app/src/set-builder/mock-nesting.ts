@@ -28,19 +28,34 @@ export function runMockNesting(state: SetBuilderState): NestingResults {
     const utilRaw = totalArea / (sheetArea * sheetCount);
     const utilization = Math.min(99, Math.max(14, Math.round((utilRaw * 100 + i * 6) % 100)));
     const hash = hashString(`${base}|${i}`);
-    const blocks = Array.from({ length: Math.min(8, partCount) }, (_, bi) => ({
-      x: 10 + (bi % 4) * 22,
-      y: 10 + Math.floor(bi / 4) * 22,
-      w: 14 + ((i + bi * 3) % 10),
-      h: 10 + ((i * 2 + bi) % 8),
-    }));
+    const placements = Array.from({ length: Math.min(8, partCount) }, (_, bi) => {
+      const w = 180 + ((i + bi * 7) % 120);
+      const h = 120 + ((i * 5 + bi * 3) % 90);
+      const cols = 4;
+      const col = bi % cols;
+      const row = Math.floor(bi / cols);
+      const gap = 24;
+      const x = gap + col * (Math.floor(preset.w / cols));
+      const y = gap + row * (Math.floor(preset.h / 4));
+      return {
+        itemId: bi + 1,
+        name: `Part-${i + 1}-${bi + 1}`,
+        x: Math.min(Math.max(0, x), Math.max(0, preset.w - w)),
+        y: Math.min(Math.max(0, y), Math.max(0, preset.h - h)),
+        w,
+        h,
+        angleDeg: bi % 3 === 0 ? 90 : 0,
+      };
+    });
 
     sheets.push({
       id: `sheet-${i + 1}`,
       utilization,
       partCount,
       hash,
-      blocks,
+      sheetWidth: preset.w,
+      sheetHeight: preset.h,
+      placements,
     });
   }
 

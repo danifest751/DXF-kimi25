@@ -411,7 +411,7 @@
 
 .sb-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -430,6 +430,14 @@
   color: var(--text-primary);
 }
 
+.sb-tab-draggable {
+  cursor: grab;
+}
+
+.sb-tab-draggable:active {
+  cursor: grabbing;
+}
+
 .sb-set-nest-panel {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
@@ -444,6 +452,18 @@
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.sb-custom-sheet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.sb-custom-sheet > span {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .sb-set-list,
@@ -466,6 +486,22 @@
 .sb-set-row:hover,
 .sb-sheet-card:hover {
   border-color: var(--border-light);
+}
+
+.sb-set-list--view-b {
+  gap: 10px;
+}
+
+.sb-set-row--view-b {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-set-row--view-b .sb-set-controls {
+  margin-top: 0;
+  justify-content: flex-end;
 }
 
 .sb-set-name {
@@ -534,6 +570,59 @@
 
 .sb-sheet-actions { justify-content: flex-start; flex-wrap: wrap; }
 
+.sb-sheet-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--sheet-ratio, 1.6);
+  min-height: 180px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: linear-gradient(145deg, rgba(8, 14, 23, 0.9), rgba(12, 20, 34, 0.92));
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.sb-sheet-part {
+  position: absolute;
+  border: 1px solid rgba(126, 198, 255, 0.55);
+  border-radius: 6px;
+  background: rgba(17, 32, 51, 0.9);
+  overflow: hidden;
+}
+
+.sb-sheet-part-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.92;
+}
+
+.sb-sheet-part-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(180, 214, 245, 0.95);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.sb-sheet-part-name {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: rgba(233, 245, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+}
+
 .sb-empty {
   font-size: 12px;
   color: var(--text-secondary);
@@ -601,6 +690,10 @@
   min-height: 260px;
 }
 
+.sb-modal-thumb--sheet .sb-sheet-canvas {
+  min-height: 300px;
+}
+
 .sb-modal-meta {
   display: grid;
   gap: 6px;
@@ -618,9 +711,16 @@
 @media (max-width: 960px) {
   .sb-main { grid-template-columns: 1fr; }
   .sb-right { max-height: 46vh; }
+  .sb-tabs { grid-template-columns: 1fr; }
   .sb-table-head,
   .sb-lib-row--table {
     grid-template-columns: 22px 82px minmax(140px, 1fr) 76px 70px 60px 74px 160px;
+  }
+  .sb-set-row--view-b {
+    grid-template-columns: 1fr;
+  }
+  .sb-set-row--view-b .sb-set-controls {
+    justify-content: flex-start;
   }
   .sb-modal-body { grid-template-columns: 1fr; }
   .sb-top-main { gap: 8px; }

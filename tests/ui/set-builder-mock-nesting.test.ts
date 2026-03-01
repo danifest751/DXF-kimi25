@@ -32,7 +32,9 @@ describe('set-builder mock nesting', () => {
       expect(sheet.utilization).toBeLessThanOrEqual(99);
       expect(sheet.partCount).toBeGreaterThan(0);
       expect(sheet.hash).toMatch(/^[0-9a-f]{8}$/);
-      expect(sheet.blocks.length).toBeGreaterThan(0);
+      expect(sheet.sheetWidth).toBeGreaterThan(0);
+      expect(sheet.sheetHeight).toBeGreaterThan(0);
+      expect(sheet.placements.length).toBeGreaterThan(0);
     }
   });
 });

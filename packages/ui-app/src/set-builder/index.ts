@@ -23,7 +23,7 @@ import {
   setQty,
   upsertSetItem,
 } from './state.js';
-import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
+import type { LibraryItem, SetBuilderState, SetBuilderViewTab, SheetResult } from './types.js';
 
 const STORAGE_KEY = 'dxf_set_builder_state_v1';
 
@@ -36,8 +36,11 @@ function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function getActiveSheetPreset(state: SetBuilderState): { w: number; h: number } {
-  const p = SHEET_PRESETS.find((it) => it.id === state.sheetPresetId) ?? SHEET_PRESETS[0]!;
+function getActiveSheetPreset(
+  state: SetBuilderState,
+  presets: readonly Array<{ id: string; w: number; h: number }>,
+): { w: number; h: number } {
+  const p = presets.find((it) => it.id === state.sheetPresetId) ?? presets[0] ?? SHEET_PRESETS[0]!;
   return { w: p.w, h: p.h };
 }
 
@@ -107,22 +110,22 @@ function createNestingOptions(state: SetBuilderState): NestingOptions {
 }
 
 function mapEngineResultToSetBuilder(result: NestingResult, hashes: readonly string[]): { sheets: SheetResult[] } {
-  const sheetW = Math.max(1, result.sheet.width);
-  const sheetH = Math.max(1, result.sheet.height);
-  const drawW = 100;
-  const drawH = 60;
-
   return {
     sheets: result.sheets.map((sheet, idx) => ({
       id: `sheet-${sheet.sheetIndex + 1}`,
       utilization: Math.max(0, Math.min(100, Math.round(sheet.fillPercent))),
       partCount: sheet.placed.length,
       hash: hashes[idx] ?? '',
-      blocks: sheet.placed.slice(0, 16).map((p) => ({
-        x: 5 + (p.x / sheetW) * drawW,
-        y: 5 + (p.y / sheetH) * drawH,
-        w: Math.max(2, (p.width / sheetW) * drawW),
-        h: Math.max(2, (p.height / sheetH) * drawH),
+      sheetWidth: Math.max(1, result.sheet.width),
+      sheetHeight: Math.max(1, result.sheet.height),
+      placements: sheet.placed.map((p) => ({
+        itemId: p.itemId,
+        name: p.name,
+        x: p.x,
+        y: p.y,
+        w: p.width,
+        h: p.height,
+        angleDeg: p.angleDeg,
       })),
     })),
   };
@@ -194,19 +197,16 @@ function thumbSvg(item: LibraryItem, large = false): string {
   `;
 }
 
-function sheetSvg(sheet: SheetResult): string {
-  const blocks = sheet.blocks
-    .map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="1.2" fill="rgba(0,212,255,.20)" stroke="rgba(0,212,255,.65)"/>`)
-    .join('');
-  return `<svg viewBox="0 0 110 70" class="sb-sheet-svg"><rect x="2" y="2" width="106" height="66" rx="3" fill="none" stroke="rgba(255,255,255,.25)"/>${blocks}</svg>`;
-}
-
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const state = createInitialState();
   state.library = [];
+  let sheetPresets = [...SHEET_PRESETS];
+  let customSheetWidthMm = 1000;
+  let customSheetHeightMm = 2000;
   let toastText = '';
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPickedLibraryId: number | null = null;
+  let draggedViewTab: SetBuilderViewTab | null = null;
   let lastEngineResult: NestingResult | null = null;
   let lastItemDocs = new Map<number, ItemDocData>();
   const dxfThumbCache = new Map<string, string>();
@@ -276,6 +276,29 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     return thumbSvg(item, large);
   }
 
+  function buildSheetPlacementsMarkup(sheet: SheetResult): string {
+    const safeW = Math.max(1, sheet.sheetWidth);
+    const safeH = Math.max(1, sheet.sheetHeight);
+    const ratio = (safeW / safeH).toFixed(4);
+    const placements = sheet.placements
+      .slice(0, 120)
+      .map((p) => {
+        const left = Math.max(0, Math.min(100, (p.x / safeW) * 100));
+        const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
+        const top = Math.max(0, Math.min(100, ((safeH - p.y - p.h) / safeH) * 100));
+        const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
+        const thumb = renderDxfThumbDataUrl(p.itemId, 160, 100);
+        return `
+          <div class="sb-sheet-part" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
+            ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
+            <span class="sb-sheet-part-name">${esc(p.name)}</span>
+          </div>
+        `;
+      })
+      .join('');
+    return `<div class="sb-sheet-canvas" style="--sheet-ratio:${ratio};">${placements}</div>`;
+  }
+
   function buildSingleSheetResult(sheetIndex: number): NestingResult | null {
     if (!lastEngineResult) return null;
     const sheet = lastEngineResult.sheets[sheetIndex];
@@ -326,6 +349,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         layout?: 'gallery' | 'table';
         sortBy?: 'name' | 'area' | 'pierces' | 'cutLen';
         sortDir?: 'asc' | 'desc';
+        activeTab?: 'viewA' | 'viewB' | 'results';
+        viewTabOrder?: SetBuilderViewTab[];
+        customSheetPresets?: Array<{ id: string; label: string; w: number; h: number }>;
+        customSheetWidthMm?: number;
+        customSheetHeightMm?: number;
         set?: Array<{ libraryId: number; qty: number; enabled: boolean }>;
       };
       state.search = typeof parsed.search === 'string' ? parsed.search : '';
@@ -347,6 +375,33 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.layout = parsed.layout === 'table' ? 'table' : 'gallery';
       state.sortBy = parsed.sortBy === 'area' || parsed.sortBy === 'pierces' || parsed.sortBy === 'cutLen' ? parsed.sortBy : 'name';
       state.sortDir = parsed.sortDir === 'desc' ? 'desc' : 'asc';
+      state.activeTab = parsed.activeTab === 'viewB' || parsed.activeTab === 'results' ? parsed.activeTab : 'viewA';
+      const validViewOrder = Array.isArray(parsed.viewTabOrder)
+        && parsed.viewTabOrder.length === 2
+        && parsed.viewTabOrder.includes('viewA')
+        && parsed.viewTabOrder.includes('viewB');
+      state.viewTabOrder = validViewOrder
+        ? [parsed.viewTabOrder[0] as SetBuilderViewTab, parsed.viewTabOrder[1] as SetBuilderViewTab]
+        : ['viewA', 'viewB'];
+      const customPresets = (parsed.customSheetPresets ?? []).filter((p) => {
+        return typeof p.id === 'string'
+          && p.id.startsWith('custom_')
+          && typeof p.label === 'string'
+          && Number.isFinite(p.w)
+          && Number.isFinite(p.h)
+          && p.w > 0
+          && p.h > 0;
+      });
+      sheetPresets = [...SHEET_PRESETS, ...customPresets.map((p) => ({ id: p.id, label: p.label, w: p.w, h: p.h }))];
+      customSheetWidthMm = Number.isFinite(parsed.customSheetWidthMm)
+        ? Math.max(1, Math.round(parsed.customSheetWidthMm ?? 1))
+        : customSheetWidthMm;
+      customSheetHeightMm = Number.isFinite(parsed.customSheetHeightMm)
+        ? Math.max(1, Math.round(parsed.customSheetHeightMm ?? 1))
+        : customSheetHeightMm;
+      if (!sheetPresets.some((p) => p.id === state.sheetPresetId)) {
+        state.sheetPresetId = sheetPresets[0]?.id ?? SHEET_PRESETS[0]!.id;
+      }
       state.set.clear();
       for (const row of parsed.set ?? []) {
         if (!Number.isFinite(row.libraryId) || !Number.isFinite(row.qty)) continue;
@@ -363,6 +418,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   }
 
   function persistState(): void {
+    const customSheetPresets = sheetPresets
+      .filter((p) => p.id.startsWith('custom_'))
+      .map((p) => ({ id: p.id, label: p.label, w: p.w, h: p.h }));
     const payload = {
       search: state.search,
       catalogFilter: state.catalogFilter,
@@ -379,6 +437,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       layout: state.layout,
       sortBy: state.sortBy,
       sortDir: state.sortDir,
+      activeTab: state.activeTab,
+      viewTabOrder: state.viewTabOrder,
+      customSheetPresets,
+      customSheetWidthMm,
+      customSheetHeightMm,
       set: [...state.set.values()].map((s) => ({ libraryId: s.libraryId, qty: s.qty, enabled: s.enabled })),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -477,7 +540,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   async function runNesting(): Promise<void> {
     if (!canRunNesting(state)) return;
 
-    const sheet = getActiveSheetPreset(state);
+    const sheet = getActiveSheetPreset(state, sheetPresets);
     const options = createNestingOptions(state);
     const gap = options.commonLine?.enabled ? 0 : Math.max(0, state.gapMm);
     const { items, skipped } = buildSetNestingItems(state);
@@ -884,7 +947,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             <button class="sb-icon" data-a="close-preview">✕</button>
           </div>
           <div class="sb-modal-body">
-            <div class="sb-modal-thumb">${sheetSvg(sheet)}</div>
+            <div class="sb-modal-thumb sb-modal-thumb--sheet">${buildSheetPlacementsMarkup(sheet)}</div>
             <div class="sb-modal-meta">
               <div><b>${t('setBuilder.utilization')}:</b> ${sheet.utilization}%</div>
               <div><b>${t('setBuilder.partCount')}:</b> ${sheet.partCount}</div>
@@ -917,6 +980,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const commonLineActive = lastEngineResult?.gap === 0;
     const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
     const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
+    const setViewActive = state.activeTab === 'viewA' || state.activeTab === 'viewB';
+    const orderedTabs: Array<'viewA' | 'viewB' | 'results'> = [...state.viewTabOrder, 'results'];
 
     const libraryContent = filtered.length === 0
       ? `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`
@@ -1006,16 +1071,23 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
           <aside class="sb-right">
             <div class="sb-tabs">
-              <button class="${state.activeTab === 'set' ? 'active' : ''}" data-a="tab" data-tab="set">${t('setBuilder.tabSet')}</button>
-              <button class="${state.activeTab === 'results' ? 'active' : ''}" data-a="tab" data-tab="results">${t('setBuilder.tabResults')}</button>
+              ${orderedTabs.map((tab) => {
+                const title = tab === 'results'
+                  ? t('setBuilder.tabResults')
+                  : tab === 'viewA'
+                    ? t('setBuilder.layoutA')
+                    : t('setBuilder.layoutB');
+                const draggable = tab === 'viewA' || tab === 'viewB';
+                return `<button class="${state.activeTab === tab ? 'active' : ''} ${draggable ? 'sb-tab-draggable' : ''}" data-a="tab" data-tab="${tab}" ${draggable ? 'draggable="true"' : ''}>${title}</button>`;
+              }).join('')}
             </div>
 
-            ${state.activeTab === 'set' ? `
-              <div class="sb-set-list">
+            ${setViewActive ? `
+              <div class="sb-set-list ${state.activeTab === 'viewB' ? 'sb-set-list--view-b' : ''}">
                 ${setRows.length === 0
                   ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
                   : setRows.map(({ item, set }) => `
-                    <div class="sb-set-row">
+                    <div class="sb-set-row ${state.activeTab === 'viewB' ? 'sb-set-row--view-b' : ''}">
                       <div class="sb-set-head">
                         <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
                         <div class="sb-set-name">${esc(item.name)}</div>
@@ -1036,8 +1108,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <div class="sb-set-nest-panel">
                 <div class="sb-set-nest-controls">
                   <select class="sb-select" data-a="preset">
-                    ${SHEET_PRESETS.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                    ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
                   </select>
+                  <div class="sb-custom-sheet">
+                    <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" title="${t('setBuilder.customSheetW')}" />
+                    <span>×</span>
+                    <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" title="${t('setBuilder.customSheetH')}" />
+                    <button class="sb-btn sb-btn--ghost" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
+                  </div>
                   <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
                     <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
                     <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
@@ -1090,7 +1168,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 ${!state.results ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>` : state.results.sheets.map((sheet, index) => `
                   <div class="sb-sheet-card">
                     <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                    ${sheetSvg(sheet)}
+                    ${buildSheetPlacementsMarkup(sheet)}
                     <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
                     <div class="sb-sheet-actions">
                       <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
@@ -1200,9 +1278,24 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       void deleteCurrentCatalog();
       return;
     }
-    if (action === 'tab') {
-      state.activeTab = button.dataset.tab === 'results' ? 'results' : 'set';
+    if (action === 'sheet-custom-add') {
+      const w = Math.max(1, Math.round(customSheetWidthMm));
+      const h = Math.max(1, Math.round(customSheetHeightMm));
+      const id = `custom_${w}x${h}`;
+      const existing = sheetPresets.find((p) => p.id === id);
+      if (!existing) {
+        sheetPresets = [...sheetPresets, { id, label: `Sheet ${w}x${h}`, w, h }];
+      }
+      state.sheetPresetId = id;
       render();
+      return;
+    }
+    if (action === 'tab') {
+      const tab = button.dataset.tab;
+      if (tab === 'viewA' || tab === 'viewB' || tab === 'results') {
+        state.activeTab = tab;
+        render();
+      }
       return;
     }
     if (action === 'layout') {
@@ -1381,6 +1474,51 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   });
 
+  root.addEventListener('dragstart', (e) => {
+    const target = e.target as HTMLElement;
+    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
+    const tab = tabBtn?.dataset.tab;
+    if (tab !== 'viewA' && tab !== 'viewB') return;
+    draggedViewTab = tab;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tab);
+    }
+  });
+
+  root.addEventListener('dragover', (e) => {
+    const target = e.target as HTMLElement;
+    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
+    const tab = tabBtn?.dataset.tab;
+    if (!draggedViewTab || (tab !== 'viewA' && tab !== 'viewB')) return;
+    e.preventDefault();
+  });
+
+  root.addEventListener('drop', (e) => {
+    const target = e.target as HTMLElement;
+    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
+    const targetTab = tabBtn?.dataset.tab;
+    if (!draggedViewTab || (targetTab !== 'viewA' && targetTab !== 'viewB')) return;
+    e.preventDefault();
+    if (draggedViewTab === targetTab) {
+      draggedViewTab = null;
+      return;
+    }
+    const nextOrder = [...state.viewTabOrder];
+    const from = nextOrder.indexOf(draggedViewTab);
+    const to = nextOrder.indexOf(targetTab);
+    if (from >= 0 && to >= 0) {
+      [nextOrder[from], nextOrder[to]] = [nextOrder[to]!, nextOrder[from]!];
+      state.viewTabOrder = [nextOrder[0] as SetBuilderViewTab, nextOrder[1] as SetBuilderViewTab];
+      render();
+    }
+    draggedViewTab = null;
+  });
+
+  root.addEventListener('dragend', () => {
+    draggedViewTab = null;
+  });
+
   root.addEventListener('input', (e) => {
     const t = e.target as HTMLElement;
     if (!(t instanceof HTMLInputElement)) return;
@@ -1418,6 +1556,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'preset' && t instanceof HTMLSelectElement) {
       state.sheetPresetId = t.value;
       render();
+      return;
+    }
+    if (action === 'sheet-custom-w' && t instanceof HTMLInputElement) {
+      customSheetWidthMm = Math.max(1, Number(t.value) || 1);
+      return;
+    }
+    if (action === 'sheet-custom-h' && t instanceof HTMLInputElement) {
+      customSheetHeightMm = Math.max(1, Number(t.value) || 1);
       return;
     }
     if (action === 'gap' && t instanceof HTMLInputElement) {
