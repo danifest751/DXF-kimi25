@@ -410,7 +410,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       }
     }
 
-    const availableCatalogs = new Set(['All', ...state.library.map((i) => i.catalog)]);
+    const availableCatalogs = new Set<string>(['All', 'Uncategorized']);
+    for (const item of state.library) availableCatalogs.add(item.catalog);
+    for (const c of workspaceCatalogs) availableCatalogs.add(c.name);
     if (!availableCatalogs.has(state.catalogFilter)) {
       state.catalogFilter = 'All';
     }
@@ -1009,6 +1011,28 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             </div>
 
             ${state.activeTab === 'set' ? `
+              <div class="sb-set-list">
+                ${setRows.length === 0
+                  ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
+                  : setRows.map(({ item, set }) => `
+                    <div class="sb-set-row">
+                      <div class="sb-set-head">
+                        <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
+                        <div class="sb-set-name">${esc(item.name)}</div>
+                      </div>
+                      <div class="sb-set-controls">
+                        <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
+                        <div class="sb-stepper">
+                          <button data-a="qty-minus" data-id="${item.id}">-</button>
+                          <span>${set.qty}</span>
+                          <button data-a="qty-plus" data-id="${item.id}">+</button>
+                        </div>
+                        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
+                        <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
+                      </div>
+                    </div>
+                  `).join('')}
+              </div>
               <div class="sb-set-nest-panel">
                 <div class="sb-set-nest-controls">
                   <select class="sb-select" data-a="preset">
@@ -1035,28 +1059,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
                 </div>
                 <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
-              </div>
-              <div class="sb-set-list">
-                ${setRows.length === 0
-                  ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
-                  : setRows.map(({ item, set }) => `
-                    <div class="sb-set-row">
-                      <div class="sb-set-head">
-                        <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
-                        <div class="sb-set-name">${esc(item.name)}</div>
-                      </div>
-                      <div class="sb-set-controls">
-                        <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
-                        <div class="sb-stepper">
-                          <button data-a="qty-minus" data-id="${item.id}">-</button>
-                          <span>${set.qty}</span>
-                          <button data-a="qty-plus" data-id="${item.id}">+</button>
-                        </div>
-                        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
-                        <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
-                      </div>
-                    </div>
-                  `).join('')}
               </div>
               <div class="sb-totals">
                 <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
