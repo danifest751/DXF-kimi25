@@ -180,6 +180,7 @@ export const ru = {
   'setBuilder.commonLine': 'Общий рез',
   'setBuilder.layoutA': 'Вид A',
   'setBuilder.layoutB': 'Вид B',
+  'setBuilder.unnamedCatalog': 'Без названия',
   'setBuilder.customSheetW': 'Своя ширина листа (мм)',
   'setBuilder.customSheetH': 'Своя высота листа (мм)',
   'setBuilder.addSheetSize': 'Добавить размер',

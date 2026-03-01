@@ -132,7 +132,7 @@ function mapEngineResultToSetBuilder(result: NestingResult, hashes: readonly str
 }
 
 function mapLoadedCatalogName(catalogId: string | null): string {
-  if (catalogId === null || catalogId === UNCATEGORIZED_CATALOG_ID) return 'Uncategorized';
+  if (catalogId === null || catalogId === UNCATEGORIZED_CATALOG_ID) return t('setBuilder.unnamedCatalog');
   return workspaceCatalogs.find((c) => c.id === catalogId)?.name ?? 'Workspace';
 }
 
@@ -207,6 +207,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPickedLibraryId: number | null = null;
   let draggedViewTab: SetBuilderViewTab | null = null;
+  let draggedLibraryId: number | null = null;
+  let dragOverCatalogEl: HTMLElement | null = null;
   let lastEngineResult: NestingResult | null = null;
   let lastItemDocs = new Map<number, ItemDocData>();
   const dxfThumbCache = new Map<string, string>();
@@ -285,7 +287,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       .map((p) => {
         const left = Math.max(0, Math.min(100, (p.x / safeW) * 100));
         const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
-        const top = Math.max(0, Math.min(100, ((safeH - p.y - p.h) / safeH) * 100));
+        const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
         const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
         const thumb = renderDxfThumbDataUrl(p.itemId, 160, 100);
         return `
@@ -473,7 +475,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       }
     }
 
-    const availableCatalogs = new Set<string>(['All', 'Uncategorized']);
+    const availableCatalogs = new Set<string>(['All', t('setBuilder.unnamedCatalog')]);
     for (const item of state.library) availableCatalogs.add(item.catalog);
     for (const c of workspaceCatalogs) availableCatalogs.add(c.name);
     if (!availableCatalogs.has(state.catalogFilter)) {
@@ -608,8 +610,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const checked = state.selectedLibraryIds.has(item.id) ? 'checked' : '';
     const selectedClass = checked ? 'sb-lib-row--selected' : '';
     const menuOpen = state.openMenuLibraryId === item.id;
+    const draggable = item.sourceFileId !== undefined ? 'draggable="true"' : '';
     return `
-      <div class="sb-lib-row ${selectedClass} ${layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}">
+      <div class="sb-lib-row ${selectedClass} ${layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}" data-a="lib-row" data-id="${item.id}" ${draggable}>
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
         <div class="sb-thumb">${buildThumbMarkup(item)}</div>
         <div class="sb-meta">
@@ -672,43 +675,26 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     return true;
   }
 
-  async function moveLibraryItemToCatalog(libraryId: number): Promise<void> {
+  async function moveLibraryItemToCatalogName(libraryId: number, targetCatalogName: string): Promise<boolean> {
     const item = getLibraryItem(state, libraryId);
-    if (!item) return;
+    if (!item) return false;
 
-    const options = [t('sidebar.uncategorized'), ...workspaceCatalogs.map((c, i) => `${i + 1}: ${c.name}`)].join('\n');
-    const raw = prompt(`${t('setBuilder.prompt.moveToCatalog')}\n${options}`, item.catalog);
-    if (raw == null) return;
-
-    const val = raw.trim();
-    const lower = val.toLowerCase();
-
+    const unnamedCatalogName = t('setBuilder.unnamedCatalog');
     let nextCatalogId: string | null = null;
-    let nextCatalogName = 'Uncategorized';
-    if (!val || lower === t('sidebar.uncategorized').toLowerCase() || lower === '0' || lower === 'uncategorized') {
-      nextCatalogId = null;
-      nextCatalogName = 'Uncategorized';
-    } else {
-      const idx = Number(val);
-      if (Number.isFinite(idx) && idx >= 1 && idx <= workspaceCatalogs.length) {
-        nextCatalogId = workspaceCatalogs[idx - 1]!.id;
-        nextCatalogName = workspaceCatalogs[idx - 1]!.name;
-      } else {
-        const found = workspaceCatalogs.find((c) => c.name.toLowerCase() === lower);
-        if (!found) {
-          showToast(t('setBuilder.toast.catalogNotFound'));
-          return;
-        }
-        nextCatalogId = found.id;
-        nextCatalogName = found.name;
-      }
+    let nextCatalogName = unnamedCatalogName;
+
+    if (targetCatalogName !== unnamedCatalogName) {
+      const found = workspaceCatalogs.find((c) => c.name === targetCatalogName);
+      if (!found) return false;
+      nextCatalogId = found.id;
+      nextCatalogName = found.name;
     }
 
     if (item.sourceFileId !== undefined) {
       const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
       if (lf) {
         const prevCatalogId = lf.catalogId;
-        if (prevCatalogId === nextCatalogId) return;
+        if (prevCatalogId === nextCatalogId) return false;
         lf.catalogId = nextCatalogId;
         if (lf.remoteId) {
           try {
@@ -718,17 +704,52 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             }, getAuthHeaders());
           } catch {
             lf.catalogId = prevCatalogId;
-            showToast(t('setBuilder.toast.itemMoveFailed'));
-            return;
+            return false;
           }
         }
       }
     }
 
     const libIdx = state.library.findIndex((it) => it.id === libraryId);
-    if (libIdx < 0) return;
+    if (libIdx < 0) return false;
     state.library[libIdx] = { ...item, catalog: nextCatalogName };
     saveGuestDraft();
+    return true;
+  }
+
+  async function moveLibraryItemToCatalog(libraryId: number): Promise<void> {
+    const item = getLibraryItem(state, libraryId);
+    if (!item) return;
+
+    const unnamedCatalogName = t('setBuilder.unnamedCatalog');
+    const options = [unnamedCatalogName, ...workspaceCatalogs.map((c, i) => `${i + 1}: ${c.name}`)].join('\n');
+    const raw = prompt(`${t('setBuilder.prompt.moveToCatalog')}\n${options}`, item.catalog);
+    if (raw == null) return;
+
+    const val = raw.trim();
+    const lower = val.toLowerCase();
+
+    let nextCatalogName = unnamedCatalogName;
+    if (!val || lower === unnamedCatalogName.toLowerCase() || lower === '0' || lower === 'uncategorized') {
+      nextCatalogName = unnamedCatalogName;
+    } else {
+      const idx = Number(val);
+      if (Number.isFinite(idx) && idx >= 1 && idx <= workspaceCatalogs.length) {
+        nextCatalogName = workspaceCatalogs[idx - 1]!.name;
+      } else {
+        const found = workspaceCatalogs.find((c) => c.name.toLowerCase() === lower);
+        if (!found) {
+          showToast(t('setBuilder.toast.catalogNotFound'));
+          return;
+        }
+        nextCatalogName = found.name;
+      }
+    }
+    const moved = await moveLibraryItemToCatalogName(libraryId, nextCatalogName);
+    if (!moved) {
+      showToast(t('setBuilder.toast.itemMoveFailed'));
+      return;
+    }
     showToast(t('setBuilder.toast.itemMoved'));
   }
 
@@ -773,7 +794,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   }
 
   function getCatalogByFilterName(): { id: string; name: string } | null {
-    if (state.catalogFilter === 'All' || state.catalogFilter === 'Uncategorized') return null;
+    if (state.catalogFilter === 'All' || state.catalogFilter === t('setBuilder.unnamedCatalog')) return null;
     const found = workspaceCatalogs.find((c) => c.name === state.catalogFilter);
     return found ? { id: found.id, name: found.name } : null;
   }
@@ -970,7 +991,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const setRows = getSetRows(state);
     const totals = getTotals(state);
     const issues = getAggregatedIssues(state);
-    const catalogNames = new Set<string>(['All', 'Uncategorized']);
+    const unnamedCatalogName = t('setBuilder.unnamedCatalog');
+    const catalogNames = new Set<string>(['All', unnamedCatalogName]);
     for (const item of state.library) catalogNames.add(item.catalog);
     for (const c of workspaceCatalogs) catalogNames.add(c.name);
     const catalogOptions = [
@@ -984,22 +1006,57 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const showResultsInMain = state.activeTab === 'results';
     const activeLibraryLayout = state.activeTab === 'viewB' ? 'table' : 'gallery';
 
-    const libraryContent = filtered.length === 0
-      ? `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`
-      : activeLibraryLayout === 'gallery'
-        ? filtered.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')
-        : `
-          <div class="sb-table-head">
-            <div></div><div></div>
-            <button class="sb-th" data-a="sort-col" data-sort="name">${t('setBuilder.name')}${sortMark(state, 'name')}</button>
-            <div>${t('setBuilder.qty')}</div>
-            <button class="sb-th" data-a="sort-col" data-sort="area">W×H${sortMark(state, 'area')}</button>
-            <button class="sb-th" data-a="sort-col" data-sort="pierces">${t('setBuilder.pierces')}${sortMark(state, 'pierces')}</button>
-            <button class="sb-th" data-a="sort-col" data-sort="cutLen">${t('setBuilder.cutLength')}${sortMark(state, 'cutLen')}</button>
-            <div>${t('setBuilder.actions')}</div>
-          </div>
-          ${filtered.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')}
-        `;
+    const tableHead = `
+      <div class="sb-table-head">
+        <div></div><div></div>
+        <button class="sb-th" data-a="sort-col" data-sort="name">${t('setBuilder.name')}${sortMark(state, 'name')}</button>
+        <div>${t('setBuilder.qty')}</div>
+        <button class="sb-th" data-a="sort-col" data-sort="area">W×H${sortMark(state, 'area')}</button>
+        <button class="sb-th" data-a="sort-col" data-sort="pierces">${t('setBuilder.pierces')}${sortMark(state, 'pierces')}</button>
+        <button class="sb-th" data-a="sort-col" data-sort="cutLen">${t('setBuilder.cutLength')}${sortMark(state, 'cutLen')}</button>
+        <div>${t('setBuilder.actions')}</div>
+      </div>
+    `;
+    const renderCatalogItems = (items: LibraryItem[]): string => {
+      if (items.length === 0) return `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`;
+      if (activeLibraryLayout === 'gallery') return items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('');
+      return `${tableHead}${items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')}`;
+    };
+
+    const groupedCatalogContent = (() => {
+      if (filtered.length === 0) return `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`;
+
+      const groups = new Map<string, LibraryItem[]>();
+      for (const item of filtered) {
+        const list = groups.get(item.catalog);
+        if (list) list.push(item);
+        else groups.set(item.catalog, [item]);
+      }
+
+      const orderedCatalogs = [
+        ...workspaceCatalogs.map((c) => c.name),
+        unnamedCatalogName,
+        ...[...groups.keys()].filter((name) => name !== unnamedCatalogName && !workspaceCatalogs.some((c) => c.name === name)),
+      ];
+
+      return orderedCatalogs
+        .filter((catalogName) => groups.has(catalogName))
+        .map((catalogName) => {
+          const items = groups.get(catalogName) ?? [];
+          return `
+            <section class="sb-catalog-group">
+              <div class="sb-catalog-group-head" data-a="catalog-drop" data-catalog="${esc(catalogName)}">
+                <span class="sb-catalog-group-name">${esc(catalogName)}</span>
+                <span class="sb-catalog-group-count">${items.length}</span>
+              </div>
+              <div class="sb-catalog-group-body ${activeLibraryLayout === 'table' ? 'sb-library--table' : ''}">
+                ${renderCatalogItems(items)}
+              </div>
+            </section>
+          `;
+        })
+        .join('');
+    })();
 
     const selectedCount = state.selectedLibraryIds.size;
     const runDisabled = canRunNesting(state) ? '' : 'disabled';
@@ -1022,7 +1079,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <input class="sb-input sb-input--search" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
               <select class="sb-select sb-select--catalog" data-a="catalog">
                 ${catalogOptions.map((c) => {
-                  const label = c === 'All' ? t('sidebar.allCatalogs') : c === 'Uncategorized' ? t('sidebar.uncategorized') : c;
+                  const label = c === 'All' ? t('sidebar.allCatalogs') : c;
                   return `<option value="${c}" ${state.catalogFilter === c ? 'selected' : ''}>${label}</option>`;
                 }).join('')}
               </select>
@@ -1112,7 +1169,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 </div>
               </div>
             ` : `
-              <div class="sb-library ${activeLibraryLayout === 'table' ? 'sb-library--table' : ''}">${libraryContent}</div>
+              <div class="sb-library">${state.catalogFilter === 'All' ? groupedCatalogContent : renderCatalogItems(filtered)}</div>
             `}
           </div>
 
@@ -1482,45 +1539,102 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const target = e.target as HTMLElement;
     const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
     const tab = tabBtn?.dataset.tab;
-    if (tab !== 'viewA' && tab !== 'viewB') return;
-    draggedViewTab = tab;
+    if (tab === 'viewA' || tab === 'viewB') {
+      draggedViewTab = tab;
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', tab);
+      }
+      return;
+    }
+
+    const libRow = target.closest<HTMLElement>('[data-a="lib-row"][data-id]');
+    if (!libRow) return;
+    const libraryId = Number(libRow.dataset.id ?? '0');
+    if (!Number.isFinite(libraryId) || libraryId <= 0) return;
+    draggedLibraryId = libraryId;
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', tab);
+      e.dataTransfer.setData('application/x-set-builder-lib-id', String(libraryId));
     }
   });
 
   root.addEventListener('dragover', (e) => {
     const target = e.target as HTMLElement;
-    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
-    const tab = tabBtn?.dataset.tab;
-    if (!draggedViewTab || (tab !== 'viewA' && tab !== 'viewB')) return;
-    e.preventDefault();
+    if (draggedViewTab) {
+      const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
+      const tab = tabBtn?.dataset.tab;
+      if (tab === 'viewA' || tab === 'viewB') {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (draggedLibraryId !== null) {
+      const catalogHead = target.closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
+      if (!catalogHead) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      if (dragOverCatalogEl && dragOverCatalogEl !== catalogHead) {
+        dragOverCatalogEl.classList.remove('drag-over');
+      }
+      dragOverCatalogEl = catalogHead;
+      dragOverCatalogEl.classList.add('drag-over');
+    }
   });
 
   root.addEventListener('drop', (e) => {
     const target = e.target as HTMLElement;
-    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
-    const targetTab = tabBtn?.dataset.tab;
-    if (!draggedViewTab || (targetTab !== 'viewA' && targetTab !== 'viewB')) return;
-    e.preventDefault();
-    if (draggedViewTab === targetTab) {
+    if (draggedViewTab) {
+      const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
+      const targetTab = tabBtn?.dataset.tab;
+      if (targetTab !== 'viewA' && targetTab !== 'viewB') return;
+      e.preventDefault();
+      if (draggedViewTab === targetTab) {
+        draggedViewTab = null;
+        return;
+      }
+      const nextOrder = [...state.viewTabOrder];
+      const from = nextOrder.indexOf(draggedViewTab);
+      const to = nextOrder.indexOf(targetTab);
+      if (from >= 0 && to >= 0) {
+        [nextOrder[from], nextOrder[to]] = [nextOrder[to]!, nextOrder[from]!];
+        state.viewTabOrder = [nextOrder[0] as SetBuilderViewTab, nextOrder[1] as SetBuilderViewTab];
+        render();
+      }
       draggedViewTab = null;
       return;
     }
-    const nextOrder = [...state.viewTabOrder];
-    const from = nextOrder.indexOf(draggedViewTab);
-    const to = nextOrder.indexOf(targetTab);
-    if (from >= 0 && to >= 0) {
-      [nextOrder[from], nextOrder[to]] = [nextOrder[to]!, nextOrder[from]!];
-      state.viewTabOrder = [nextOrder[0] as SetBuilderViewTab, nextOrder[1] as SetBuilderViewTab];
-      render();
+
+    if (draggedLibraryId !== null) {
+      const catalogHead = target.closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
+      if (!catalogHead) return;
+      e.preventDefault();
+      const targetCatalog = catalogHead.dataset.catalog ?? '';
+      const currentItem = getLibraryItem(state, draggedLibraryId);
+      dragOverCatalogEl?.classList.remove('drag-over');
+      dragOverCatalogEl = null;
+      if (!targetCatalog || !currentItem || currentItem.catalog === targetCatalog) {
+        draggedLibraryId = null;
+        return;
+      }
+      const moveId = draggedLibraryId;
+      draggedLibraryId = null;
+      void moveLibraryItemToCatalogName(moveId, targetCatalog).then((moved) => {
+        if (moved) showToast(t('setBuilder.toast.itemMoved'));
+        else showToast(t('setBuilder.toast.itemMoveFailed'));
+        render();
+      });
     }
-    draggedViewTab = null;
   });
 
   root.addEventListener('dragend', () => {
     draggedViewTab = null;
+    draggedLibraryId = null;
+    if (dragOverCatalogEl) {
+      dragOverCatalogEl.classList.remove('drag-over');
+      dragOverCatalogEl = null;
+    }
   });
 
   root.addEventListener('input', (e) => {

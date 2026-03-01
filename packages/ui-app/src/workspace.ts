@@ -71,10 +71,10 @@ export function fileCatalogKey(file: Pick<LoadedFile, 'catalogId'>): string {
 }
 
 export function getPreferredUploadCatalogId(): string | null {
-  for (const id of selectedCatalogIds) {
-    if (id !== UNCATEGORIZED_CATALOG_ID) return id;
-  }
-  return null;
+  if (selectedCatalogIds.size !== 1) return null;
+  const [id] = [...selectedCatalogIds];
+  if (!id || id === UNCATEGORIZED_CATALOG_ID) return null;
+  return id;
 }
 
 export function selectAllCatalogsForCurrentData(): void {

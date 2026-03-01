@@ -182,6 +182,7 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.commonLine': 'Common-line',
   'setBuilder.layoutA': 'Layout A',
   'setBuilder.layoutB': 'Layout B',
+  'setBuilder.unnamedCatalog': 'Untitled',
   'setBuilder.customSheetW': 'Custom sheet width (mm)',
   'setBuilder.customSheetH': 'Custom sheet height (mm)',
   'setBuilder.addSheetSize': 'Add size',
