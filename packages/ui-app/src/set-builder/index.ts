@@ -603,13 +603,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
-  function buildLibraryRow(item: LibraryItem): string {
+  function buildLibraryRow(item: LibraryItem, layout: 'gallery' | 'table' = state.layout): string {
     const inSet = getSetItem(state, item.id);
     const checked = state.selectedLibraryIds.has(item.id) ? 'checked' : '';
     const selectedClass = checked ? 'sb-lib-row--selected' : '';
     const menuOpen = state.openMenuLibraryId === item.id;
     return `
-      <div class="sb-lib-row ${selectedClass} ${state.layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}">
+      <div class="sb-lib-row ${selectedClass} ${layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}">
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
         <div class="sb-thumb">${buildThumbMarkup(item)}</div>
         <div class="sb-meta">
@@ -617,7 +617,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           <div class="sb-sub">${t('setBuilder.catalog')}: ${esc(item.catalog)} · ${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
           <span class="sb-badge sb-badge--${item.status}">${statusLabel(item)}</span>
         </div>
-        ${state.layout === 'table' ? `
+        ${layout === 'table' ? `
           <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
             <button data-a="qty-minus" data-id="${item.id}">-</button>
             <span>${inSet?.qty ?? 0}</span>
@@ -980,13 +980,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const commonLineActive = lastEngineResult?.gap === 0;
     const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
     const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
-    const setViewActive = state.activeTab === 'viewA' || state.activeTab === 'viewB';
     const orderedTabs: Array<'viewA' | 'viewB' | 'results'> = [...state.viewTabOrder, 'results'];
+    const showResultsInMain = state.activeTab === 'results';
+    const activeLibraryLayout = state.activeTab === 'viewB' ? 'table' : 'gallery';
 
     const libraryContent = filtered.length === 0
       ? `<div class="sb-empty">${t('setBuilder.empty.noItems')}</div>`
-      : state.layout === 'gallery'
-        ? filtered.map((item) => buildLibraryRow(item)).join('')
+      : activeLibraryLayout === 'gallery'
+        ? filtered.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')
         : `
           <div class="sb-table-head">
             <div></div><div></div>
@@ -997,7 +998,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             <button class="sb-th" data-a="sort-col" data-sort="cutLen">${t('setBuilder.cutLength')}${sortMark(state, 'cutLen')}</button>
             <div>${t('setBuilder.actions')}</div>
           </div>
-          ${filtered.map((item) => buildLibraryRow(item)).join('')}
+          ${filtered.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')}
         `;
 
     const selectedCount = state.selectedLibraryIds.size;
@@ -1042,22 +1043,31 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         <div class="sb-main">
           <div class="sb-left">
             <div class="sb-list-toolbar">
-              <div class="sb-toggle">
-                <button class="${state.layout === 'gallery' ? 'active' : ''}" data-a="layout" data-layout="gallery">${t('setBuilder.layoutA')}</button>
-                <button class="${state.layout === 'table' ? 'active' : ''}" data-a="layout" data-layout="table">${t('setBuilder.layoutB')}</button>
+              <div class="sb-tabs">
+                ${orderedTabs.map((tab) => {
+                  const title = tab === 'results'
+                    ? t('setBuilder.tabResults')
+                    : tab === 'viewA'
+                      ? t('setBuilder.layoutA')
+                      : t('setBuilder.layoutB');
+                  const draggable = tab === 'viewA' || tab === 'viewB';
+                  return `<button class="${state.activeTab === tab ? 'active' : ''} ${draggable ? 'sb-tab-draggable' : ''}" data-a="tab" data-tab="${tab}" ${draggable ? 'draggable="true"' : ''}>${title}</button>`;
+                }).join('')}
               </div>
-              <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
-                <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
-                <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
-                <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
-                <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
-              </select>
-              <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
-                <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
-                <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
-              </select>
+              ${showResultsInMain ? '' : `
+                <select class="sb-select" data-a="sort-by" title="${t('setBuilder.sortBy')}">
+                  <option value="name" ${state.sortBy === 'name' ? 'selected' : ''}>${t('setBuilder.sortName')}</option>
+                  <option value="area" ${state.sortBy === 'area' ? 'selected' : ''}>${t('setBuilder.sortArea')}</option>
+                  <option value="pierces" ${state.sortBy === 'pierces' ? 'selected' : ''}>${t('setBuilder.sortPierces')}</option>
+                  <option value="cutLen" ${state.sortBy === 'cutLen' ? 'selected' : ''}>${t('setBuilder.sortCutLen')}</option>
+                </select>
+                <select class="sb-select" data-a="sort-dir" title="${t('setBuilder.sortDirection')}">
+                  <option value="asc" ${state.sortDir === 'asc' ? 'selected' : ''}>${t('setBuilder.asc')}</option>
+                  <option value="desc" ${state.sortDir === 'desc' ? 'selected' : ''}>${t('setBuilder.desc')}</option>
+                </select>
+              `}
             </div>
-            ${selectedCount > 0 ? `
+            ${!showResultsInMain && selectedCount > 0 ? `
               <div class="sb-bulk">
                 <span>${selectedCount} ${t('setBuilder.selected')}</span>
                 <button class="sb-btn" data-a="bulk-add">${t('setBuilder.bulkAdd')}</button>
@@ -1066,119 +1076,109 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 <button class="sb-btn sb-btn--ghost" data-a="bulk-clear">${t('setBuilder.clear')}</button>
               </div>
             ` : ''}
-            <div class="sb-library ${state.layout === 'table' ? 'sb-library--table' : ''}">${libraryContent}</div>
-          </div>
-
-          <aside class="sb-right">
-            <div class="sb-tabs">
-              ${orderedTabs.map((tab) => {
-                const title = tab === 'results'
-                  ? t('setBuilder.tabResults')
-                  : tab === 'viewA'
-                    ? t('setBuilder.layoutA')
-                    : t('setBuilder.layoutB');
-                const draggable = tab === 'viewA' || tab === 'viewB';
-                return `<button class="${state.activeTab === tab ? 'active' : ''} ${draggable ? 'sb-tab-draggable' : ''}" data-a="tab" data-tab="${tab}" ${draggable ? 'draggable="true"' : ''}>${title}</button>`;
-              }).join('')}
-            </div>
-
-            ${setViewActive ? `
-              <div class="sb-set-list ${state.activeTab === 'viewB' ? 'sb-set-list--view-b' : ''}">
-                ${setRows.length === 0
-                  ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
-                  : setRows.map(({ item, set }) => `
-                    <div class="sb-set-row ${state.activeTab === 'viewB' ? 'sb-set-row--view-b' : ''}">
-                      <div class="sb-set-head">
-                        <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
-                        <div class="sb-set-name">${esc(item.name)}</div>
-                      </div>
-                      <div class="sb-set-controls">
-                        <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
-                        <div class="sb-stepper">
-                          <button data-a="qty-minus" data-id="${item.id}">-</button>
-                          <span>${set.qty}</span>
-                          <button data-a="qty-plus" data-id="${item.id}">+</button>
-                        </div>
-                        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
-                        <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
+            ${showResultsInMain ? `
+              <div class="sb-library">
+                <div class="sb-results">
+                  ${lastEngineResult ? `
+                    <div class="sb-bulk">
+                      <button class="sb-btn" data-a="export-all">${t('setBuilder.exportAllSheets')}</button>
+                      <button class="sb-btn" data-a="copy-all-hashes">${t('setBuilder.copyAllHashes')}</button>
+                    </div>
+                    <div class="sb-totals">
+                      <div><span>${t('setBuilder.placedRequired')}:</span><b>${lastEngineResult.totalPlaced} / ${lastEngineResult.totalRequired}</b></div>
+                      <div><span>${t('setBuilder.avgUtilization')}:</span><b>${Math.round(lastEngineResult.avgFillPercent)}%</b></div>
+                      <div><span>${t('setBuilder.cutLenEst')}:</span><b>${fmtLen(lastEngineResult.cutLengthEstimate)}</b></div>
+                      <div><span>${t('setBuilder.pierces')}:</span><b>${lastEngineResult.pierceEstimate}</b></div>
+                      ${commonLineActive ? `<div><span>${t('setBuilder.savedCut')}:</span><b>−${fmtLen(Math.max(0, sharedCutLen))}</b></div>` : ''}
+                      ${commonLineActive ? `<div><span>${t('setBuilder.savedPierces')}:</span><b>−${Math.max(0, pierceDelta)}</b></div>` : ''}
+                    </div>
+                  ` : ''}
+                  ${!state.results ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>` : state.results.sheets.map((sheet, index) => `
+                    <div class="sb-sheet-card">
+                      <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
+                      ${buildSheetPlacementsMarkup(sheet)}
+                      <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
+                      <div class="sb-sheet-actions">
+                        <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
+                        <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
+                        <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
                       </div>
                     </div>
                   `).join('')}
-              </div>
-              <div class="sb-set-nest-panel">
-                <div class="sb-set-nest-controls">
-                  <select class="sb-select" data-a="preset">
-                    ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
-                  </select>
-                  <div class="sb-custom-sheet">
-                    <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" title="${t('setBuilder.customSheetW')}" />
-                    <span>×</span>
-                    <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" title="${t('setBuilder.customSheetH')}" />
-                    <button class="sb-btn sb-btn--ghost" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
-                  </div>
-                  <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
-                    <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
-                    <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
-                  </select>
-                  <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
-                  <div class="sb-toggle">
-                    <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
-                    <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
-                  </div>
-                  <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
-                  <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
-                    <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
-                    <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
-                    <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
-                  </select>
-                  <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
-                  <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
-                  <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
-                  <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
                 </div>
-                <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
               </div>
-              <div class="sb-totals">
-                <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
-                <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
-                <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
-                <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
-              </div>
-              <div class="sb-issues">
-                <div class="sb-issues-title">${t('setBuilder.issues')}</div>
-                ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
-              </div>
-              <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
             ` : `
-              <div class="sb-results">
-                ${lastEngineResult ? `
-                  <div class="sb-bulk">
-                    <button class="sb-btn" data-a="export-all">${t('setBuilder.exportAllSheets')}</button>
-                    <button class="sb-btn" data-a="copy-all-hashes">${t('setBuilder.copyAllHashes')}</button>
-                  </div>
-                  <div class="sb-totals">
-                    <div><span>${t('setBuilder.placedRequired')}:</span><b>${lastEngineResult.totalPlaced} / ${lastEngineResult.totalRequired}</b></div>
-                    <div><span>${t('setBuilder.avgUtilization')}:</span><b>${Math.round(lastEngineResult.avgFillPercent)}%</b></div>
-                    <div><span>${t('setBuilder.cutLenEst')}:</span><b>${fmtLen(lastEngineResult.cutLengthEstimate)}</b></div>
-                    <div><span>${t('setBuilder.pierces')}:</span><b>${lastEngineResult.pierceEstimate}</b></div>
-                    ${commonLineActive ? `<div><span>${t('setBuilder.savedCut')}:</span><b>−${fmtLen(Math.max(0, sharedCutLen))}</b></div>` : ''}
-                    ${commonLineActive ? `<div><span>${t('setBuilder.savedPierces')}:</span><b>−${Math.max(0, pierceDelta)}</b></div>` : ''}
-                  </div>
-                ` : ''}
-                ${!state.results ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>` : state.results.sheets.map((sheet, index) => `
-                  <div class="sb-sheet-card">
-                    <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                    ${buildSheetPlacementsMarkup(sheet)}
-                    <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
-                    <div class="sb-sheet-actions">
-                      <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
-                      <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
-                      <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
+              <div class="sb-library ${activeLibraryLayout === 'table' ? 'sb-library--table' : ''}">${libraryContent}</div>
+            `}
+          </div>
+
+          <aside class="sb-right">
+            <div class="sb-set-list">
+              ${setRows.length === 0
+                ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
+                : setRows.map(({ item, set }) => `
+                  <div class="sb-set-row">
+                    <div class="sb-set-head">
+                      <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
+                      <div class="sb-set-name">${esc(item.name)}</div>
+                    </div>
+                    <div class="sb-set-controls">
+                      <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
+                      <div class="sb-stepper">
+                        <button data-a="qty-minus" data-id="${item.id}">-</button>
+                        <span>${set.qty}</span>
+                        <button data-a="qty-plus" data-id="${item.id}">+</button>
+                      </div>
+                      <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
+                      <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
                     </div>
                   </div>
                 `).join('')}
+            </div>
+            <div class="sb-set-nest-panel">
+              <div class="sb-set-nest-controls">
+                <select class="sb-select" data-a="preset">
+                  ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                </select>
+                <div class="sb-custom-sheet">
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" title="${t('setBuilder.customSheetW')}" />
+                  <span>×</span>
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" title="${t('setBuilder.customSheetH')}" />
+                  <button class="sb-btn sb-btn--ghost" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
+                </div>
+                <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
+                  <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
+                  <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
+                </select>
+                <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
+                <div class="sb-toggle">
+                  <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
+                  <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+                </div>
+                <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
+                <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
+                  <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+                  <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+                  <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+                </select>
+                <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
+                <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
+                <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
+                <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
               </div>
-            `}
+              <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
+            </div>
+            <div class="sb-totals">
+              <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
+              <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
+              <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
+              <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
+            </div>
+            <div class="sb-issues">
+              <div class="sb-issues-title">${t('setBuilder.issues')}</div>
+              ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
+            </div>
+            <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
           </aside>
         </div>
 
