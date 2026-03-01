@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build -w @dxf-viewer/core-engine && npm run build -w @dxf-viewer/api-service && npm run build -w @dxf-viewer/ui-app",
   "outputDirectory": "packages/ui-app/dist",
   "rewrites": [
     {
