@@ -1452,37 +1452,72 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 `).join('')}
             </div>
             <div class="sb-set-nest-panel">
-              <div class="sb-set-nest-controls">
+
+              <div class="sb-nest-section">
+                <div class="sb-nest-section-label">${t('setBuilder.settingsSheet')}</div>
                 <select class="sb-select" data-a="preset">
                   ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
                 </select>
                 <div class="sb-custom-sheet">
-                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" title="${t('setBuilder.customSheetW')}" />
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
                   <span>×</span>
-                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" title="${t('setBuilder.customSheetH')}" />
-                  <button class="sb-btn sb-btn--ghost" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" placeholder="H" title="${t('setBuilder.customSheetH')}" />
+                  <button class="sb-btn sb-btn--ghost sb-btn--xs" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
                 </div>
-                <select class="sb-select" data-a="strategy" title="${t('setBuilder.nestingStrategy')}">
-                  <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
-                  <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
-                </select>
-                <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" title="Gap" />
+              </div>
+
+              <div class="sb-nest-section">
+                <div class="sb-nest-section-label">${t('setBuilder.settingsMode')}</div>
                 <div class="sb-toggle">
                   <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
                   <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
                 </div>
-                <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/> ${t('setBuilder.rotate')}</label>
-                <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}">
-                  <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
-                  <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
-                  <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
-                </select>
-                <label class="sb-chk sb-chk--compact"><input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/> ${t('setBuilder.multiStart')}</label>
-                <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" title="${t('setBuilder.seed')}" />
-                <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" title="${t('setBuilder.commonLineMaxDistance')}" />
-                <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" title="${t('setBuilder.commonLineMinSharedLen')}" />
+                ${state.mode === 'commonLine' ? `
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.commonLineMaxDistance')}</label>
+                  <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" />
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.commonLineMinSharedLen')}</label>
+                  <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" />
+                </div>` : ''}
               </div>
-              <button class="sb-btn sb-btn--primary" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
+
+              <div class="sb-nest-section">
+                <div class="sb-nest-section-label">${t('setBuilder.settingsAlgo')}</div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
+                  <select class="sb-select sb-select--compact" data-a="strategy">
+                    <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
+                    <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
+                  </select>
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
+                  <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.rotate')}</label>
+                  <div class="sb-nest-row-controls">
+                    <input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/>
+                    <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}" ${state.rotationEnabled ? '' : 'disabled'}>
+                      <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+                      <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+                      <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.multiStart')}</label>
+                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/>
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.seed')}</label>
+                  <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" />
+                </div>
+              </div>
+
+              <button class="sb-btn sb-btn--primary sb-btn--run" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
             </div>
             <div class="sb-totals">
               <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
