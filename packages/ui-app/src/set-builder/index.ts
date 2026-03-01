@@ -43,6 +43,17 @@ function getActiveSheetPreset(
   return { w: p.w, h: p.h };
 }
 
+function calcPierceEstimateForSheets(sheets: NestingResult['sheets']): number {
+  let total = 0;
+  for (const sheet of sheets) {
+    for (const p of sheet.placed) {
+      const lf = loadedFiles.find((f) => f.id === p.itemId);
+      if (lf) total += lf.stats.totalPierces;
+    }
+  }
+  return total;
+}
+
 function buildSetNestingItems(state: SetBuilderState): { items: NestingItem[]; skipped: number } {
   const rows = getSetRows(state).filter((r) => r.set.enabled && r.set.qty > 0);
   let skipped = 0;
@@ -314,7 +325,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       cutLengthEstimate: lastEngineResult.cutLengthEstimate,
       sharedCutLength: lastEngineResult.sharedCutLength,
       cutLengthAfterMerge: lastEngineResult.cutLengthAfterMerge,
-      pierceEstimate: sheet.placed.length,
+      pierceEstimate: calcPierceEstimateForSheets([sheet]),
       pierceDelta: 0,
       strategy: lastEngineResult.strategy,
     };
@@ -568,7 +579,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         return;
       }
 
-      lastEngineResult = result;
+      const correctedPierces = calcPierceEstimateForSheets(result.sheets);
+      lastEngineResult = { ...result, pierceEstimate: correctedPierces };
       lastItemDocs = buildItemDocsForSet(state);
 
       let hashes: string[] = [];
