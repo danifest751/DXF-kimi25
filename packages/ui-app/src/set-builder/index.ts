@@ -980,9 +980,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                     <div class="sb-modal-stat-label">${t('setBuilder.area')}</div>
                     <div class="sb-modal-stat-value">${area} ${t('unit.cm2')}</div>
                   </div>
-                  <div class="sb-modal-stat">
-                    <div class="sb-modal-stat-label">${t('setBuilder.pierces')}</div>
-                    <div class="sb-modal-stat-value">${item.pierces}</div>
+                  <div class="sb-modal-stat sb-modal-stat--full">
+                    <div class="sb-modal-stat-label">${t('setBuilder.pierces')}: <b>${item.pierces}</b></div>
+                    <div class="sb-modal-pierces-dots">
+                      ${Array.from({ length: Math.min(item.pierces, 60) }, (_, i) =>
+                        `<span class="sb-pierce-dot"${item.pierces > 60 && i === 59 ? ` title="+${item.pierces - 59}"` : ''}></span>`
+                      ).join('')}
+                      ${item.pierces > 60 ? `<span class="sb-pierce-more">+${item.pierces - 59}</span>` : ''}
+                    </div>
                   </div>
                   <div class="sb-modal-stat">
                     <div class="sb-modal-stat-label">${t('setBuilder.cutLength')}</div>
@@ -999,7 +1004,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   </div>` : ''}
                 </div>
                 <div class="sb-modal-set-block">
-                  <div class="sb-modal-set-label">${t('setBuilder.set')}</div>
+                  <div class="sb-modal-set-label">${t('setBuilder.tabSet')}</div>
                   <div class="sb-modal-set-controls">
                     <button class="sb-btn ${set ? 'sb-btn--ghost' : 'sb-btn--primary'} sb-modal-set-btn" data-a="${set ? 'remove-set' : 'add-set'}" data-id="${item.id}">
                       ${set ? t('setBuilder.removeFromSet') : t('setBuilder.addToSet')}
@@ -1142,7 +1147,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             <section class="sb-catalog-group">
               <div class="sb-catalog-group-head" data-a="catalog-drop" data-catalog="${esc(catalogName)}">
                 <div class="sb-catalog-group-meta">
-                  <span class="sb-catalog-group-name">${esc(catalogName)}</span>
+                  <span class="sb-catalog-folder-icon">📁</span><span class="sb-catalog-group-name">${esc(catalogName)}</span>
                   <span class="sb-catalog-group-count">${items.length}</span>
                 </div>
                 ${canManageCatalog ? `
