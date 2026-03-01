@@ -475,12 +475,23 @@
   gap: 8px;
 }
 
+.sb-sheets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+}
+
 .sb-set-row,
 .sb-sheet-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   padding: 8px;
+}
+
+.sb-sheet-card {
+  display: flex;
+  flex-direction: column;
 }
 
 .sb-set-row:hover,
@@ -570,11 +581,39 @@
 
 .sb-sheet-actions { justify-content: flex-start; flex-wrap: wrap; }
 
+.sb-hash-code {
+  margin-top: 6px;
+  display: inline-block;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px dashed rgba(126, 198, 255, 0.55);
+  background: rgba(8, 16, 28, 0.7);
+  color: rgba(189, 223, 255, 0.98);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.sb-hash-code[data-a="copy-hash"] {
+  cursor: pointer;
+}
+
+.sb-hash-code[data-a="copy-hash"]:hover {
+  border-color: rgba(126, 198, 255, 0.95);
+  color: #dbf1ff;
+}
+
+.sb-hash-code--empty {
+  border-style: solid;
+  color: var(--text-secondary);
+}
+
 .sb-sheet-canvas {
   position: relative;
   width: 100%;
   aspect-ratio: var(--sheet-ratio, 1.6);
-  min-height: 180px;
+  min-height: 130px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-light);
   background: linear-gradient(145deg, rgba(8, 14, 23, 0.9), rgba(12, 20, 34, 0.92));

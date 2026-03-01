@@ -1093,18 +1093,22 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                       ${commonLineActive ? `<div><span>${t('setBuilder.savedPierces')}:</span><b>−${Math.max(0, pierceDelta)}</b></div>` : ''}
                     </div>
                   ` : ''}
-                  ${!state.results ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>` : state.results.sheets.map((sheet, index) => `
-                    <div class="sb-sheet-card">
-                      <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet)}
-                      <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
-                      <div class="sb-sheet-actions">
-                        <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
-                        <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
-                        <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
+                  ${!state.results
+                    ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>`
+                    : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
+                      <div class="sb-sheet-card">
+                        <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
+                        ${buildSheetPlacementsMarkup(sheet)}
+                        <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
+                        <div class="sb-sheet-actions">
+                          <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
+                          <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
+                        </div>
+                        ${sheet.hash
+                          ? `<code class="sb-hash-code" data-a="copy-hash" data-hash="${sheet.hash}" title="${t('setBuilder.copyHash')}">${sheet.hash}</code>`
+                          : `<span class="sb-hash-code sb-hash-code--empty">—</span>`}
                       </div>
-                    </div>
-                  `).join('')}
+                    `).join('')}</div>`}
                 </div>
               </div>
             ` : `
