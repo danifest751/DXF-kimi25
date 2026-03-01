@@ -1675,14 +1675,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (newLabel === null) return;
       const trimmed = newLabel.trim();
       if (!trimmed) return;
-      if (preset.id.startsWith('custom_')) {
-        sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: trimmed } : p);
-      } else {
-        const newId = `custom_${preset.w}x${preset.h}_${Date.now()}`;
-        const newPreset = { id: newId, label: trimmed, w: preset.w, h: preset.h };
-        sheetPresets = [...sheetPresets, newPreset];
-        state.sheetPresetId = newId;
-      }
+      sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: trimmed } : p);
       render();
       return;
     }
