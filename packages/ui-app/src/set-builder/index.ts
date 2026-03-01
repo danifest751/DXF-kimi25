@@ -383,7 +383,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         : 20;
       state.sortBy = parsed.sortBy === 'area' || parsed.sortBy === 'pierces' || parsed.sortBy === 'cutLen' ? parsed.sortBy : 'name';
       state.sortDir = parsed.sortDir === 'desc' ? 'desc' : 'asc';
-      state.activeTab = parsed.activeTab === 'results' ? 'results' : 'library';
+      state.activeTab = 'library';
       const customPresets = (parsed.customSheetPresets ?? []).filter((p) => {
         return typeof p.id === 'string'
           && p.id.startsWith('custom_')
@@ -437,7 +437,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       commonLineMinSharedLenMm: state.commonLineMinSharedLenMm,
       sortBy: state.sortBy,
       sortDir: state.sortDir,
-      activeTab: state.activeTab,
       customSheetPresets,
       customSheetWidthMm,
       customSheetHeightMm,
@@ -1467,9 +1466,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
               <div class="sb-nest-section">
                 <div class="sb-nest-section-label">${t('setBuilder.settingsSheet')}</div>
-                <select class="sb-select" data-a="preset">
-                  ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
-                </select>
+                <div class="sb-preset-row">
+                  <select class="sb-select sb-select--preset" data-a="preset">
+                    ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                  </select>
+                  ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">✎</button>
+                  <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">✕</button>` : ''}
+                </div>
                 <div class="sb-custom-sheet">
                   <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
                   <span>×</span>
@@ -1659,9 +1662,27 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const id = `custom_${w}x${h}`;
       const existing = sheetPresets.find((p) => p.id === id);
       if (!existing) {
-        sheetPresets = [...sheetPresets, { id, label: `Sheet ${w}x${h}`, w, h }];
+        sheetPresets = [...sheetPresets, { id, label: `${w}×${h}`, w, h }];
       }
       state.sheetPresetId = id;
+      render();
+      return;
+    }
+    if (action === 'preset-rename') {
+      const preset = sheetPresets.find((p) => p.id === state.sheetPresetId);
+      if (!preset || !preset.id.startsWith('custom_')) return;
+      const newLabel = window.prompt(t('setBuilder.renamePreset'), preset.label);
+      if (newLabel === null) return;
+      const trimmed = newLabel.trim();
+      if (!trimmed) return;
+      sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: trimmed } : p);
+      render();
+      return;
+    }
+    if (action === 'preset-delete') {
+      if (!state.sheetPresetId.startsWith('custom_')) return;
+      sheetPresets = sheetPresets.filter((p) => p.id !== state.sheetPresetId);
+      state.sheetPresetId = sheetPresets[0]?.id ?? '';
       render();
       return;
     }

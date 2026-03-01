@@ -594,6 +594,23 @@
   min-height: 26px;
 }
 
+.sb-btn--icon {
+  padding: 4px 7px;
+  min-width: 26px;
+  flex-shrink: 0;
+}
+
+.sb-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb-select--preset {
+  flex: 1;
+  min-width: 0;
+}
+
 .sb-select--compact {
   min-width: 0;
   flex: 1;

@@ -210,6 +210,8 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.settingsAlgo': 'Algorithm',
   'setBuilder.settingsMode': 'Mode',
   'setBuilder.gapLabel': 'Gap (mm)',
+  'setBuilder.renamePreset': 'Rename preset',
+  'setBuilder.deletePreset': 'Delete preset',
   'setBuilder.enabled': 'enabled',
   'setBuilder.enabledParts': 'Enabled parts',
   'setBuilder.totalQty': 'Total qty',

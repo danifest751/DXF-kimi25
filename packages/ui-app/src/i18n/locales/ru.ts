@@ -208,6 +208,8 @@ export const ru = {
   'setBuilder.settingsAlgo': 'Алгоритм',
   'setBuilder.settingsMode': 'Режим',
   'setBuilder.gapLabel': 'Зазор (мм)',
+  'setBuilder.renamePreset': 'Переименовать пресет',
+  'setBuilder.deletePreset': 'Удалить пресет',
   'setBuilder.enabled': 'включено',
   'setBuilder.enabledParts': 'Включённых деталей',
   'setBuilder.totalQty': 'Общее кол-во',
