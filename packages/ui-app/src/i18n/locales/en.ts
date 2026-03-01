@@ -150,6 +150,7 @@ export const en: Record<TranslationKey, string> = {
   // Units
   'unit.m': ' m',
   'unit.mm': ' mm',
+  'unit.cm2': ' cm²',
 
   // Status bar
   'status.pierces': 'Pierces: {n}',
@@ -242,6 +243,8 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.menu.delete': 'Delete',
   'setBuilder.menu.moveToCatalog': 'Move to catalog',
   'setBuilder.menu.download': 'Download',
+  'setBuilder.area': 'Area',
+  'setBuilder.sheet': 'Sheet',
   'setBuilder.size': 'Size',
   'setBuilder.catalog': 'Catalog',
   'setBuilder.piercesShort': 'P',

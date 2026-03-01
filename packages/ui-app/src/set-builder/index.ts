@@ -944,32 +944,78 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
     if (item) {
       const set = getSetItem(state, item.id);
+      const allItems = getVisibleLibraryItems();
+      const idx = allItems.findIndex((it) => it.id === item.id);
+      const prevItem = idx > 0 ? allItems[idx - 1] : null;
+      const nextItem = idx >= 0 && idx < allItems.length - 1 ? allItems[idx + 1] : null;
+      const statusClass = item.status === 'ok' ? 'sb-badge--ok' : item.status === 'warn' ? 'sb-badge--warn' : 'sb-badge--error';
+      const area = Math.round(item.w * item.h / 100) / 100;
+
       return `
         <div class="sb-modal-backdrop">
-          <div class="sb-modal">
+          <div class="sb-modal sb-modal--dxf">
             <div class="sb-modal-head">
-              <strong>${esc(item.name)}</strong>
-              <button class="sb-icon" data-a="close-preview">✕</button>
-            </div>
-            <div class="sb-modal-body">
-              <div class="sb-modal-thumb">${buildThumbMarkup(item, true)}</div>
-              <div class="sb-modal-meta">
-                <div><b>${t('setBuilder.size')}:</b> ${item.w}×${item.h}</div>
-                <div><b>${t('setBuilder.pierces')}:</b> ${item.pierces}</div>
-                <div><b>${t('setBuilder.cutLength')}:</b> ${fmtLen(item.cutLen)}</div>
-                <div><b>${t('setBuilder.layers')}:</b> ${item.layersCount}</div>
-                <div><b>${t('setBuilder.status')}:</b> ${statusLabel(item)}</div>
-                <div><b>${t('setBuilder.issues.title')}:</b> ${item.issues.length ? esc(item.issues.join(', ')) : t('setBuilder.issues.none')}</div>
+              <div class="sb-modal-title">
+                <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${prevItem?.id ?? ''}" ${!prevItem ? 'disabled' : ''} title="${prevItem ? esc(prevItem.name) : ''}">‹</button>
+                <div class="sb-modal-title-text">
+                  <span class="sb-modal-name">${esc(item.name)}</span>
+                  <span class="sb-modal-catalog">${esc(item.catalog)}</span>
+                </div>
+                <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${nextItem?.id ?? ''}" ${!nextItem ? 'disabled' : ''} title="${nextItem ? esc(nextItem.name) : ''}">›</button>
+              </div>
+              <div class="sb-modal-head-right">
+                <span class="sb-badge ${statusClass}">${statusLabel(item)}</span>
+                <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">✕</button>
               </div>
             </div>
-            <div class="sb-modal-actions">
-              <button class="sb-btn" data-a="${set ? 'remove-set' : 'add-set'}" data-id="${item.id}">${set ? t('setBuilder.removeFromSet') : t('setBuilder.addToSet')}</button>
-              <div class="sb-stepper">
-                <button data-a="qty-minus" data-id="${item.id}">-</button>
-                <span>${set?.qty ?? 0}</span>
-                <button data-a="qty-plus" data-id="${item.id}">+</button>
+            <div class="sb-modal-dxf-body">
+              <div class="sb-modal-dxf-preview">${buildThumbMarkup(item, true)}</div>
+              <div class="sb-modal-dxf-side">
+                <div class="sb-modal-stats">
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.size')}</div>
+                    <div class="sb-modal-stat-value">${item.w} × ${item.h} ${t('unit.mm')}</div>
+                  </div>
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.area')}</div>
+                    <div class="sb-modal-stat-value">${area} ${t('unit.cm2')}</div>
+                  </div>
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.pierces')}</div>
+                    <div class="sb-modal-stat-value">${item.pierces}</div>
+                  </div>
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.cutLength')}</div>
+                    <div class="sb-modal-stat-value">${fmtLen(item.cutLen)}</div>
+                  </div>
+                  <div class="sb-modal-stat">
+                    <div class="sb-modal-stat-label">${t('setBuilder.layers')}</div>
+                    <div class="sb-modal-stat-value">${item.layersCount}</div>
+                  </div>
+                  ${item.issues.length > 0 ? `
+                  <div class="sb-modal-stat sb-modal-stat--warn">
+                    <div class="sb-modal-stat-label">${t('setBuilder.issues.title')}</div>
+                    <div class="sb-modal-stat-value sb-modal-stat-issues">${esc(item.issues.join(' · '))}</div>
+                  </div>` : ''}
+                </div>
+                <div class="sb-modal-set-block">
+                  <div class="sb-modal-set-label">${t('setBuilder.set')}</div>
+                  <div class="sb-modal-set-controls">
+                    <button class="sb-btn ${set ? 'sb-btn--ghost' : 'sb-btn--primary'} sb-modal-set-btn" data-a="${set ? 'remove-set' : 'add-set'}" data-id="${item.id}">
+                      ${set ? t('setBuilder.removeFromSet') : t('setBuilder.addToSet')}
+                    </button>
+                    <div class="sb-stepper sb-modal-stepper">
+                      <button data-a="qty-minus" data-id="${item.id}" ${!set ? 'disabled' : ''}>−</button>
+                      <span>${set?.qty ?? 0}</span>
+                      <button data-a="qty-plus" data-id="${item.id}" ${!set ? 'disabled' : ''}>+</button>
+                    </div>
+                  </div>
+                  ${set ? `<div class="sb-modal-set-hint">${t('setBuilder.totalQty')}: ${set.qty}</div>` : ''}
+                </div>
+                <div class="sb-modal-nav-footer">
+                  <span class="sb-modal-counter">${idx + 1} / ${allItems.length}</span>
+                </div>
               </div>
-              <button class="sb-btn sb-btn--ghost" data-a="close-preview">${t('setBuilder.close')}</button>
             </div>
           </div>
         </div>
@@ -978,24 +1024,60 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
     const sheet = state.results?.sheets.find((s) => s.id === state.previewSheetId) ?? null;
     if (!sheet) return '';
+    const sheets = state.results?.sheets ?? [];
+    const sheetIdx = sheets.findIndex((s) => s.id === sheet.id);
+    const prevSheet = sheetIdx > 0 ? sheets[sheetIdx - 1] : null;
+    const nextSheet = sheetIdx >= 0 && sheetIdx < sheets.length - 1 ? sheets[sheetIdx + 1] : null;
+    const utilizationClamped = Math.max(0, Math.min(100, sheet.utilization));
+    const utilizationColor = utilizationClamped >= 75 ? '#57ffbc' : utilizationClamped >= 50 ? '#ffd26f' : '#ff8b98';
+
     return `
       <div class="sb-modal-backdrop">
         <div class="sb-modal sb-modal--sheet">
           <div class="sb-modal-head">
-            <strong>${sheet.id.toUpperCase()}</strong>
-            <button class="sb-icon" data-a="close-preview">✕</button>
-          </div>
-          <div class="sb-modal-body">
-            <div class="sb-modal-thumb sb-modal-thumb--sheet">${buildSheetPlacementsMarkup(sheet)}</div>
-            <div class="sb-modal-meta">
-              <div><b>${t('setBuilder.utilization')}:</b> ${sheet.utilization}%</div>
-              <div><b>${t('setBuilder.partCount')}:</b> ${sheet.partCount}</div>
-              <div><b>${t('setBuilder.hash')}:</b> <code>${sheet.hash || '-'}</code></div>
+            <div class="sb-modal-title">
+              <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${prevSheet?.id ?? ''}" ${!prevSheet ? 'disabled' : ''} title="${prevSheet?.id.toUpperCase() ?? ''}">‹</button>
+              <div class="sb-modal-title-text">
+                <span class="sb-modal-name">${t('setBuilder.sheet')} ${sheetIdx + 1}</span>
+                <span class="sb-modal-catalog">${sheet.sheetWidth} × ${sheet.sheetHeight} ${t('unit.mm')}</span>
+              </div>
+              <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${nextSheet?.id ?? ''}" ${!nextSheet ? 'disabled' : ''} title="${nextSheet?.id.toUpperCase() ?? ''}">›</button>
+            </div>
+            <div class="sb-modal-head-right">
+              <span class="sb-modal-counter">${sheetIdx + 1} / ${sheets.length}</span>
+              <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">✕</button>
             </div>
           </div>
-          <div class="sb-modal-actions">
-            <button class="sb-btn" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
-            <button class="sb-btn sb-btn--ghost" data-a="close-preview">${t('setBuilder.close')}</button>
+          <div class="sb-modal-sheet-body">
+            <div class="sb-modal-sheet-preview">${buildSheetPlacementsMarkup(sheet)}</div>
+            <div class="sb-modal-sheet-side">
+              <div class="sb-modal-util-block">
+                <div class="sb-modal-util-label">${t('setBuilder.utilization')}</div>
+                <div class="sb-modal-util-bar">
+                  <div class="sb-modal-util-fill" style="width:${utilizationClamped}%;background:${utilizationColor};"></div>
+                </div>
+                <div class="sb-modal-util-value" style="color:${utilizationColor};">${sheet.utilization}%</div>
+              </div>
+              <div class="sb-modal-stats">
+                <div class="sb-modal-stat">
+                  <div class="sb-modal-stat-label">${t('setBuilder.partCount')}</div>
+                  <div class="sb-modal-stat-value">${sheet.partCount}</div>
+                </div>
+                <div class="sb-modal-stat">
+                  <div class="sb-modal-stat-label">${t('setBuilder.size')}</div>
+                  <div class="sb-modal-stat-value">${sheet.sheetWidth} × ${sheet.sheetHeight}</div>
+                </div>
+              </div>
+              ${sheet.hash ? `
+              <div class="sb-modal-hash-block">
+                <div class="sb-modal-stat-label">${t('setBuilder.hash')}</div>
+                <code class="sb-hash-code sb-modal-hash-code" data-a="copy-hash" data-hash="${sheet.hash}" title="${t('setBuilder.copyHash')}">${sheet.hash}</code>
+              </div>` : ''}
+              <div class="sb-modal-sheet-actions">
+                <button class="sb-btn sb-btn--primary" data-a="export-sheet" data-index="${sheetIdx}">${t('setBuilder.exportDxf')}</button>
+                <button class="sb-btn sb-btn--ghost" data-a="copy-hash" data-hash="${sheet.hash}" ${sheet.hash ? '' : 'disabled'}>${t('setBuilder.copyHash')}</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

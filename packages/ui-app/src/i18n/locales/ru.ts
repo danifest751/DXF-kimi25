@@ -148,6 +148,7 @@ export const ru = {
   // Units
   'unit.m': ' м',
   'unit.mm': ' мм',
+  'unit.cm2': ' см²',
 
   // Status bar
   'status.pierces': 'Врезок: {n}',
@@ -240,6 +241,8 @@ export const ru = {
   'setBuilder.menu.delete': 'Удалить',
   'setBuilder.menu.moveToCatalog': 'Переместить в каталог',
   'setBuilder.menu.download': 'Скачать',
+  'setBuilder.area': 'Площадь',
+  'setBuilder.sheet': 'Лист',
   'setBuilder.size': 'Размер',
   'setBuilder.catalog': 'Каталог',
   'setBuilder.piercesShort': 'В',
