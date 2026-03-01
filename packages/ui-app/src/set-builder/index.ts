@@ -1293,7 +1293,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       </div>
     `;
     const renderCatalogItems = (items: LibraryItem[]): string =>
-      `${tableHead}${items.map((item) => buildLibraryRow(item)).join('')}`;
+      items.map((item) => buildLibraryRow(item)).join('');
 
     const groupedCatalogContent = (() => {
       const groups = new Map<string, LibraryItem[]>();
@@ -1435,7 +1435,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 </div>
               </div>
             ` : `
-              <div class="sb-library">${groupedCatalogContent}</div>
+              <div class="sb-library">${tableHead}${groupedCatalogContent}</div>
             `}
           </div>
 
