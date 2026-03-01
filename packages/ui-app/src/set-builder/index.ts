@@ -22,7 +22,7 @@ import {
   setQty,
   upsertSetItem,
 } from './state.js';
-import type { LibraryItem, SetBuilderState, SetBuilderViewTab, SheetResult } from './types.js';
+import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
 
 const STORAGE_KEY = 'dxf_set_builder_state_v1';
 
@@ -205,7 +205,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let toastText = '';
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPickedLibraryId: number | null = null;
-  let draggedViewTab: SetBuilderViewTab | null = null;
   let draggedLibraryId: number | null = null;
   let dragOverCatalogEl: HTMLElement | null = null;
   let lastEngineResult: NestingResult | null = null;
@@ -347,11 +346,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         seed?: number;
         commonLineMaxMergeDistanceMm?: number;
         commonLineMinSharedLenMm?: number;
-        layout?: 'gallery' | 'table';
         sortBy?: 'name' | 'area' | 'pierces' | 'cutLen';
         sortDir?: 'asc' | 'desc';
-        activeTab?: 'viewA' | 'viewB' | 'results';
-        viewTabOrder?: SetBuilderViewTab[];
+        activeTab?: 'library' | 'results';
         customSheetPresets?: Array<{ id: string; label: string; w: number; h: number }>;
         customSheetWidthMm?: number;
         customSheetHeightMm?: number;
@@ -373,17 +370,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.commonLineMinSharedLenMm = Number.isFinite(parsed.commonLineMinSharedLenMm)
         ? Math.max(0, parsed.commonLineMinSharedLenMm ?? 0)
         : 20;
-      state.layout = parsed.layout === 'table' ? 'table' : 'gallery';
       state.sortBy = parsed.sortBy === 'area' || parsed.sortBy === 'pierces' || parsed.sortBy === 'cutLen' ? parsed.sortBy : 'name';
       state.sortDir = parsed.sortDir === 'desc' ? 'desc' : 'asc';
-      state.activeTab = parsed.activeTab === 'viewB' || parsed.activeTab === 'results' ? parsed.activeTab : 'viewA';
-      const validViewOrder = Array.isArray(parsed.viewTabOrder)
-        && parsed.viewTabOrder.length === 2
-        && parsed.viewTabOrder.includes('viewA')
-        && parsed.viewTabOrder.includes('viewB');
-      state.viewTabOrder = validViewOrder
-        ? [parsed.viewTabOrder![0] as SetBuilderViewTab, parsed.viewTabOrder![1] as SetBuilderViewTab]
-        : ['viewA', 'viewB'];
+      state.activeTab = parsed.activeTab === 'results' ? 'results' : 'library';
       const customPresets = (parsed.customSheetPresets ?? []).filter((p) => {
         return typeof p.id === 'string'
           && p.id.startsWith('custom_')
@@ -435,11 +424,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       seed: state.seed,
       commonLineMaxMergeDistanceMm: state.commonLineMaxMergeDistanceMm,
       commonLineMinSharedLenMm: state.commonLineMinSharedLenMm,
-      layout: state.layout,
       sortBy: state.sortBy,
       sortDir: state.sortDir,
       activeTab: state.activeTab,
-      viewTabOrder: state.viewTabOrder,
       customSheetPresets,
       customSheetWidthMm,
       customSheetHeightMm,
@@ -604,14 +591,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
-  function buildLibraryRow(item: LibraryItem, layout: 'gallery' | 'table' = state.layout): string {
+  function buildLibraryRow(item: LibraryItem): string {
     const inSet = getSetItem(state, item.id);
     const checked = state.selectedLibraryIds.has(item.id) ? 'checked' : '';
     const selectedClass = checked ? 'sb-lib-row--selected' : '';
     const menuOpen = state.openMenuLibraryId === item.id;
     const draggable = item.sourceFileId !== undefined ? 'draggable="true"' : '';
     return `
-      <div class="sb-lib-row ${selectedClass} ${layout === 'gallery' ? 'sb-lib-row--gallery' : 'sb-lib-row--table'}" data-a="lib-row" data-id="${item.id}" ${draggable}>
+      <div class="sb-lib-row sb-lib-row--table" data-a="lib-row" data-id="${item.id}" ${draggable}>
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
         <div class="sb-thumb">${buildThumbMarkup(item)}</div>
         <div class="sb-meta">
@@ -619,16 +606,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           <div class="sb-sub">${t('setBuilder.catalog')}: ${esc(item.catalog)} · ${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
           <span class="sb-badge sb-badge--${item.status}">${statusLabel(item)}</span>
         </div>
-        ${layout === 'table' ? `
-          <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
-            <button data-a="qty-minus" data-id="${item.id}">-</button>
-            <span>${inSet?.qty ?? 0}</span>
-            <button data-a="qty-plus" data-id="${item.id}">+</button>
-          </div>
-          <div class="sb-col">${item.w}×${item.h}</div>
-          <div class="sb-col">${item.pierces}</div>
-          <div class="sb-col">${fmtLen(item.cutLen)}</div>
-        ` : ''}
+        <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
+          <button data-a="qty-minus" data-id="${item.id}">-</button>
+          <span>${inSet?.qty ?? 0}</span>
+          <button data-a="qty-plus" data-id="${item.id}">+</button>
+        </div>
+        <div class="sb-col">${item.w}×${item.h}</div>
+        <div class="sb-col">${item.pierces}</div>
+        <div class="sb-col">${fmtLen(item.cutLen)}</div>
         <div class="sb-actions">
           <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
           <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
@@ -1283,9 +1268,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const commonLineActive = lastEngineResult?.gap === 0;
     const sharedCutLen = lastEngineResult?.sharedCutLength ?? 0;
     const pierceDelta = lastEngineResult?.pierceDelta ?? 0;
-    const orderedTabs: Array<'viewA' | 'viewB' | 'results'> = [...state.viewTabOrder, 'results'];
     const showResultsInMain = state.activeTab === 'results';
-    const activeLibraryLayout = state.activeTab === 'viewB' ? 'table' : 'gallery';
 
     const tableHead = `
       <div class="sb-table-head">
@@ -1298,10 +1281,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         <div>${t('setBuilder.actions')}</div>
       </div>
     `;
-    const renderCatalogItems = (items: LibraryItem[]): string => {
-      if (activeLibraryLayout === 'gallery') return items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('');
-      return `${tableHead}${items.map((item) => buildLibraryRow(item, activeLibraryLayout)).join('')}`;
-    };
+    const renderCatalogItems = (items: LibraryItem[]): string =>
+      `${tableHead}${items.map((item) => buildLibraryRow(item)).join('')}`;
 
     const groupedCatalogContent = (() => {
       const groups = new Map<string, LibraryItem[]>();
@@ -1340,7 +1321,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   </div>
                 ` : ''}
               </div>
-              <div class="sb-catalog-group-body ${activeLibraryLayout === 'table' ? 'sb-library--table' : ''}">
+              <div class="sb-catalog-group-body sb-library--table">
                 ${items.length === 0
                   ? `<div class="sb-catalog-empty">${t('setBuilder.empty.noItems')}</div>`
                   : renderCatalogItems(items)}
@@ -1377,15 +1358,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           <div class="sb-left">
             <div class="sb-list-toolbar">
               <div class="sb-tabs">
-                ${orderedTabs.map((tab) => {
-                  const title = tab === 'results'
-                    ? t('setBuilder.tabResults')
-                    : tab === 'viewA'
-                      ? t('setBuilder.layoutA')
-                      : t('setBuilder.layoutB');
-                  const draggable = tab === 'viewA' || tab === 'viewB';
-                  return `<button class="${state.activeTab === tab ? 'active' : ''} ${draggable ? 'sb-tab-draggable' : ''}" data-a="tab" data-tab="${tab}" ${draggable ? 'draggable="true"' : ''}>${title}</button>`;
-                }).join('')}
+                <button class="${state.activeTab === 'library' ? 'active' : ''}" data-a="tab" data-tab="library">${t('setBuilder.tabLibrary')}</button>
+                <button class="${state.activeTab === 'results' ? 'active' : ''}" data-a="tab" data-tab="results">${t('setBuilder.tabResults')}</button>
               </div>
               ${showResultsInMain ? '' : `
                 <div class="sb-list-toolbar-main">
@@ -1646,15 +1620,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'tab') {
       const tab = button.dataset.tab;
-      if (tab === 'viewA' || tab === 'viewB' || tab === 'results') {
+      if (tab === 'library' || tab === 'results') {
         state.activeTab = tab;
         render();
       }
-      return;
-    }
-    if (action === 'layout') {
-      state.layout = button.dataset.layout === 'table' ? 'table' : 'gallery';
-      render();
       return;
     }
     if (action === 'sort-col') {
@@ -1834,17 +1803,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   root.addEventListener('dragstart', (e) => {
     const target = e.target as HTMLElement;
-    const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
-    const tab = tabBtn?.dataset.tab;
-    if (tab === 'viewA' || tab === 'viewB') {
-      draggedViewTab = tab;
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', tab);
-      }
-      return;
-    }
-
     const libRow = target.closest<HTMLElement>('[data-a="lib-row"][data-id]');
     if (!libRow) return;
     const libraryId = Number(libRow.dataset.id ?? '0');
@@ -1857,18 +1815,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   });
 
   root.addEventListener('dragover', (e) => {
-    const target = e.target as HTMLElement;
-    if (draggedViewTab) {
-      const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
-      const tab = tabBtn?.dataset.tab;
-      if (tab === 'viewA' || tab === 'viewB') {
-        e.preventDefault();
-      }
-      return;
-    }
-
     if (draggedLibraryId !== null) {
-      const catalogHead = target.closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
+      const catalogHead = (e.target as HTMLElement).closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
       if (!catalogHead) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -1881,30 +1829,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   });
 
   root.addEventListener('drop', (e) => {
-    const target = e.target as HTMLElement;
-    if (draggedViewTab) {
-      const tabBtn = target.closest<HTMLElement>('[data-a="tab"][data-tab]');
-      const targetTab = tabBtn?.dataset.tab;
-      if (targetTab !== 'viewA' && targetTab !== 'viewB') return;
-      e.preventDefault();
-      if (draggedViewTab === targetTab) {
-        draggedViewTab = null;
-        return;
-      }
-      const nextOrder = [...state.viewTabOrder];
-      const from = nextOrder.indexOf(draggedViewTab);
-      const to = nextOrder.indexOf(targetTab);
-      if (from >= 0 && to >= 0) {
-        [nextOrder[from], nextOrder[to]] = [nextOrder[to]!, nextOrder[from]!];
-        state.viewTabOrder = [nextOrder[0] as SetBuilderViewTab, nextOrder[1] as SetBuilderViewTab];
-        render();
-      }
-      draggedViewTab = null;
-      return;
-    }
-
     if (draggedLibraryId !== null) {
-      const catalogHead = target.closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
+      const catalogHead = (e.target as HTMLElement).closest<HTMLElement>('[data-a="catalog-drop"][data-catalog]');
       if (!catalogHead) return;
       e.preventDefault();
       const targetCatalog = catalogHead.dataset.catalog ?? '';
@@ -1926,7 +1852,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   });
 
   root.addEventListener('dragend', () => {
-    draggedViewTab = null;
     draggedLibraryId = null;
     if (dragOverCatalogEl) {
       dragOverCatalogEl.classList.remove('drag-over');

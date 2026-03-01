@@ -1,11 +1,9 @@
 export type ItemStatus = 'ok' | 'warn' | 'error';
-export type LayoutMode = 'gallery' | 'table';
-export type SetBuilderTab = 'viewA' | 'viewB' | 'results';
+export type SetBuilderTab = 'library' | 'results';
 export type NestMode = 'normal' | 'commonLine';
 export type SetBuilderNestingStrategy = 'maxrects_bbox' | 'true_shape';
 export type LibrarySortBy = 'name' | 'area' | 'pierces' | 'cutLen';
 export type LibrarySortDir = 'asc' | 'desc';
-export type SetBuilderViewTab = 'viewA' | 'viewB';
 
 export interface LibraryItem {
   readonly id: number;
@@ -74,11 +72,9 @@ export interface SetBuilderState {
   seed: number;
   commonLineMaxMergeDistanceMm: number;
   commonLineMinSharedLenMm: number;
-  layout: LayoutMode;
   sortBy: LibrarySortBy;
   sortDir: LibrarySortDir;
   activeTab: SetBuilderTab;
-  viewTabOrder: [SetBuilderViewTab, SetBuilderViewTab];
   open: boolean;
   loading: boolean;
   previewLibraryId: number | null;
