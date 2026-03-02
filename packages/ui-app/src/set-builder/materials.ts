@@ -49,12 +49,12 @@ function makeEntries(
 }
 
 export const MATERIALS_DB: readonly MaterialEntry[] = [
-  ...makeEntries('steel', 'Сталь углеродистая', ['Ст3 / S235'], [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20], STEEL_DENSITY),
-  ...makeEntries('stainless', 'Нержавеющая сталь', ['AISI 304', 'AISI 430'], [0.8, 1, 1.5, 2, 3, 4, 5, 6, 8, 10], SS_DENSITY),
-  ...makeEntries('aluminum', 'Алюминий', ['АМг3 / 5052', '6061'], [1, 1.5, 2, 3, 4, 5, 6, 8, 10], AL_DENSITY),
-  ...makeEntries('galvanized', 'Оцинкованная сталь', ['Оцинкованная (Z)'], [0.5, 0.7, 0.8, 1, 1.2, 1.5, 2], GALV_DENSITY),
-  ...makeEntries('brass', 'Латунь', ['Л63'], [0.8, 1, 1.5, 2, 3], BRASS_DENSITY),
-  ...makeEntries('copper', 'Медь', ['М1'], [0.8, 1, 1.5, 2, 3], COPPER_DENSITY),
+  ...makeEntries('steel', 'Сталь углеродистая', ['Ст3 / S235'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20], STEEL_DENSITY),
+  ...makeEntries('stainless', 'Нержавеющая сталь', ['AISI 304', 'AISI 430'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3, 4, 5, 6, 8, 10], SS_DENSITY),
+  ...makeEntries('aluminum', 'Алюминий', ['АМг3 / 5052', '6061'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3, 4, 5, 6, 8, 10], AL_DENSITY),
+  ...makeEntries('galvanized', 'Оцинкованная сталь', ['Оцинкованная (Z)'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2], GALV_DENSITY),
+  ...makeEntries('brass', 'Латунь', ['Л63'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3], BRASS_DENSITY),
+  ...makeEntries('copper', 'Медь', ['М1'], [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3], COPPER_DENSITY),
 ];
 
 export function getMaterialGroups(): MaterialGroup[] {

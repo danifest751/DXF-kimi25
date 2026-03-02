@@ -379,6 +379,36 @@
 }
 .sb-mat-actions .sb-btn { flex: 1; }
 
+/* ── Material/weight in DXF preview modal ── */
+.sb-modal-stat--material .sb-modal-stat-value--material {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sb-modal-mat-change {
+  padding: 1px 6px;
+  font-size: 11px;
+  height: auto;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+.sb-modal-mat-change:hover { opacity: 1; }
+
+.sb-modal-stat--weight .sb-modal-stat-value--weight {
+  color: #a0b8ff;
+  font-weight: 700;
+}
+
+.sb-modal-stat--material-cta {
+  padding-top: 2px;
+}
+
+.sb-modal-stat--material .sb-modal-stat-label,
+.sb-modal-stat--weight .sb-modal-stat-label {
+  color: var(--text-secondary);
+}
+
 .sb-actions {
   justify-self: end;
   display: inline-flex;

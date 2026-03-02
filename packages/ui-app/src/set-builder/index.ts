@@ -1161,6 +1161,29 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                     <div class="sb-modal-stat-label">${t('setBuilder.issues.title')}</div>
                     <div class="sb-modal-stat-value sb-modal-stat-issues">${esc(item.issues.join(' · '))}</div>
                   </div>` : ''}
+                  ${(() => {
+                    const assignment = getMaterialAssignment(state, item.id);
+                    if (!assignment) return `
+                  <div class="sb-modal-stat sb-modal-stat--material-cta">
+                    <button class="sb-btn sb-btn--xs sb-btn--material" data-a="assign-material" data-id="${item.id}">${t('material.assign')}</button>
+                  </div>`;
+                    const mat = findMaterial(assignment.materialId);
+                    const label = formatMaterialLabel(assignment.materialId);
+                    const weightStr = (mat && item.areaMm2 > 0) ? formatWeightKg(calcWeightKg(item.areaMm2, mat.thicknessMm, mat.densityKgM3)) : null;
+                    return `
+                  <div class="sb-modal-stat sb-modal-stat--material">
+                    <div class="sb-modal-stat-label">${t('material.title')}</div>
+                    <div class="sb-modal-stat-value sb-modal-stat-value--material">
+                      ${esc(label)}
+                      <button class="sb-btn sb-btn--xs sb-btn--ghost sb-modal-mat-change" data-a="assign-material" data-id="${item.id}" title="${t('material.assign')}">✎</button>
+                    </div>
+                  </div>
+                  ${weightStr ? `
+                  <div class="sb-modal-stat sb-modal-stat--weight">
+                    <div class="sb-modal-stat-label">${t('material.weight')}</div>
+                    <div class="sb-modal-stat-value sb-modal-stat-value--weight">${esc(weightStr)}</div>
+                  </div>` : ''}`;
+                  })()}
                 </div>
                 <div class="sb-modal-set-block">
                   <div class="sb-modal-set-label">${t('setBuilder.tabSet')}</div>
