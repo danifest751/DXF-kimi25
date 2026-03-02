@@ -1286,3 +1286,167 @@
   .sb-list-toolbar { flex-direction: column; align-items: stretch; }
   .sb-list-toolbar-main { flex: 1 1 auto; }
 }
+
+/* ═══════════════════════════════════════════════
+   MOBILE  (≤ 600px) — desktop остаётся без изменений
+   ═══════════════════════════════════════════════ */
+@media (max-width: 600px) {
+
+  /* ── Topbar: кнопки переносятся, auth-pill скрыт ── */
+  .sb-topbar {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  .sb-auth-pill { display: none; }
+  .sb-top-actions { flex-wrap: wrap; gap: 4px; }
+  .sb-topbar .sb-btn {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+
+  /* ── Main: одна колонка, правая панель не ограничена 46vh ── */
+  .sb-main {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+  .sb-right {
+    max-height: none;
+  }
+
+  /* ── Тулбар библиотеки: вертикально ── */
+  .sb-list-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .sb-list-toolbar-main {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sb-input--search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* ── Скрыть table-view, оставить только gallery ── */
+  .sb-table-head { display: none; }
+  .sb-lib-row--table {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sb-lib-row--table .sb-col { display: none; }
+  /* Показываем только thumbnail, имя и actions */
+  .sb-lib-row--gallery {
+    grid-template-columns: 20px 72px minmax(0, 1fr) auto;
+    min-height: 72px;
+  }
+
+  /* ── Инпуты: убрать фиксированный min-width ── */
+  .sb-input { min-width: 0; }
+  .sb-input--search { min-width: 0; width: 100%; flex: 1 1 auto; }
+  .sb-list-toolbar-main .sb-input--search { flex: 1 1 auto; min-width: 0; }
+  .sb-input--sm { min-width: 60px; width: 60px; }
+  .sb-select { min-width: 0; }
+
+  /* ── Custom sheet row: перенос ── */
+  .sb-custom-sheet {
+    flex-wrap: wrap;
+  }
+  .sb-custom-sheet .sb-btn {
+    flex: 1 1 100%;
+  }
+
+  /* ── Nest rows: label и control стекируются при нехватке места ── */
+  .sb-nest-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .sb-nest-row-label {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  /* ── Set controls: переносятся ── */
+  .sb-set-controls {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ── Bulk panel ── */
+  .sb-bulk {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sb-bulk .sb-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* ── Tabs: одна колонка ── */
+  .sb-tabs { grid-template-columns: 1fr; }
+  .sb-tabs button { padding: 10px 8px; }
+
+  /* ── Модальные окна: полноэкранные, min-height уменьшен ── */
+  .sb-modal {
+    width: calc(100% - 12px);
+    max-height: calc(100% - 12px);
+  }
+  .sb-modal--dxf,
+  .sb-modal--sheet {
+    width: calc(100% - 12px);
+  }
+  .sb-modal-dxf-body,
+  .sb-modal-sheet-body {
+    grid-template-columns: 1fr;
+  }
+  .sb-modal-dxf-preview,
+  .sb-modal-sheet-preview {
+    border-right: none;
+    min-height: 0;
+  }
+  .sb-modal-dxf-preview .sb-thumb-real,
+  .sb-modal-dxf-preview .sb-thumb-svg,
+  .sb-modal-dxf-canvas {
+    min-height: 200px;
+  }
+  .sb-modal-sheet-preview .sb-sheet-canvas {
+    min-height: 180px;
+  }
+  .sb-modal-dxf-preview { min-height: 200px; }
+  .sb-modal-dxf-side,
+  .sb-modal-sheet-side {
+    border-top: 1px solid var(--border);
+    border-right: none;
+  }
+
+  /* ── Модальная шапка: сжать при нехватке места ── */
+  .sb-modal-head {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .sb-modal-head-right {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sb-pierce-toggle { font-size: 11px; padding: 3px 7px; }
+
+  /* ── Sheets grid: одна колонка ── */
+  .sb-sheets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* ── Totals/issues ── */
+  .sb-totals > div { font-size: 11px; }
+
+  /* ── Toast: растянуть на ширину ── */
+  .sb-toast {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+  }
+}
