@@ -299,6 +299,25 @@ export const ru = {
   'setBuilder.toast.sourceUnavailable': 'Источник DXF недоступен',
   'setBuilder.toast.downloadStarted': 'Скачивание начато',
   'setBuilder.toast.downloadFailed': 'Не удалось скачать исходный файл',
+
+  // Material assignment
+  'material.assign': 'Материал',
+  'material.title': 'Назначить материал',
+  'material.group': 'Группа',
+  'material.grade': 'Марка',
+  'material.thickness': 'Толщина',
+  'material.unit.mm': 'мм',
+  'material.applyToAll': 'Применить ко всем деталям этого DXF',
+  'material.save': 'Сохранить',
+  'material.cancel': 'Отмена',
+  'material.none': 'Не назначен',
+  'material.saved': 'Материал сохранён',
+  'material.area': 'Площадь',
+  'material.weight': 'Вес',
+  'material.selectGroup': '— Группа —',
+  'material.selectGrade': '— Марка —',
+  'material.selectThickness': '— Толщина —',
+  'setBuilder.totalWeight': 'Суммарный вес',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

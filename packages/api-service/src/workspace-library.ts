@@ -382,6 +382,50 @@ export async function deleteWorkspaceFile(workspaceId: string, fileId: string): 
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_NAME_LENGTH = 255;
+const FILE_MATERIALS_TABLE = process.env.SUPABASE_FILE_MATERIALS_TABLE?.trim() || 'file_materials';
+
+export interface FileMaterialRecord {
+  readonly fileId: string;
+  readonly materialId: string;
+}
+
+interface FileMaterialRow {
+  readonly file_id: string;
+  readonly material_id: string;
+}
+
+export async function getFileMaterials(workspaceId: string): Promise<FileMaterialRecord[]> {
+  if (!supabaseEnabled) return [];
+
+  const params = new URLSearchParams({
+    select: 'file_id,material_id',
+    workspace_id: `eq.${workspaceId}`,
+  });
+  const response = await supabaseRequest(`/${FILE_MATERIALS_TABLE}?${params.toString()}`);
+  if (!response?.ok) return [];
+
+  const rows = await response.json() as FileMaterialRow[];
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => ({ fileId: r.file_id, materialId: r.material_id }));
+}
+
+export async function upsertFileMaterial(workspaceId: string, fileId: string, materialId: string): Promise<void> {
+  if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
+  if (!UUID_RE.test(fileId)) throw new Error('Invalid fileId');
+  if (!materialId || materialId.length > 200) throw new Error('Invalid materialId');
+
+  const response = await supabaseRequest(`/${FILE_MATERIALS_TABLE}`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify({
+      workspace_id: workspaceId,
+      file_id: fileId,
+      material_id: materialId,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!response?.ok) throw new Error('Failed to upsert file material');
+}
 
 export async function setWorkspaceFilesChecked(workspaceId: string, checked: boolean, catalogIds?: string[]): Promise<void> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');

@@ -12,12 +12,18 @@ export interface LibraryItem {
   readonly catalog: string;
   readonly w: number;
   readonly h: number;
+  readonly areaMm2: number;
   readonly pierces: number;
   readonly cutLen: number;
   readonly layersCount: number;
   readonly status: ItemStatus;
   readonly issues: readonly string[];
   readonly thumbVariant: number;
+}
+
+export interface MaterialAssignment {
+  readonly materialId: string;
+  readonly appliedAt: number;
 }
 
 export interface SetItem {
@@ -82,4 +88,7 @@ export interface SetBuilderState {
   previewShowPierces: boolean;
   openMenuLibraryId: number | null;
   results: NestingResults | null;
+  materialAssignments: Map<number, MaterialAssignment>;
+  lastUsedMaterialId: string | null;
+  materialModalOpenForId: number | null;
 }

@@ -301,4 +301,23 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.toast.sourceUnavailable': 'DXF source is unavailable',
   'setBuilder.toast.downloadStarted': 'Download started',
   'setBuilder.toast.downloadFailed': 'Failed to download source file',
+
+  // Material assignment
+  'material.assign': 'Material',
+  'material.title': 'Assign Material',
+  'material.group': 'Group',
+  'material.grade': 'Grade',
+  'material.thickness': 'Thickness',
+  'material.unit.mm': 'mm',
+  'material.applyToAll': 'Apply to all parts of this DXF',
+  'material.save': 'Save',
+  'material.cancel': 'Cancel',
+  'material.none': 'Not assigned',
+  'material.saved': 'Material saved',
+  'material.area': 'Area',
+  'material.weight': 'Weight',
+  'material.selectGroup': '— Group —',
+  'material.selectGrade': '— Grade —',
+  'material.selectThickness': '— Thickness —',
+  'setBuilder.totalWeight': 'Total weight',
 } as const;

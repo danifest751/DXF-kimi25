@@ -21,11 +21,13 @@ import {
   deleteWorkspaceCatalog,
   deleteWorkspaceFile,
   downloadWorkspaceFile,
+  getFileMaterials,
   isWorkspaceLibraryEnabled,
   listWorkspaceLibrary,
   renameWorkspaceCatalog,
   setWorkspaceFilesChecked,
   updateWorkspaceFile,
+  upsertFileMaterial,
   uploadWorkspaceFile,
 } from './workspace-library.js';
 
@@ -976,6 +978,50 @@ app.post(['/api/telegram/webhook/register', '/telegram/webhook/register', '/api/
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Telegram webhook registration failed', details: message });
+  }
+});
+
+// Get all material assignments for the workspace
+app.get('/api/file-materials', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+    const data = await getFileMaterials(workspaceId);
+    res.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Get file materials failed', details: message });
+  }
+});
+
+// Upsert material assignment for a file
+app.post('/api/file-materials-upsert', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+    const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId.trim() : '';
+    const materialId = typeof req.body?.materialId === 'string' ? req.body.materialId.trim() : '';
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
+    if (!materialId) {
+      res.status(400).json({ error: 'materialId is required' });
+      return;
+    }
+    await upsertFileMaterial(workspaceId, fileId, materialId);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Upsert file material failed', details: message });
   }
 });
 

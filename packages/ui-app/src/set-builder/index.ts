@@ -10,11 +10,13 @@ import { exportNestingToDXF } from '../../../core-engine/src/export/index.js';
 import type { ItemDocData } from '../../../core-engine/src/export/index.js';
 import { renderEntity } from '../../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../../core-engine/src/render/entity-renderer.js';
+import { buildContourFromAll, contourAreaMm2 } from '../../../core-engine/src/contour/index.js';
 import {
   canRunNesting,
   createInitialState,
   getAggregatedIssues,
   getLibraryItem,
+  getMaterialAssignment,
   getSetRows,
   getSetItem,
   getTotals,
@@ -22,9 +24,19 @@ import {
   setQty,
   upsertSetItem,
 } from './state.js';
-import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
+import {
+  calcWeightKg,
+  findMaterial,
+  formatMaterialLabel,
+  formatWeightKg,
+  getMaterialGroups,
+  getGradesByGroup,
+  getThicknessesByGrade,
+} from './materials.js';
+import type { LibraryItem, MaterialAssignment, SetBuilderState, SheetResult } from './types.js';
 
 const STORAGE_KEY = 'dxf_set_builder_state_v1';
+const MATERIALS_STORAGE_KEY = 'dxf_set_builder_materials_v1';
 
 function esc(s: string): string {
   return s
@@ -160,6 +172,14 @@ function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: number): Li
       ? [t('setBuilder.fileLoading')]
       : [];
 
+  let areaMm2 = 0;
+  try {
+    const contour = buildContourFromAll(lf.doc.flatEntities);
+    if (contour) areaMm2 = Math.round(contourAreaMm2(contour));
+  } catch {
+    areaMm2 = 0;
+  }
+
   return {
     id: nextLibraryId,
     sourceFileId: sourceId,
@@ -167,6 +187,7 @@ function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: number): Li
     catalog: mapLoadedCatalogName(lf.catalogId),
     w,
     h,
+    areaMm2,
     pierces: Math.max(0, lf.stats.totalPierces),
     cutLen: Math.max(0, lf.stats.totalCutLength),
     layersCount: lf.doc.layerNames.length,
@@ -418,6 +439,66 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
+  function saveMaterials(): void {
+    const obj: Record<string, string> = {};
+    for (const [id, a] of state.materialAssignments) {
+      obj[String(id)] = a.materialId;
+    }
+    localStorage.setItem(MATERIALS_STORAGE_KEY, JSON.stringify(obj));
+  }
+
+  function loadMaterials(): void {
+    try {
+      const raw = localStorage.getItem(MATERIALS_STORAGE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw) as Record<string, string>;
+      state.materialAssignments.clear();
+      for (const [idStr, materialId] of Object.entries(obj)) {
+        const id = Number(idStr);
+        if (Number.isFinite(id) && id > 0 && typeof materialId === 'string' && materialId.length > 0) {
+          state.materialAssignments.set(id, { materialId, appliedAt: 0 });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadMaterialsFromServer(): Promise<void> {
+    if (!authSessionToken) return;
+    try {
+      const resp = await apiGetJSON<{ success: boolean; data: Array<{ fileId: string; materialId: string }> }>(
+        '/api/file-materials',
+        getAuthHeaders(),
+      );
+      if (!resp.success || !Array.isArray(resp.data)) return;
+      for (const entry of resp.data) {
+        const lf = loadedFiles.find((f) => f.remoteId === entry.fileId);
+        if (!lf) continue;
+        const lib = state.library.find((it) => it.sourceFileId === lf.id);
+        if (!lib) continue;
+        state.materialAssignments.set(lib.id, { materialId: entry.materialId, appliedAt: 0 });
+      }
+    } catch {
+      // silently fall back to localStorage data
+    }
+  }
+
+  async function syncMaterialsToServer(libraryIds: number[], materialId: string): Promise<void> {
+    if (!authSessionToken) return;
+    for (const libId of libraryIds) {
+      const item = getLibraryItem(state, libId);
+      if (!item || item.sourceFileId === undefined) continue;
+      const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+      if (!lf?.remoteId) continue;
+      try {
+        await apiPostJSON<{ success: boolean }>('/api/file-materials-upsert', { fileId: lf.remoteId, materialId }, getAuthHeaders());
+      } catch {
+        // ignore, local state already saved
+      }
+    }
+  }
+
   function persistState(): void {
     const customSheetPresets = sheetPresets
       .filter((p) => p.id.startsWith('custom_'))
@@ -605,9 +686,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   function buildLibraryRow(item: LibraryItem): string {
     const inSet = getSetItem(state, item.id);
     const checked = state.selectedLibraryIds.has(item.id) ? 'checked' : '';
-    const selectedClass = checked ? 'sb-lib-row--selected' : '';
     const menuOpen = state.openMenuLibraryId === item.id;
     const draggable = item.sourceFileId !== undefined ? 'draggable="true"' : '';
+    const assignment = getMaterialAssignment(state, item.id);
+    const matLabel = assignment ? formatMaterialLabel(assignment.materialId) : '';
+    const matWeight = (assignment && item.areaMm2 > 0) ? (() => {
+      const mat = findMaterial(assignment.materialId);
+      return mat ? formatWeightKg(calcWeightKg(item.areaMm2, mat.thicknessMm, mat.densityKgM3)) : '';
+    })() : '';
     return `
       <div class="sb-lib-row sb-lib-row--table" data-a="lib-row" data-id="${item.id}" ${draggable}>
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
@@ -616,6 +702,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           <div class="sb-name">${esc(item.name)}</div>
           <div class="sb-sub">${t('setBuilder.catalog')}: ${esc(item.catalog)} · ${item.w}×${item.h} · ${t('setBuilder.piercesShort')}:${item.pierces} · ${t('setBuilder.cutLengthShort')}:${fmtLen(item.cutLen)} · ${t('setBuilder.layers')}:${item.layersCount}</div>
           <span class="sb-badge sb-badge--${item.status}">${statusLabel(item)}</span>
+          ${assignment ? `<span class="sb-badge sb-badge--material" title="${esc(matLabel)}">${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}</span>` : ''}
         </div>
         <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
           <button data-a="qty-minus" data-id="${item.id}">-</button>
@@ -626,6 +713,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         <div class="sb-col">${item.pierces}</div>
         <div class="sb-col">${fmtLen(item.cutLen)}</div>
         <div class="sb-actions">
+          <button class="sb-btn sb-btn--xs sb-btn--material" data-a="assign-material" data-id="${item.id}" title="${t('material.title')}">${t('material.assign')}</button>
           <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
           <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
           <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">⋯</button>
@@ -633,6 +721,77 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             <button data-a="menu-delete" data-id="${item.id}">${t('setBuilder.menu.delete')}</button>
             <button data-a="menu-move" data-id="${item.id}">${t('setBuilder.menu.moveToCatalog')}</button>
             <button data-a="menu-download" data-id="${item.id}">${t('setBuilder.menu.download')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderMaterialModal(): string {
+    const itemId = state.materialModalOpenForId;
+    if (itemId === null) return '';
+    const item = getLibraryItem(state, itemId);
+    if (!item) return '';
+
+    const assignment = getMaterialAssignment(state, itemId);
+    const parts = assignment?.materialId.split('|') ?? [];
+    const currentGroup = parts[0] ?? state.lastUsedMaterialId?.split('|')[0] ?? '';
+    const currentGrade = parts[1] ?? state.lastUsedMaterialId?.split('|')[1] ?? '';
+    const currentThickness = parts[2] ?? state.lastUsedMaterialId?.split('|')[2] ?? '';
+
+    const groups = getMaterialGroups();
+    const grades = currentGroup ? getGradesByGroup(currentGroup) : [];
+    const thicknesses = (currentGroup && currentGrade) ? getThicknessesByGrade(currentGroup, currentGrade) : [];
+
+    const areaCm2 = item.areaMm2 > 0 ? (item.areaMm2 / 100).toFixed(1) : null;
+    const weightStr = (() => {
+      if (!currentGroup || !currentGrade || !currentThickness || !item.areaMm2) return null;
+      const matId = `${currentGroup}|${currentGrade}|${currentThickness}`;
+      const mat = findMaterial(matId);
+      if (!mat) return null;
+      return formatWeightKg(calcWeightKg(item.areaMm2, mat.thicknessMm, mat.densityKgM3));
+    })();
+
+    return `
+      <div class="sb-modal-backdrop sb-modal-backdrop--material">
+        <div class="sb-modal sb-modal--material" role="dialog" aria-modal="true">
+          <div class="sb-modal-head">
+            <div class="sb-modal-title-text">
+              <span class="sb-modal-name">${t('material.title')}</span>
+              <span class="sb-modal-catalog">${esc(item.name)}</span>
+            </div>
+            <button class="sb-icon" data-a="close-material-modal" title="${t('material.cancel')}">✕</button>
+          </div>
+          <div class="sb-modal-material-body">
+            <div class="sb-mat-selects">
+              <label class="sb-mat-label">${t('material.group')}</label>
+              <select class="sb-select sb-mat-select" data-a="mat-group" data-item-id="${itemId}">
+                <option value="">${t('material.selectGroup')}</option>
+                ${groups.map((g) => `<option value="${esc(g.key)}" ${currentGroup === g.key ? 'selected' : ''}>${esc(g.label)}</option>`).join('')}
+              </select>
+              <label class="sb-mat-label">${t('material.grade')}</label>
+              <select class="sb-select sb-mat-select" data-a="mat-grade" data-item-id="${itemId}" ${!currentGroup ? 'disabled' : ''}>
+                <option value="">${t('material.selectGrade')}</option>
+                ${grades.map((g) => `<option value="${esc(g)}" ${currentGrade === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+              </select>
+              <label class="sb-mat-label">${t('material.thickness')}</label>
+              <select class="sb-select sb-mat-select" data-a="mat-thickness" data-item-id="${itemId}" ${(!currentGroup || !currentGrade) ? 'disabled' : ''}>
+                <option value="">${t('material.selectThickness')}</option>
+                ${thicknesses.map((th) => `<option value="${th}" ${currentThickness === String(th) ? 'selected' : ''}>${th} ${t('material.unit.mm')}</option>`).join('')}
+              </select>
+            </div>
+            <div class="sb-mat-info">
+              ${areaCm2 ? `<div class="sb-mat-stat"><span>${t('material.area')}:</span><b>${areaCm2} ${t('unit.cm2')}</b></div>` : ''}
+              ${weightStr ? `<div class="sb-mat-stat sb-mat-stat--weight"><span>${t('material.weight')}:</span><b>${esc(weightStr)}</b></div>` : ''}
+            </div>
+            <label class="sb-mat-apply-all">
+              <input type="checkbox" data-a="mat-apply-all" id="mat-apply-all" />
+              <span>${t('material.applyToAll')}</span>
+            </label>
+            <div class="sb-mat-actions">
+              <button class="sb-btn sb-btn--primary" data-a="material-save" data-item-id="${itemId}" data-group="${esc(currentGroup)}" data-grade="${esc(currentGrade)}" data-thickness="${esc(currentThickness)}">${t('material.save')}</button>
+              <button class="sb-btn sb-btn--ghost" data-a="close-material-modal">${t('material.cancel')}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1539,6 +1698,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
               <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
               <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
               <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
+              ${totals.totalWeightKg !== null ? `<div><span>${t('setBuilder.totalWeight')}:</span><b>${formatWeightKg(totals.totalWeightKg)}</b></div>` : ''}
             </div>
             <div class="sb-issues">
               <div class="sb-issues-title">${t('setBuilder.issues.title')}</div>
@@ -1550,6 +1710,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
         ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
         ${renderPreviewModal()}
+        ${renderMaterialModal()}
       </div>
     ` : '';
 
@@ -1867,6 +2028,53 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.openMenuLibraryId = null;
       return;
     }
+    if (action === 'assign-material') {
+      state.materialModalOpenForId = id;
+      state.openMenuLibraryId = null;
+      render();
+      return;
+    }
+    if (action === 'close-material-modal') {
+      state.materialModalOpenForId = null;
+      render();
+      return;
+    }
+    if (action === 'material-save') {
+      const itemIdRaw = Number(button.dataset.itemId ?? '0');
+      const group = button.dataset.group ?? '';
+      const grade = button.dataset.grade ?? '';
+      const thickness = button.dataset.thickness ?? '';
+      if (!group || !grade || !thickness) {
+        state.materialModalOpenForId = null;
+        render();
+        return;
+      }
+      const materialId = `${group}|${grade}|${thickness}`;
+      const applyAll = (root.querySelector('#mat-apply-all') as HTMLInputElement | null)?.checked ?? false;
+      const now = Date.now();
+      const assignment: MaterialAssignment = { materialId, appliedAt: now };
+
+      const targetIds: number[] = applyAll
+        ? state.library.filter((it) => it.sourceFileId !== undefined).map((it) => it.id)
+        : [itemIdRaw];
+
+      for (const tid of targetIds) {
+        state.materialAssignments.set(tid, assignment);
+      }
+      state.lastUsedMaterialId = materialId;
+      state.materialModalOpenForId = null;
+
+      saveMaterials();
+      if (authSessionToken) void syncMaterialsToServer(targetIds, materialId);
+
+      showToast(t('material.saved'));
+      return;
+    }
+    if (target.classList.contains('sb-modal-backdrop--material')) {
+      state.materialModalOpenForId = null;
+      render();
+      return;
+    }
   });
 
   root.addEventListener('dragstart', (e) => {
@@ -2019,6 +2227,52 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       render();
       return;
     }
+    if ((action === 'mat-group' || action === 'mat-grade' || action === 'mat-thickness') && el instanceof HTMLSelectElement) {
+      const itemId = state.materialModalOpenForId;
+      if (itemId === null) return;
+      const modal = root.querySelector('.sb-modal--material');
+      if (!modal) return;
+      const groupSel = modal.querySelector<HTMLSelectElement>('[data-a="mat-group"]');
+      const gradeSel = modal.querySelector<HTMLSelectElement>('[data-a="mat-grade"]');
+      const thickSel = modal.querySelector<HTMLSelectElement>('[data-a="mat-thickness"]');
+      const newGroup = groupSel?.value ?? '';
+      const newGrade = action === 'mat-group' ? '' : (gradeSel?.value ?? '');
+      const newThick = (action === 'mat-group' || action === 'mat-grade') ? '' : (thickSel?.value ?? '');
+      const newGrades = newGroup ? getGradesByGroup(newGroup) : [];
+      const newThicks = (newGroup && newGrade) ? getThicknessesByGrade(newGroup, newGrade) : [];
+
+      if (gradeSel) {
+        gradeSel.innerHTML = `<option value="">${t('material.selectGrade')}</option>` +
+          newGrades.map((g) => `<option value="${esc(g)}" ${newGrade === g ? 'selected' : ''}>${esc(g)}</option>`).join('');
+        gradeSel.disabled = !newGroup;
+      }
+      if (thickSel) {
+        thickSel.innerHTML = `<option value="">${t('material.selectThickness')}</option>` +
+          newThicks.map((th) => `<option value="${th}" ${newThick === String(th) ? 'selected' : ''}>${th} ${t('material.unit.mm')}</option>`).join('');
+        thickSel.disabled = !newGroup || !newGrade;
+      }
+
+      const saveBtn = modal.querySelector<HTMLButtonElement>('[data-a="material-save"]');
+      if (saveBtn) {
+        saveBtn.dataset.group = newGroup;
+        saveBtn.dataset.grade = newGrade;
+        saveBtn.dataset.thickness = newThick;
+      }
+
+      const matInfoEl = modal.querySelector<HTMLElement>('.sb-mat-info');
+      if (matInfoEl) {
+        const item = getLibraryItem(state, itemId);
+        const areaCm2 = (item && item.areaMm2 > 0) ? (item.areaMm2 / 100).toFixed(1) : null;
+        const weightStr = (item && newGroup && newGrade && newThick && item.areaMm2 > 0) ? (() => {
+          const mat = findMaterial(`${newGroup}|${newGrade}|${newThick}`);
+          return mat ? formatWeightKg(calcWeightKg(item.areaMm2, mat.thicknessMm, mat.densityKgM3)) : null;
+        })() : null;
+        matInfoEl.innerHTML =
+          (areaCm2 ? `<div class="sb-mat-stat"><span>${t('material.area')}:</span><b>${areaCm2} ${t('unit.cm2')}</b></div>` : '') +
+          (weightStr ? `<div class="sb-mat-stat sb-mat-stat--weight"><span>${t('material.weight')}:</span><b>${esc(weightStr)}</b></div>` : '');
+      }
+      return;
+    }
 
   });
 
@@ -2042,6 +2296,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   window.addEventListener('keydown', (e) => {
     if (!state.open) return;
     if (e.key === 'Escape') {
+      if (state.materialModalOpenForId !== null) {
+        state.materialModalOpenForId = null;
+        render();
+        return;
+      }
       if (state.openMenuLibraryId !== null) {
         state.openMenuLibraryId = null;
         render();
@@ -2071,6 +2330,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   });
 
   hydrateState();
+  loadMaterials();
+  void loadMaterialsFromServer().then(() => { if (state.open) render(); });
   trigger.addEventListener('click', () => toggleOpen());
   render();
 }

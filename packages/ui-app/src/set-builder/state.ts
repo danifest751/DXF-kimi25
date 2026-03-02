@@ -1,6 +1,7 @@
 import { createInitialLibrary } from './mock-data.js';
 import { SHEET_PRESETS } from './mock-data.js';
-import type { LibraryItem, SetBuilderState, SetItem } from './types.js';
+import type { LibraryItem, MaterialAssignment, SetBuilderState, SetItem } from './types.js';
+import { calcWeightKg, findMaterial } from './materials.js';
 
 export function createInitialState(): SetBuilderState {
   return {
@@ -29,6 +30,9 @@ export function createInitialState(): SetBuilderState {
     previewShowPierces: false,
     openMenuLibraryId: null,
     results: null,
+    materialAssignments: new Map(),
+    lastUsedMaterialId: null,
+    materialModalOpenForId: null,
   };
 }
 
@@ -101,16 +105,23 @@ export function getSetRows(state: SetBuilderState): Array<{ item: LibraryItem; s
   return rows;
 }
 
+export function getMaterialAssignment(state: SetBuilderState, libraryId: number): MaterialAssignment | null {
+  return state.materialAssignments.get(libraryId) ?? null;
+}
+
 export function getTotals(state: SetBuilderState): {
   enabledParts: number;
   qtySum: number;
   piercesSum: number;
   cutLenSum: number;
+  totalWeightKg: number | null;
 } {
   let enabledParts = 0;
   let qtySum = 0;
   let piercesSum = 0;
   let cutLenSum = 0;
+  let totalWeightKg = 0;
+  let hasAnyMaterial = false;
 
   for (const row of getSetRows(state)) {
     if (!row.set.enabled) continue;
@@ -118,9 +129,18 @@ export function getTotals(state: SetBuilderState): {
     qtySum += row.set.qty;
     piercesSum += row.item.pierces * row.set.qty;
     cutLenSum += row.item.cutLen * row.set.qty;
+
+    const assignment = getMaterialAssignment(state, row.item.id);
+    if (assignment && row.item.areaMm2 > 0) {
+      const mat = findMaterial(assignment.materialId);
+      if (mat) {
+        hasAnyMaterial = true;
+        totalWeightKg += calcWeightKg(row.item.areaMm2, mat.thicknessMm, mat.densityKgM3) * row.set.qty;
+      }
+    }
   }
 
-  return { enabledParts, qtySum, piercesSum, cutLenSum };
+  return { enabledParts, qtySum, piercesSum, cutLenSum, totalWeightKg: hasAnyMaterial ? totalWeightKg : null };
 }
 
 export function getAggregatedIssues(state: SetBuilderState): Array<{ issue: string; count: number }> {

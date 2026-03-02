@@ -78,6 +78,23 @@ alter table shared_sheets       enable row level security;
 -- Storage RLS policy (service-role key bypasses, so no extra policy needed
 -- for server-side access). If you want direct-browser access, add a policy.
 
+-- ─── 4b. file_materials ─────────────────────────────────────
+create table if not exists file_materials (
+  id           uuid primary key default uuid_generate_v4(),
+  workspace_id text not null,
+  file_id      uuid references workspace_files (id) on delete cascade,
+  material_id  text not null check (char_length(material_id) between 1 and 200),
+  updated_at   timestamptz not null default now()
+);
+
+create unique index if not exists file_materials_workspace_file_idx
+  on file_materials (workspace_id, file_id);
+
+create index if not exists file_materials_workspace_id_idx
+  on file_materials (workspace_id);
+
+alter table file_materials enable row level security;
+
 -- ─── 6. Auto-delete expired shared_sheets (optional cron) ───
 -- Supabase pg_cron extension (Dashboard → Database → Extensions → pg_cron):
 --

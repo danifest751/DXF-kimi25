@@ -419,6 +419,23 @@ export function buildContour(entities: readonly FlattenedEntity[]): ContourResul
 }
 
 /**
+ * Returns the absolute area of a polygon ring in mm².
+ * Uses the shoelace formula. Works for both CW and CCW winding.
+ */
+export function polygonAreaMm2(ring: readonly { x: number; y: number }[]): number {
+  return Math.abs(signedArea(ring as Pt[]));
+}
+
+/**
+ * Returns the net area of a contour (outer ring minus holes) in mm².
+ */
+export function contourAreaMm2(contour: ContourResult): number {
+  const outer = polygonAreaMm2(contour.outerRing);
+  const holesArea = contour.holes.reduce((sum, h) => sum + polygonAreaMm2(h), 0);
+  return Math.max(0, outer - holesArea);
+}
+
+/**
  * Build a contour for ALL entities in a flat list (treated as one part).
  * Convenience wrapper for the single-part case (e.g. whole DXF file = one part).
  */
