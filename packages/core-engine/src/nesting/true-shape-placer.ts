@@ -311,6 +311,11 @@ function tryPlaceOnSheet(
     } catch {
       remainder = [ifp]; // fallback: use full IFP if clipper fails
     }
+    // If remainder is empty but sheet is empty, force IFP as fallback
+    // (clipper subtraction can incorrectly produce empty result for complex contours)
+    if (remainder.length === 0 && state.placed.length === 0) {
+      remainder = [ifp];
+    }
     if (remainder.length === 0) continue;
 
     // 5. Pick bottom-left point
