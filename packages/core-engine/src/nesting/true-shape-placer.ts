@@ -46,12 +46,54 @@ function polyArea(pts: Poly2D): number {
   return Math.abs(signedArea(pts));
 }
 
+/** Perimeter of a polygon (sum of edge lengths). */
+function polyPerimeter(pts: Poly2D): number {
+  let len = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]!;
+    const b = pts[(i + 1) % pts.length]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    len += Math.sqrt(dx * dx + dy * dy);
+  }
+  return len;
+}
+
 /** Contour polygon for an item (uses contour if valid, falls back to bbox rect). */
 function itemContour(item: NestingItem): Poly2D {
   if (item.contour && item.contour.length >= 3) {
     return nestingPointsToPoly(item.contour);
   }
   return rectPoly(item.width, item.height);
+}
+
+/** Estimate shared cut length between adjacent placed items (bbox-based, same as bbox nesting). */
+function estimateSharedCutForSheet(
+  placed: readonly PlacedItem[],
+  maxMergeDistanceMm: number,
+  minSharedLenMm: number,
+): { sharedCutLength: number; mergePairs: number } {
+  let shared = 0;
+  let mergePairs = 0;
+  for (let i = 0; i < placed.length; i++) {
+    const a = placed[i]!;
+    for (let j = i + 1; j < placed.length; j++) {
+      const b = placed[j]!;
+      let pairShared = 0;
+      const vertTouch = Math.min(Math.abs((a.x + a.width) - b.x), Math.abs((b.x + b.width) - a.x));
+      if (vertTouch <= maxMergeDistanceMm) {
+        const ov = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+        if (ov >= minSharedLenMm) pairShared += ov;
+      }
+      const horTouch = Math.min(Math.abs((a.y + a.height) - b.y), Math.abs((b.y + b.height) - a.y));
+      if (horTouch <= maxMergeDistanceMm) {
+        const ov = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+        if (ov >= minSharedLenMm) pairShared += ov;
+      }
+      if (pairShared > 0) { shared += pairShared; mergePairs++; }
+    }
+  }
+  return { sharedCutLength: shared, mergePairs };
 }
 
 // ─── Per-sheet state ─────────────────────────────────────────────────────────
@@ -136,16 +178,39 @@ export function placeTrueShape(
       sheetStates.push(newState);
       if (tryPlaceOnSheet(copy, newState, sheet, gap, anglesDeg, cache)) {
         totalPlaced++;
+      } else {
+        // NFP failed on empty sheet — fallback to bbox contour placement
+        const bboxCopy: CopyEntry = { ...copy, contour: rectPoly(copy.item.width, copy.item.height) };
+        const fallbackState: SheetState = { placed: [], usedArea: 0 };
+        sheetStates.push(fallbackState);
+        if (tryPlaceOnSheet(bboxCopy, fallbackState, sheet, gap, [0], cache)) {
+          totalPlaced++;
+        }
+        // If bbox also fails → item genuinely doesn't fit the sheet (too large)
       }
-      // If even a fresh sheet can't fit the item → skip (item too large)
     }
   }
 
   // ── 3. Build NestingResult ────────────────────────────────────────────────
+  const commonLineEnabled = options.commonLine?.enabled ?? false;
+  const maxMergeDistanceMm = typeof options.commonLine?.maxMergeDistanceMm === 'number'
+    ? Math.max(0, options.commonLine.maxMergeDistanceMm) : 0.2;
+  const minSharedLenMm = typeof options.commonLine?.minSharedLenMm === 'number'
+    ? Math.max(0, options.commonLine.minSharedLenMm) : 20;
+
   const sheetArea = sheet.width * sheet.height;
   let totalFill = 0;
   const nestingSheets: NestingSheet[] = [];
   let cutLengthEstimate = 0;
+  let sharedCutLength = 0;
+  let mergePairs = 0;
+
+  // Build a perimeter lookup: itemId -> contour perimeter (at angle 0)
+  const perimeterByItemId = new Map<number, number>();
+  for (const item of items) {
+    const contour = itemContour(item);
+    perimeterByItemId.set(item.id, polyPerimeter(contour));
+  }
 
   for (let i = 0; i < sheetStates.length; i++) {
     const st = sheetStates[i]!;
@@ -153,7 +218,18 @@ export function placeTrueShape(
     totalFill += fill;
 
     const placedItems = st.placed.map(e => e.item);
-    cutLengthEstimate += placedItems.reduce((acc, it) => acc + 2 * (it.width + it.height), 0);
+
+    // Use contour perimeter for cut length estimate (more accurate than bbox)
+    for (const it of placedItems) {
+      const perim = perimeterByItemId.get(it.itemId);
+      cutLengthEstimate += perim !== undefined ? perim : 2 * (it.width + it.height);
+    }
+
+    if (commonLineEnabled) {
+      const shared = estimateSharedCutForSheet(placedItems, maxMergeDistanceMm, minSharedLenMm);
+      sharedCutLength += shared.sharedCutLength;
+      mergePairs += shared.mergePairs;
+    }
 
     nestingSheets.push({
       sheetIndex: i,
@@ -162,6 +238,10 @@ export function placeTrueShape(
       fillPercent: Math.round(fill * 10) / 10,
     });
   }
+
+  const cutLengthAfterMerge = Math.max(0, cutLengthEstimate - sharedCutLength);
+  const maxPierceSavings = nestingSheets.reduce((acc, s) => acc + Math.max(0, s.placed.length - 1), 0);
+  const pierceDelta = commonLineEnabled ? Math.min(maxPierceSavings, mergePairs) : 0;
 
   return {
     sheet,
@@ -174,10 +254,10 @@ export function placeTrueShape(
       ? Math.round((totalFill / nestingSheets.length) * 10) / 10
       : 0,
     cutLengthEstimate: Math.round(cutLengthEstimate * 100) / 100,
-    sharedCutLength: 0,
-    cutLengthAfterMerge: Math.round(cutLengthEstimate * 100) / 100,
+    sharedCutLength: Math.round(sharedCutLength * 100) / 100,
+    cutLengthAfterMerge: Math.round(cutLengthAfterMerge * 100) / 100,
     pierceEstimate: totalPlaced,
-    pierceDelta: 0,
+    pierceDelta,
     strategy: 'true_shape',
   };
 }
