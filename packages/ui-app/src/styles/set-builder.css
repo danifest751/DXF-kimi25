@@ -304,7 +304,26 @@
 .sb-badge--error { background: rgba(255, 71, 87, 0.16); color: #ff8b98; }
 .sb-badge--material { background: rgba(120, 160, 255, 0.15); color: #a0b8ff; margin-left: 4px; }
 
-/* ── Material assign button ── */
+/* ── Material icon in library row stepper ── */
+.sb-mat-icon {
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(120, 160, 255, 0.4);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.sb-mat-icon:hover { color: #a0b8ff; background: rgba(120, 160, 255, 0.12); }
+.sb-mat-icon--set { color: #a0b8ff; }
+.sb-mat-icon--set:hover { color: #c8d8ff; background: rgba(120, 160, 255, 0.18); }
+
+/* ── Material assign button (kept for preview modal CTA) ── */
 .sb-btn--material {
   font-size: 11px;
   padding: 2px 8px;
@@ -794,6 +813,19 @@
   align-items: center;
   gap: 8px;
 }
+
+.sb-set-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sb-set-mat {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.sb-set-mat b { color: #a0b8ff; font-weight: 600; }
 
 .sb-set-thumb {
   width: 56px;

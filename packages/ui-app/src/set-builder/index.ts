@@ -694,6 +694,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const mat = findMaterial(assignment.materialId);
       return mat ? formatWeightKg(calcWeightKg(item.areaMm2, mat.thicknessMm, mat.densityKgM3)) : '';
     })() : '';
+    const matTooltip = assignment
+      ? `${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}`
+      : esc(t('material.assign'));
+    const matIcon = assignment ? '⬡' : '⬡';
+    const matIconClass = assignment ? 'sb-icon sb-mat-icon sb-mat-icon--set' : 'sb-icon sb-mat-icon';
     return `
       <div class="sb-lib-row sb-lib-row--table" data-a="lib-row" data-id="${item.id}" ${draggable}>
         <label class="sb-chk"><input type="checkbox" data-a="pick-lib" data-id="${item.id}" ${checked} /></label>
@@ -705,6 +710,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           ${assignment ? `<span class="sb-badge sb-badge--material" title="${esc(matLabel)}">${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}</span>` : ''}
         </div>
         <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
+          <button class="${matIconClass}" data-a="assign-material" data-id="${item.id}" title="${matTooltip}">${matIcon}</button>
           <button data-a="qty-minus" data-id="${item.id}">-</button>
           <span>${inSet?.qty ?? 0}</span>
           <button data-a="qty-plus" data-id="${item.id}">+</button>
@@ -713,7 +719,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         <div class="sb-col">${item.pierces}</div>
         <div class="sb-col">${fmtLen(item.cutLen)}</div>
         <div class="sb-actions">
-          <button class="sb-btn sb-btn--xs sb-btn--material" data-a="assign-material" data-id="${item.id}" title="${t('material.title')}">${t('material.assign')}</button>
           <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
           <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
           <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">⋯</button>
@@ -1596,6 +1601,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                       <div><span>${t('setBuilder.pierces')}:</span><b>${lastEngineResult.pierceEstimate}</b></div>
                       ${commonLineActive ? `<div><span>${t('setBuilder.savedCut')}:</span><b>−${fmtLen(Math.max(0, sharedCutLen))}</b></div>` : ''}
                       ${commonLineActive ? `<div><span>${t('setBuilder.savedPierces')}:</span><b>−${Math.max(0, pierceDelta)}</b></div>` : ''}
+                      ${totals.totalWeightKg !== null ? `<div><span>${t('setBuilder.totalWeight')}:</span><b>${formatWeightKg(totals.totalWeightKg)}</b></div>` : ''}
                     </div>
                   ` : ''}
                   ${!state.results
@@ -1625,11 +1631,21 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
             <div class="sb-set-list">
               ${setRows.length === 0
                 ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
-                : setRows.map(({ item, set }) => `
+                : setRows.map(({ item, set }) => {
+                    const rowAssignment = getMaterialAssignment(state, item.id);
+                    const rowMat = rowAssignment ? findMaterial(rowAssignment.materialId) : null;
+                    const rowWeightStr = (rowMat && item.areaMm2 > 0)
+                      ? formatWeightKg(calcWeightKg(item.areaMm2, rowMat.thicknessMm, rowMat.densityKgM3) * set.qty)
+                      : null;
+                    const rowMatLabel = rowAssignment ? formatMaterialLabel(rowAssignment.materialId) : null;
+                    return `
                   <div class="sb-set-row">
                     <div class="sb-set-head">
                       <div class="sb-set-thumb">${buildThumbMarkup(item)}</div>
-                      <div class="sb-set-name">${esc(item.name)}</div>
+                      <div class="sb-set-meta">
+                        <div class="sb-set-name">${esc(item.name)}</div>
+                        ${rowMatLabel ? `<div class="sb-set-mat">${esc(rowMatLabel)}${rowWeightStr ? ` · <b>${esc(rowWeightStr)}</b>` : ''}</div>` : ''}
+                      </div>
                     </div>
                     <div class="sb-set-controls">
                       <label><input type="checkbox" data-a="set-enabled" data-id="${item.id}" ${set.enabled ? 'checked' : ''}/> ${t('setBuilder.enabled')}</label>
@@ -1642,7 +1658,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                       <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
                     </div>
                   </div>
-                `).join('')}
+                `;
+                  }).join('')}
             </div>
             <div class="sb-set-nest-panel">
 
