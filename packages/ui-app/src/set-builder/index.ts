@@ -115,8 +115,8 @@ function buildItemDocsForSet(state: SetBuilderState): Map<number, ItemDocData> {
 }
 
 function createNestingOptions(state: SetBuilderState): NestingOptions {
-  const strategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
-  const multiStart = strategy === 'true_shape' ? false : state.multiStart;
+  const strategy: 'maxrects_bbox' = 'maxrects_bbox';
+  const multiStart = state.multiStart;
   return {
     rotationEnabled: state.rotationEnabled,
     rotationAngleStepDeg: state.rotationStepDeg,
@@ -399,7 +399,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.sheetPresetId = typeof parsed.sheetPresetId === 'string' ? parsed.sheetPresetId : state.sheetPresetId;
       state.gapMm = Number.isFinite(parsed.gapMm) ? Math.max(0, parsed.gapMm ?? 0) : 5;
       state.mode = parsed.mode === 'commonLine' ? 'commonLine' : 'normal';
-      state.nestStrategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
+      state.nestStrategy = 'maxrects_bbox';
       state.rotationEnabled = parsed.rotationEnabled !== false;
       state.rotationStepDeg = parsed.rotationStepDeg === 1 || parsed.rotationStepDeg === 5 ? parsed.rotationStepDeg : 2;
       state.multiStart = parsed.multiStart !== false;
@@ -1704,7 +1704,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 <div class="sb-nest-section-label">${t('setBuilder.settingsAlgo')}</div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
-                  <div class="sb-nest-value">${state.mode === 'commonLine' ? t('setBuilder.strategyTrueShape') : t('setBuilder.strategyPrecise')}</div>
+                  <div class="sb-nest-value">${t('setBuilder.strategyPrecise')}</div>
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
@@ -1723,7 +1723,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.multiStart')}</label>
-                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.mode === 'commonLine' ? 'disabled' : ''}/>
+                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''}/>
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.seed')}</label>
@@ -1910,8 +1910,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'mode') {
       state.mode = button.dataset.mode === 'commonLine' ? 'commonLine' : 'normal';
-      state.nestStrategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
-      if (state.mode === 'commonLine') state.multiStart = false;
+      state.nestStrategy = 'maxrects_bbox';
       render();
       return;
     }
@@ -2237,7 +2236,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'multi-start' && el instanceof HTMLInputElement) {
-      state.multiStart = state.mode === 'commonLine' ? false : el.checked;
+      state.multiStart = el.checked;
       render();
       return;
     }
