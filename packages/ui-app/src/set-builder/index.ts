@@ -275,9 +275,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const cy = bb!.min.y + bbH / 2;
     const pixelSize = 1 / scale;
     const opts: EntityRenderOptions = {
-      arcSegments: 28,
-      splineSegments: 28,
-      ellipseSegments: 28,
+      arcSegments: 64,
+      splineSegments: 64,
+      ellipseSegments: 64,
       pixelSize,
       viewExtent: Math.max(bbW, bbH) * 2,
     };
@@ -319,10 +319,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
         const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
         const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
-        const thumb = renderDxfThumbDataUrl(p.itemId, 160, 100);
+        const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
+        const isTransposed = Math.abs(Math.round(angle) % 180) === 90;
+        const thumb = renderDxfThumbDataUrl(p.itemId, 320, 320);
+        const imgStyle = angle !== 0
+          ? `position:absolute;top:50%;left:50%;transform-origin:center center;transform:translate(-50%,-50%) rotate(${angle}deg);${isTransposed ? `width:${height.toFixed(2)}%;height:${width.toFixed(2)}%;` : 'max-width:100%;max-height:100%;'}`
+          : 'max-width:100%;max-height:100%;';
         return `
           <div class="sb-sheet-part" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
-            ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
+            ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" style="${imgStyle}" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
             <span class="sb-sheet-part-name">${esc(p.name)}</span>
           </div>
         `;
