@@ -115,7 +115,7 @@ function buildItemDocsForSet(state: SetBuilderState): Map<number, ItemDocData> {
 }
 
 function createNestingOptions(state: SetBuilderState): NestingOptions {
-  const strategy = state.nestStrategy;
+  const strategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
   const multiStart = strategy === 'true_shape' ? false : state.multiStart;
   return {
     rotationEnabled: state.rotationEnabled,
@@ -399,7 +399,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.sheetPresetId = typeof parsed.sheetPresetId === 'string' ? parsed.sheetPresetId : state.sheetPresetId;
       state.gapMm = Number.isFinite(parsed.gapMm) ? Math.max(0, parsed.gapMm ?? 0) : 5;
       state.mode = parsed.mode === 'commonLine' ? 'commonLine' : 'normal';
-      state.nestStrategy = parsed.nestStrategy === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
+      state.nestStrategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
       state.rotationEnabled = parsed.rotationEnabled !== false;
       state.rotationStepDeg = parsed.rotationStepDeg === 1 || parsed.rotationStepDeg === 5 ? parsed.rotationStepDeg : 2;
       state.multiStart = parsed.multiStart !== false;
@@ -666,6 +666,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         showToast(t('setBuilder.toast.nestingFailed'));
         return;
       }
+
+      const requiredActual = items.reduce((acc, it) => acc + Math.max(0, Math.trunc(it.quantity)), 0);
+      const placedActual = result.sheets.reduce((acc, s) => acc + s.placed.length, 0);
+      result = { ...result, totalRequired: requiredActual, totalPlaced: placedActual };
 
       const correctedPierces = calcPierceEstimateForSheets(result.sheets);
       lastEngineResult = { ...result, pierceEstimate: correctedPierces };
@@ -1694,25 +1698,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
                   <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
                 </div>
-                ${state.mode === 'commonLine' ? `
-                <div class="sb-nest-row">
-                  <label class="sb-nest-row-label">${t('setBuilder.commonLineMaxDistance')}</label>
-                  <input class="sb-input sb-input--sm" type="number" min="0" step="0.1" data-a="cl-dist" value="${state.commonLineMaxMergeDistanceMm}" />
-                </div>
-                <div class="sb-nest-row">
-                  <label class="sb-nest-row-label">${t('setBuilder.commonLineMinSharedLen')}</label>
-                  <input class="sb-input sb-input--sm" type="number" min="0" step="1" data-a="cl-min" value="${state.commonLineMinSharedLenMm}" />
-                </div>` : ''}
               </div>
 
               <div class="sb-nest-section">
                 <div class="sb-nest-section-label">${t('setBuilder.settingsAlgo')}</div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
-                  <select class="sb-select sb-select--compact" data-a="strategy">
-                    <option value="maxrects_bbox" ${state.nestStrategy === 'maxrects_bbox' ? 'selected' : ''}>${t('setBuilder.strategyPrecise')}</option>
-                    <option value="true_shape" ${state.nestStrategy === 'true_shape' ? 'selected' : ''}>${t('setBuilder.strategyTrueShape')}</option>
-                  </select>
+                  <div class="sb-nest-value">${state.mode === 'commonLine' ? t('setBuilder.strategyTrueShape') : t('setBuilder.strategyPrecise')}</div>
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
@@ -1731,7 +1723,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.multiStart')}</label>
-                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.nestStrategy === 'true_shape' ? 'disabled' : ''}/>
+                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''} ${state.mode === 'commonLine' ? 'disabled' : ''}/>
                 </div>
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.seed')}</label>
@@ -1918,6 +1910,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'mode') {
       state.mode = button.dataset.mode === 'commonLine' ? 'commonLine' : 'normal';
+      state.nestStrategy = state.mode === 'commonLine' ? 'true_shape' : 'maxrects_bbox';
+      if (state.mode === 'commonLine') state.multiStart = false;
       render();
       return;
     }
@@ -2230,12 +2224,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       render();
       return;
     }
-    if (action === 'strategy' && el instanceof HTMLSelectElement) {
-      state.nestStrategy = el.value === 'true_shape' ? 'true_shape' : 'maxrects_bbox';
-      if (state.nestStrategy === 'true_shape') state.multiStart = false;
-      render();
-      return;
-    }
+    if (action === 'strategy' && el instanceof HTMLSelectElement) return;
     if (action === 'rotation' && el instanceof HTMLInputElement) {
       state.rotationEnabled = el.checked;
       render();
@@ -2248,7 +2237,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'multi-start' && el instanceof HTMLInputElement) {
-      state.multiStart = state.nestStrategy === 'true_shape' ? false : el.checked;
+      state.multiStart = state.mode === 'commonLine' ? false : el.checked;
       render();
       return;
     }
