@@ -1706,10 +1706,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
                   <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
                   <div class="sb-nest-value">${t('setBuilder.strategyPrecise')}</div>
                 </div>
+                ${state.mode === 'normal' ? `
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
                   <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
                 </div>
+                ` : ''}
                 <div class="sb-nest-row">
                   <label class="sb-nest-row-label">${t('setBuilder.rotate')}</label>
                   <div class="sb-nest-row-controls">
