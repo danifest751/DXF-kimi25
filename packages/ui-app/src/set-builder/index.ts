@@ -243,8 +243,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let lastItemDocs = new Map<number, ItemDocData>();
   const dxfThumbCache = new Map<string, string>();
 
-  function renderDxfThumbDataUrl(sourceFileId: number, width: number, height: number): string | null {
-    const cacheKey = `${sourceFileId}:${width}x${height}`;
+  function renderDxfThumbDataUrl(sourceFileId: number, width: number, height: number, angleDeg = 0): string | null {
+    const cacheKey = `${sourceFileId}:${width}x${height}:${angleDeg}`;
     const cached = dxfThumbCache.get(cacheKey);
     if (cached) return cached;
 
@@ -266,10 +266,16 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     ctx.fillStyle = 'rgba(7, 11, 18, 0.8)';
     ctx.fillRect(0, 0, width, height);
 
-    const pad = Math.max(4, Math.round(Math.min(width, height) * 0.08));
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.abs(Math.cos(angleRad));
+    const sinA = Math.abs(Math.sin(angleRad));
+    const rotW = bbW * cosA + bbH * sinA;
+    const rotH = bbW * sinA + bbH * cosA;
+
+    const pad = Math.max(4, Math.round(Math.min(width, height) * 0.06));
     const availW = Math.max(1, width - pad * 2);
     const availH = Math.max(1, height - pad * 2);
-    const scale = Math.max(1e-6, Math.min(availW / bbW, availH / bbH));
+    const scale = Math.max(1e-6, Math.min(availW / rotW, availH / rotH));
 
     const cx = bb!.min.x + bbW / 2;
     const cy = bb!.min.y + bbH / 2;
@@ -284,6 +290,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
     ctx.save();
     ctx.translate(width / 2, height / 2);
+    ctx.rotate(-angleRad);
     ctx.scale(scale, -scale);
     ctx.translate(-cx, -cy);
     for (const fe of lf.doc.flatEntities) {
@@ -320,14 +327,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
         const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
         const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
-        const isTransposed = Math.abs(Math.round(angle) % 180) === 90;
-        const thumb = renderDxfThumbDataUrl(p.itemId, 320, 320);
-        const imgStyle = angle !== 0
-          ? `position:absolute;top:50%;left:50%;transform-origin:center center;transform:translate(-50%,-50%) rotate(${angle}deg);${isTransposed ? `width:${height.toFixed(2)}%;height:${width.toFixed(2)}%;` : 'max-width:100%;max-height:100%;'}`
-          : 'max-width:100%;max-height:100%;';
+        const thumb = renderDxfThumbDataUrl(p.itemId, 320, 320, angle);
         return `
           <div class="sb-sheet-part" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
-            ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" style="${imgStyle}" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
+            ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
             <span class="sb-sheet-part-name">${esc(p.name)}</span>
           </div>
         `;
