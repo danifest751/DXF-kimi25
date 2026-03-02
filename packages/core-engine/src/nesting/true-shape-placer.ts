@@ -175,15 +175,15 @@ export function placeTrueShape(
     // Open new sheet
     if (!placed) {
       const newState: SheetState = { placed: [], usedArea: 0 };
-      sheetStates.push(newState);
       if (tryPlaceOnSheet(copy, newState, sheet, gap, anglesDeg, cache)) {
+        sheetStates.push(newState);
         totalPlaced++;
       } else {
         // NFP failed on empty sheet — fallback to bbox contour placement
         const bboxCopy: CopyEntry = { ...copy, contour: rectPoly(copy.item.width, copy.item.height) };
         const fallbackState: SheetState = { placed: [], usedArea: 0 };
-        sheetStates.push(fallbackState);
-        if (tryPlaceOnSheet(bboxCopy, fallbackState, sheet, gap, [0], cache)) {
+        if (tryPlaceOnSheet(bboxCopy, fallbackState, sheet, gap, anglesDeg, cache)) {
+          sheetStates.push(fallbackState);
           totalPlaced++;
         }
         // If bbox also fails → item genuinely doesn't fit the sheet (too large)
