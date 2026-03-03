@@ -179,6 +179,9 @@ function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: number): Li
   } catch {
     areaMm2 = 0;
   }
+  if (areaMm2 === 0 && w > 0 && h > 0) {
+    areaMm2 = Math.round(w * h * 0.7);
+  }
 
   return {
     id: nextLibraryId,
@@ -2315,11 +2318,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   });
 
-  window.addEventListener('dxf-files-updated', () => {
+  window.addEventListener('dxf-files-updated', (e) => {
     if (!state.open) return;
     dxfThumbCache.clear();
     render();
-    showToast(t('setBuilder.toast.filesSynced'));
+    if ((e as CustomEvent<{ added: number }>).detail?.added > 0) {
+      showToast(t('setBuilder.toast.filesSynced'));
+    }
   });
 
   window.addEventListener(AUTH_SESSION_EVENT, () => {

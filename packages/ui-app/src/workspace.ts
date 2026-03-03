@@ -202,6 +202,7 @@ export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
                 _renderFileList();
                 _recalcTotals();
                 _updateNestItems();
+                window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 0 } }));
               }
             })
             .catch((err) => {
