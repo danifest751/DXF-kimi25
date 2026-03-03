@@ -16,8 +16,9 @@ export function renderDxfThumbDataUrl(
   height: number,
   angleDeg: number,
   dxfThumbCache: Map<string, string>,
+  padPx = 0,
 ): string | null {
-  const cacheKey = `${sourceFileId}:${width}x${height}:${angleDeg}`;
+  const cacheKey = `${sourceFileId}:${width}x${height}:${angleDeg}:${padPx}`;
   const cached = dxfThumbCache.get(cacheKey);
   if (cached) return cached;
 
@@ -45,7 +46,7 @@ export function renderDxfThumbDataUrl(
   const rotW = bbW * cosA + bbH * sinA;
   const rotH = bbW * sinA + bbH * cosA;
 
-  const pad = Math.max(4, Math.round(Math.min(width, height) * 0.06));
+  const pad = padPx > 0 ? padPx : Math.max(4, Math.round(Math.min(width, height) * 0.06));
   const availW = Math.max(1, width - pad * 2);
   const availH = Math.max(1, height - pad * 2);
   const scale = Math.max(1e-6, Math.min(availW / rotW, availH / rotH));
@@ -104,10 +105,15 @@ export function buildSheetPlacementsMarkup(
     .map((p) => {
       const left = Math.max(0, Math.min(100, (p.x / safeW) * 100));
       const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
-      const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
+      const top = Math.max(0, Math.min(100, ((safeH - p.y - p.h) / safeH) * 100));
       const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
       const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
-      const thumb = renderDxfThumbDataUrl(p.itemId, 320, 320, angle, dxfThumbCache);
+      // Render thumb with correct aspect ratio matching the placed bounding box
+      const thumbSize = 256;
+      const tRatio = p.w > 0 && p.h > 0 ? p.w / p.h : 1;
+      const tW = tRatio >= 1 ? thumbSize : Math.round(thumbSize * tRatio);
+      const tH = tRatio >= 1 ? Math.round(thumbSize / tRatio) : thumbSize;
+      const thumb = renderDxfThumbDataUrl(p.itemId, Math.max(4, tW), Math.max(4, tH), angle, dxfThumbCache, 1);
       return `
         <div class="sb-sheet-part" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
           ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
