@@ -424,7 +424,10 @@ export async function upsertFileMaterial(workspaceId: string, fileId: string, ma
       updated_at: new Date().toISOString(),
     }),
   });
-  if (!response?.ok) throw new Error('Failed to upsert file material');
+  if (!response?.ok) {
+    const body = await response?.text().catch(() => '');
+    throw new Error(`Failed to upsert file material: ${response?.status} ${body}`);
+  }
 }
 
 export async function setWorkspaceFilesChecked(workspaceId: string, checked: boolean, catalogIds?: string[]): Promise<void> {
