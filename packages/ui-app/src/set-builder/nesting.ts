@@ -106,6 +106,7 @@ export function mapEngineResultToSetBuilder(
       hash: hashes[idx] ?? '',
       sheetWidth: Math.max(1, result.sheet.width),
       sheetHeight: Math.max(1, result.sheet.height),
+      gap: result.gap,
       placements: sheet.placed.map((p) => ({
         itemId: p.itemId,
         name: p.name,

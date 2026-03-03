@@ -47,6 +47,7 @@ export interface SheetResult {
   readonly hash: string;
   readonly sheetWidth: number;
   readonly sheetHeight: number;
+  readonly gap: number;
   readonly placements: readonly {
     itemId: number;
     name: string;

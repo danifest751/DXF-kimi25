@@ -97,6 +97,7 @@ export function buildSheetPlacementsMarkup(
   sheet: SheetResult,
   dxfThumbCache: Map<string, string>,
 ): string {
+  const noGap = sheet.gap === 0;
   const safeW = Math.max(1, sheet.sheetWidth);
   const safeH = Math.max(1, sheet.sheetHeight);
   const ratio = (safeW / safeH).toFixed(4);
@@ -115,7 +116,7 @@ export function buildSheetPlacementsMarkup(
       const tH = tRatio >= 1 ? Math.round(thumbSize / tRatio) : thumbSize;
       const thumb = renderDxfThumbDataUrl(p.itemId, Math.max(4, tW), Math.max(4, tH), angle, dxfThumbCache, 1);
       return `
-        <div class="sb-sheet-part" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
+        <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
           ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
           <span class="sb-sheet-part-name">${esc(p.name)}</span>
         </div>

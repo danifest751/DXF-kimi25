@@ -55,6 +55,7 @@ export function runMockNesting(state: SetBuilderState): NestingResults {
       hash,
       sheetWidth: preset.w,
       sheetHeight: preset.h,
+      gap: state.mode === 'commonLine' ? 0 : state.gapMm,
       placements,
     });
   }
