@@ -2096,8 +2096,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const applyAll = (root.querySelector('#mat-apply-all') as HTMLInputElement | null)?.checked ?? false;
       const now = Date.now();
       const assignment: MaterialAssignment = { materialId, appliedAt: now };
+      const item = state.library.find((it) => it.id === itemIdRaw);
 
-      const targetIds: number[] = applyAll
+      const targetIds: number[] = applyAll && item
         ? state.library.filter((it) => it.catalog === item.catalog).map((it) => it.id)
         : [itemIdRaw];
 
