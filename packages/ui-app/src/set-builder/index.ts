@@ -501,8 +501,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (!lf?.remoteId) continue;
       try {
         await apiPostJSON<{ success: boolean }>('/api/file-materials-upsert', { fileId: lf.remoteId, materialId }, getAuthHeaders());
-      } catch {
-        // ignore, local state already saved
+      } catch (err) {
+        console.error('[material-sync] upsert failed:', err);
       }
     }
   }

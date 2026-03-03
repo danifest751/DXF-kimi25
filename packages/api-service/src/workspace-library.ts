@@ -414,9 +414,9 @@ export async function upsertFileMaterial(workspaceId: string, fileId: string, ma
   if (fileId.length > 200) throw new Error('Invalid fileId');
   if (!materialId || materialId.length > 200) throw new Error('Invalid materialId');
 
-  const response = await supabaseRequest(`/${FILE_MATERIALS_TABLE}`, {
+  const response = await supabaseRequest(`/${FILE_MATERIALS_TABLE}?on_conflict=workspace_id,file_id`, {
     method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates' },
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({
       workspace_id: workspaceId,
       file_id: fileId,
