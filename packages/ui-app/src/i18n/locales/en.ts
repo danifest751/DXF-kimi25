@@ -309,7 +309,7 @@ export const en: Record<TranslationKey, string> = {
   'material.grade': 'Grade',
   'material.thickness': 'Thickness',
   'material.unit.mm': 'mm',
-  'material.applyToAll': 'Apply to all parts of this DXF',
+  'material.applyToAll': 'Apply to all parts of this catalog',
   'material.save': 'Save',
   'material.cancel': 'Cancel',
   'material.none': 'Not assigned',

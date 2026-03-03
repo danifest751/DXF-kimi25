@@ -2098,7 +2098,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const assignment: MaterialAssignment = { materialId, appliedAt: now };
 
       const targetIds: number[] = applyAll
-        ? state.library.filter((it) => it.sourceFileId !== undefined).map((it) => it.id)
+        ? state.library.filter((it) => it.catalog === item.catalog).map((it) => it.id)
         : [itemIdRaw];
 
       for (const tid of targetIds) {

@@ -307,7 +307,7 @@ export const ru = {
   'material.grade': 'Марка',
   'material.thickness': 'Толщина',
   'material.unit.mm': 'мм',
-  'material.applyToAll': 'Применить ко всем деталям этого DXF',
+  'material.applyToAll': 'Применить ко всем деталям каталога',
   'material.save': 'Сохранить',
   'material.cancel': 'Отмена',
   'material.none': 'Не назначен',
