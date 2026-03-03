@@ -411,7 +411,7 @@ export async function getFileMaterials(workspaceId: string): Promise<FileMateria
 
 export async function upsertFileMaterial(workspaceId: string, fileId: string, materialId: string): Promise<void> {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
-  if (!UUID_RE.test(fileId)) throw new Error('Invalid fileId');
+  if (fileId.length > 200) throw new Error('Invalid fileId');
   if (!materialId || materialId.length > 200) throw new Error('Invalid materialId');
 
   const response = await supabaseRequest(`/${FILE_MATERIALS_TABLE}`, {

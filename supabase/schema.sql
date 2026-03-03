@@ -82,7 +82,7 @@ alter table shared_sheets       enable row level security;
 create table if not exists file_materials (
   id           uuid primary key default uuid_generate_v4(),
   workspace_id text not null,
-  file_id      uuid references workspace_files (id) on delete cascade,
+  file_id      text not null,
   material_id  text not null check (char_length(material_id) between 1 and 200),
   updated_at   timestamptz not null default now()
 );
