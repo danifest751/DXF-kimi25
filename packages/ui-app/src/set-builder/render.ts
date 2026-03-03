@@ -105,7 +105,7 @@ export function buildSheetPlacementsMarkup(
     .map((p) => {
       const left = Math.max(0, Math.min(100, (p.x / safeW) * 100));
       const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
-      const top = Math.max(0, Math.min(100, ((safeH - p.y - p.h) / safeH) * 100));
+      const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
       const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
       const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
       // Render thumb with correct aspect ratio matching the placed bounding box
