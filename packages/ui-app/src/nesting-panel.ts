@@ -288,8 +288,9 @@ function showNestResults(): void {
 // ─── Render all sheets canvas ─────────────────────────────────────────
 
 const PART_COLORS = [
-  '#6366f1', '#22c55e', '#f59e0b', '#06b6d4', '#ef4444',
-  '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6',
+  '#818cf8', '#4ade80', '#fbbf24', '#22d3ee', '#f87171',
+  '#c084fc', '#f472b6', '#2dd4bf', '#fb923c', '#a78bfa',
+  '#34d399', '#60a5fa', '#facc15', '#e879f9', '#38bdf8',
 ];
 
 export function getPlacedAngleDeg(p: { angleDeg?: unknown; rotated?: unknown }): number {
@@ -312,10 +313,10 @@ function drawTrueShapeContour(
     ctx.lineTo(ox + pts[i]!.x * scale, oy + pts[i]!.y * scale);
   }
   ctx.closePath();
-  ctx.fillStyle = color + '22';
+  ctx.fillStyle = color + '30';
   ctx.fill();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.restore();
 }
@@ -347,7 +348,7 @@ function drawPartContour(
   const pixelSize = 1 / partScale;
   const entOpts: EntityRenderOptions = { arcSegments, splineSegments: arcSegments, ellipseSegments: arcSegments, pixelSize, viewExtent: Math.max(bbW, bbH) * 2 };
   for (const fe of file.doc.flatEntities) {
-    ctx.strokeStyle = color; ctx.lineWidth = pixelSize * 1.2; ctx.fillStyle = color;
+    ctx.strokeStyle = color; ctx.lineWidth = pixelSize * 1.5; ctx.fillStyle = color;
     renderEntity(ctx, fe, entOpts);
   }
   ctx.restore();
@@ -396,8 +397,8 @@ export function renderAllNestingSheets(): void {
     ctx.fillText(`#${si + 1}  ${sheet.fillPercent}%  (${sheet.placed.length})${hashLabel}`, cellX, cellY);
 
     const ox = cellX, oy = cellY + labelH;
-    ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(ox, oy, sheetDrawW, sheetDrawH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, sheetDrawW, sheetDrawH);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(ox, oy, sheetDrawW, sheetDrawH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, sheetDrawW, sheetDrawH);
 
     const isTrueShape = r.strategy === 'true_shape';
     for (const p of sheet.placed) {
@@ -407,14 +408,14 @@ export function renderAllNestingSheets(): void {
       if (isTrueShape && p.contourPts && p.contourPts.length >= 3) {
         drawTrueShapeContour(ctx, p.contourPts, ox, oy, scale, color);
       } else {
-        ctx.fillStyle = color + '10'; ctx.fillRect(px, py, pw, ph);
-        ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
+        ctx.fillStyle = color + '1a'; ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = color + '70'; ctx.lineWidth = 0.8; ctx.strokeRect(px, py, pw, ph);
         const file = loadedFiles.find(lf => lf.id === p.itemId);
         if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 32);
       }
       const fontSize = Math.min(9, pw * 0.18, ph * 0.28);
       if (fontSize > 3.5) {
-        ctx.font = `500 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'cc';
+        ctx.font = `600 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'ee';
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
         ctx.fillText(p.name.replace(/\.dxf$/i, ''), px + pw / 2, py + ph - 1, pw - 2);
       }
@@ -559,14 +560,14 @@ export function renderZoomSheet(sheetIndex: number): void {
     if (isTrueShapeZ && p.contourPts && p.contourPts.length >= 3) {
       drawTrueShapeContour(ctx, p.contourPts, 0, 0, zScale, color);
     } else {
-      ctx.fillStyle = color + '15'; ctx.fillRect(px, py, pw, ph);
-      ctx.strokeStyle = color + '40'; ctx.lineWidth = 0.5; ctx.strokeRect(px, py, pw, ph);
+      ctx.fillStyle = color + '20'; ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = color + '80'; ctx.lineWidth = 1; ctx.strokeRect(px, py, pw, ph);
       const file = loadedFiles.find(lf => lf.id === p.itemId);
       if (file?.doc.totalBBox) drawPartContour(ctx, file, p, px, py, pw, ph, color, 64);
     }
     const fontSize = Math.min(12, pw * 0.15, ph * 0.22);
     if (fontSize > 5) {
-      ctx.font = `500 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'dd';
+      ctx.font = `600 ${fontSize}px Inter, sans-serif`; ctx.fillStyle = color + 'ff';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.fillText(p.name.replace(/\.dxf$/i, ''), px + pw / 2, py + ph - 2, pw - 4);
     }
