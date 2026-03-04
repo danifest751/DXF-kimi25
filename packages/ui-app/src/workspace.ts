@@ -128,6 +128,7 @@ export async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<
     stats,
     checked: meta.checked,
     quantity: meta.quantity,
+    sizeBytes: dl.sizeBytes,
   };
 }
 
@@ -279,6 +280,7 @@ export async function loadSingleFile(
         stats,
         checked: uploadResp.file.checked,
         quantity: uploadResp.file.quantity,
+        sizeBytes: file.size,
       };
     } else {
       entry = {
@@ -292,6 +294,7 @@ export async function loadSingleFile(
         stats,
         checked: true,
         quantity: 1,
+        sizeBytes: file.size,
       };
     }
     loadedFiles.push(entry);

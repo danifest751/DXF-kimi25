@@ -42,6 +42,8 @@ export interface LoadedFile {
   loadPromise?: Promise<void>;
   /** Сообщение об ошибке загрузки */
   loadError?: string;
+  /** Размер файла в байтах */
+  sizeBytes?: number;
 }
 
 export type ComputeMode = 'api' | 'local';

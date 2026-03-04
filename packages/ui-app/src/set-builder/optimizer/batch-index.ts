@@ -26,7 +26,7 @@ export function buildBatchEntries(
       sourceFileId: item.sourceFileId,
       name: item.name,
       catalog: item.catalog,
-      fileSizeBytes: lf.localBase64 ? Math.round(lf.localBase64.length * 0.75) : 0,
+      fileSizeBytes: lf.sizeBytes ?? (lf.localBase64 ? Math.round(lf.localBase64.length * 0.75) : 0),
       enabled: true,
       status: 'pending',
       beforeEntities: null,
