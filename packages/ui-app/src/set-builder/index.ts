@@ -1,5 +1,5 @@
 import { fileInput } from '../dom.js';
-import { authSessionToken, authWorkspaceId } from '../state.js';
+import { authSessionToken, authWorkspaceId, loadedFiles } from '../state.js';
 import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
 import { AUTH_SESSION_EVENT, logoutWorkspace, runTelegramLoginFlow } from '../auth.js';
 import type { NestingResult } from '../../../core-engine/src/nesting/index.js';
@@ -23,6 +23,8 @@ import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState }
 import type { ModalCanvasState } from './canvas-modal.js';
 import { getGradesByGroup, getThicknessesByGrade, findMaterial, formatWeightKg, calcWeightKg } from './materials.js';
 import { esc } from './utils.js';
+import { analyzeFile, optimizeFile, downloadOptimizedDxf, downloadReportJson, createOptimizerState } from './optimizer/index.js';
+import type { OptimizerState } from './optimizer/types.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const state = createInitialState();
@@ -39,6 +41,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let lastItemDocs = new Map<number, ItemDocData>();
   const dxfThumbCache = new Map<string, string>();
   const modalCanvasState: ModalCanvasState = createModalCanvasState();
+  let optiState: OptimizerState | null = null;
 
   function showToast(msg: string): void {
     toastText = msg;
@@ -64,6 +67,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       customSheetWidthMm, customSheetHeightMm,
       toastText, lastEngineResult, dxfThumbCache,
       authSessionToken, authWorkspaceId,
+      optiState,
     );
     persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
     applyModalPierceCanvas(root, modalCanvasState, state);
@@ -340,6 +344,65 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (target.classList.contains('sb-modal-backdrop--material')) { state.materialModalOpenForId = null; render(); return; }
+
+    // ── Optimizer ────────────────────────────────────────────────────────
+    if (action === 'open-optimizer') {
+      const item = state.library.find((it) => it.id === id);
+      if (!item || item.sourceFileId === undefined) return;
+      const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+      if (!lf || lf.loading || !lf.doc) { showToast(t('setBuilder.toast.filesSynced')); return; }
+      state.optimizerOpenForId = id;
+      optiState = createOptimizerState();
+      render();
+      void analyzeFile(
+        { flatEntities: [...lf.doc.flatEntities], sourceDoc: lf.doc.source, fileName: lf.name },
+        optiState,
+        render,
+      );
+      return;
+    }
+    if (action === 'opt-close' || target.classList.contains('sb-modal-backdrop--optimizer')) {
+      state.optimizerOpenForId = null;
+      optiState = null;
+      render();
+      return;
+    }
+    if (action === 'opt-tab') {
+      const tab = button.dataset.tab as string;
+      if (optiState && ['overview','inventory','issues','optimize'].includes(tab)) {
+        optiState.activeTab = tab as typeof optiState.activeTab;
+        render();
+      }
+      return;
+    }
+    if (action === 'opt-preset-laser') {
+      if (optiState) {
+        optiState.plan.enabled = new Set(['R1','R4','R5','R6']);
+        render();
+      }
+      return;
+    }
+    if (action === 'opt-run') {
+      if (!optiState || !state.optimizerOpenForId) return;
+      const item = state.library.find((it) => it.id === state.optimizerOpenForId);
+      if (!item || item.sourceFileId === undefined) return;
+      const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+      if (!lf || lf.loading || !lf.doc) return;
+      void optimizeFile(
+        { flatEntities: [...lf.doc.flatEntities], sourceDoc: lf.doc.source, fileName: lf.name },
+        optiState,
+        render,
+      );
+      return;
+    }
+    if (action === 'opt-export-dxf') {
+      if (optiState?.result) downloadOptimizedDxf(optiState.result);
+      return;
+    }
+    if (action === 'opt-export-report') {
+      if (optiState?.result) downloadReportJson(optiState.result);
+      return;
+    }
   });
 
   // ─── drag & drop ─────────────────────────────────────────────────────
@@ -475,6 +538,18 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           (areaCm2 ? `<div class="sb-mat-stat"><span>${t('material.area')}:</span><b>${areaCm2} ${t('unit.cm2')}</b></div>` : '') +
           (weightStr ? `<div class="sb-mat-stat sb-mat-stat--weight"><span>${t('material.weight')}:</span><b>${esc(weightStr)}</b></div>` : '');
       }
+      return;
+    }
+    if (action === 'opt-rule' && el instanceof HTMLInputElement && optiState) {
+      const ruleId = el.dataset.rule as string;
+      if (el.checked) optiState.plan.enabled.add(ruleId as Parameters<typeof optiState.plan.enabled.add>[0]);
+      else optiState.plan.enabled.delete(ruleId as Parameters<typeof optiState.plan.enabled.delete>[0]);
+      render();
+      return;
+    }
+    if (action === 'opt-epsilon' && el instanceof HTMLInputElement && optiState) {
+      const v = parseFloat(el.value);
+      if (Number.isFinite(v) && v > 0) { optiState.plan.epsilonMm = v; }
       return;
     }
   });

@@ -94,4 +94,5 @@ export interface SetBuilderState {
   materialAssignments: Map<number, MaterialAssignment>;
   lastUsedMaterialId: string | null;
   materialModalOpenForId: number | null;
+  optimizerOpenForId: number | null;
 }

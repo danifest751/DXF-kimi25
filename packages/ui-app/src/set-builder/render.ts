@@ -6,6 +6,8 @@ import type { EntityRenderOptions } from '../../../core-engine/src/render/entity
 import type { NestingResult } from '../../../core-engine/src/nesting/index.js';
 import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
 import { calcWeightKg, findMaterial, formatMaterialLabel, formatWeightKg, getMaterialGroups, getGradesByGroup, getThicknessesByGrade } from './materials.js';
+import { renderOptimizerModal } from './optimizer/render-modal.js';
+import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
@@ -156,6 +158,7 @@ export function buildLibraryRow(
         ${assignment ? `<span class="sb-badge sb-badge--material" title="${esc(matLabel)}">${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}</span>` : ''}
       </div>
       <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
+        <button class="sb-icon sb-opt-icon" data-a="open-optimizer" data-id="${item.id}" title="${t('optimizer.openOptimizer')}">🔧</button>
         <button class="${matIconClass}" data-a="assign-material" data-id="${item.id}" title="${matTooltip}">${matIcon}</button>
         <button data-a="qty-minus" data-id="${item.id}">-</button>
         <span>${inSet?.qty ?? 0}</span>
@@ -445,6 +448,7 @@ export function renderMain(
   dxfThumbCache: Map<string, string>,
   authSessionToken: string,
   authWorkspaceId: string,
+  optimizerState: OptimizerState | null,
 ): void {
   const filtered = getVisibleLibraryItems(state);
   const setRows = getSetRows(state);
@@ -733,6 +737,11 @@ export function renderMain(
       ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
       ${renderPreviewModal(state, dxfThumbCache)}
       ${renderMaterialModal(state)}
+      ${renderOptimizerModal(
+        optimizerState,
+        state.optimizerOpenForId,
+        state.library.find((it) => it.id === state.optimizerOpenForId)?.name ?? '',
+      )}
     </div>
   `;
 }

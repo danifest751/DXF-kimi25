@@ -34,6 +34,7 @@ export function createInitialState(): SetBuilderState {
     materialAssignments: new Map(),
     lastUsedMaterialId: null,
     materialModalOpenForId: null,
+    optimizerOpenForId: null,
   };
 }
 
