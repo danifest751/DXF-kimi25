@@ -65,17 +65,50 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     const critCodes = new Set<string>(JSON.parse(canvas.dataset.crit ?? '[]') as string[]);
     const warnCodes = new Set<string>(JSON.parse(canvas.dataset.warn ?? '[]') as string[]);
 
+    const hasDuplicates = warnCodes.has('DUPLICATES') || critCodes.has('DUPLICATES');
+    const hasSplineWarn = warnCodes.has('SPLINE_ELLIPSE') || critCodes.has('SPLINE_ELLIPSE');
+    const hasZeroLen = warnCodes.has('ZERO_LENGTH') || critCodes.has('ZERO_LENGTH');
+    const hasMicro = warnCodes.has('MICRO_SEGMENTS') || critCodes.has('MICRO_SEGMENTS');
+
+    // Предварительно вычисляем дублирующиеся LINE для подсветки
+    const dupeLineKeys = new Set<string>();
+    if (hasDuplicates) {
+      const seen = new Set<string>();
+      for (const fe of lf.doc.flatEntities) {
+        const e = fe.entity as Record<string, unknown>;
+        if (e['type'] !== DXFEntityType.LINE) continue;
+        const s = e['start'] as { x: number; y: number } | undefined;
+        const end = e['end'] as { x: number; y: number } | undefined;
+        if (!s || !end) continue;
+        const key = `${Math.round(s.x * 100)},${Math.round(s.y * 100)},${Math.round(end.x * 100)},${Math.round(end.y * 100)}`;
+        const keyR = `${Math.round(end.x * 100)},${Math.round(end.y * 100)},${Math.round(s.x * 100)},${Math.round(s.y * 100)}`;
+        if (seen.has(key) || seen.has(keyR)) {
+          dupeLineKeys.add(key);
+          dupeLineKeys.add(keyR);
+        } else {
+          seen.add(key);
+        }
+      }
+    }
+
     const bb = lf.doc.totalBBox;
     if (!bb) return;
     const bbW = Math.max(1e-6, bb.max.x - bb.min.x);
     const bbH = Math.max(1e-6, bb.max.y - bb.min.y);
 
+    // Устанавливаем aspect-ratio canvas под соотношение сторон детали + padding
+    const pad = 32;
+    const wrap = canvas.parentElement;
+    const availW = wrap ? wrap.clientWidth || 600 : 600;
+    const aspectRatio = bbW / bbH;
+    const cW = availW;
+    const cH = Math.min(Math.max(180, cW / aspectRatio + pad * 2), 480);
+
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const cW = Math.max(1, rect.width || 800);
-    const cH = Math.max(1, rect.height || 600);
     canvas.width = cW * dpr;
     canvas.height = cH * dpr;
+    canvas.style.width = `${cW}px`;
+    canvas.style.height = `${cH}px`;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -84,7 +117,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     ctx.fillStyle = 'rgba(7, 11, 18, 0.95)';
     ctx.fillRect(0, 0, cW, cH);
 
-    const pad = 24;
     const scale = Math.min((cW - pad * 2) / bbW, (cH - pad * 2) / bbH);
     const cx = bb.min.x + bbW / 2;
     const cy = bb.min.y + bbH / 2;
@@ -97,27 +129,39 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     ctx.translate(-cx, -cy);
 
     for (const fe of lf.doc.flatEntities) {
-      const eObj = fe.entity as Record<string, unknown>;
-      const eType = eObj['type'] as string | undefined;
-      const layer = (fe.layer ?? '') as string;
+      const e = fe.entity as Record<string, unknown>;
+      const eType = e['type'] as string | undefined;
 
-      const isCrit = critCodes.size > 0 && (
-        (eType === DXFEntityType.LINE && critCodes.has('DUP_LINE')) ||
-        (eType === DXFEntityType.LINE && critCodes.has('ZERO_LEN'))
-      );
-      const isWarn = !isCrit && warnCodes.size > 0 && (
-        (eType === DXFEntityType.SPLINE && warnCodes.has('SPLINE_PRESENT')) ||
-        (layer === '0' && warnCodes.has('DEFAULT_LAYER'))
-      );
+      let isCrit = false;
+      let isWarn = false;
+
+      if (eType === DXFEntityType.LINE) {
+        const s = e['start'] as { x: number; y: number } | undefined;
+        const end = e['end'] as { x: number; y: number } | undefined;
+        if (hasDuplicates && s && end) {
+          const key = `${Math.round(s.x * 100)},${Math.round(s.y * 100)},${Math.round(end.x * 100)},${Math.round(end.y * 100)}`;
+          if (dupeLineKeys.has(key)) isWarn = true;
+        }
+        if (!isWarn && hasZeroLen && s && end) {
+          const len = Math.sqrt((end.x - s.x) ** 2 + (end.y - s.y) ** 2);
+          if (len < 0.01) isCrit = true;
+        }
+        if (!isWarn && !isCrit && hasMicro && s && end) {
+          const len = Math.sqrt((end.x - s.x) ** 2 + (end.y - s.y) ** 2);
+          if (len > 0 && len < 0.1) isWarn = true;
+        }
+      } else if ((eType === DXFEntityType.SPLINE || eType === DXFEntityType.ELLIPSE) && hasSplineWarn) {
+        isWarn = true;
+      }
 
       if (isCrit) {
-        ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
+        ctx.strokeStyle = 'rgba(255, 70, 70, 1)';
         ctx.lineWidth = 2.5 / scale;
       } else if (isWarn) {
-        ctx.strokeStyle = 'rgba(255, 200, 50, 0.9)';
-        ctx.lineWidth = 1.8 / scale;
+        ctx.strokeStyle = 'rgba(255, 200, 40, 1)';
+        ctx.lineWidth = 2 / scale;
       } else {
-        ctx.strokeStyle = 'rgba(100, 200, 255, 0.85)';
+        ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
         ctx.lineWidth = 1 / scale;
       }
       renderEntity(ctx, fe, opts);
