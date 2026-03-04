@@ -59,6 +59,50 @@ function renderOverview(oState: OptimizerState): string {
           ${d.issues.length > 3 ? `<div class="opt-issue-more">${d.issues.length - 3} ${t('optimizer.moreIssues')}</div>` : ''}
         </div>
       ` : `<div class="opt-ok">${t('optimizer.noIssues')}</div>`}
+      <div class="opt-overview-actions">
+        <button class="sb-btn sb-btn--ghost" data-a="opt-tab" data-tab="preview">${t('optimizer.tab.preview')}</button>
+        <button class="sb-btn sb-btn--primary opt-run-btn" data-a="opt-run"
+          ${!d ? 'disabled' : ''}>${t('optimizer.runOptimize')}</button>
+      </div>
+    </div>
+  `;
+}
+
+// ─── Tab: Preview ───────────────────────────────────────────────────────────
+
+function renderPreview(oState: OptimizerState): string {
+  const d = oState.diagnostics;
+  if (!d) return `<div class="opt-empty">${t('optimizer.noData')}</div>`;
+
+  const critCodes = new Set(oState.diagnostics?.issues
+    .filter((i) => i.severity === 'critical')
+    .map((i) => i.code) ?? []);
+  const warnCodes = new Set(oState.diagnostics?.issues
+    .filter((i) => i.severity === 'warning')
+    .map((i) => i.code) ?? []);
+
+  const legend = [
+    { cls: 'opt-legend-normal', label: t('optimizer.preview.normal') },
+    { cls: 'opt-legend-warn', label: t('optimizer.preview.warning') },
+    { cls: 'opt-legend-crit', label: t('optimizer.preview.critical') },
+  ];
+
+  return `
+    <div class="opt-preview-wrap">
+      <div class="opt-preview-legend">
+        ${legend.map((l) => `<span class="opt-legend-item"><i class="${l.cls}"></i>${esc(l.label)}</span>`).join('')}
+      </div>
+      <div class="opt-preview-canvas-wrap">
+        <canvas class="opt-preview-canvas" data-a="opt-preview-canvas"
+          data-crit="${esc(JSON.stringify([...critCodes]))}"
+          data-warn="${esc(JSON.stringify([...warnCodes]))}"
+          width="800" height="600"></canvas>
+      </div>
+      <div class="opt-preview-info">
+        <span>${t('optimizer.stat.entities')}: <b>${d.totalEntities}</b></span>
+        <span>${t('optimizer.stat.extents')}: <b>${d.extentW} × ${d.extentH} мм</b></span>
+        ${oState.result ? `<span class="opt-preview-after">${t('optimizer.after')}: <b>${oState.result.afterEntities}</b></span>` : ''}
+      </div>
     </div>
   `;
 }
@@ -236,6 +280,7 @@ export function renderOptimizerModal(
 
   const tabs: Array<{ id: string; label: string }> = [
     { id: 'overview', label: t('optimizer.tab.overview') },
+    { id: 'preview', label: t('optimizer.tab.preview') },
     { id: 'inventory', label: t('optimizer.tab.inventory') },
     { id: 'issues', label: t('optimizer.tab.issues') },
     { id: 'optimize', label: t('optimizer.tab.optimize') },
@@ -243,6 +288,7 @@ export function renderOptimizerModal(
 
   let tabContent = '';
   if (oState.activeTab === 'overview') tabContent = renderOverview(oState);
+  else if (oState.activeTab === 'preview') tabContent = renderPreview(oState);
   else if (oState.activeTab === 'inventory') tabContent = renderInventory(oState);
   else if (oState.activeTab === 'issues') tabContent = renderIssues(oState);
   else tabContent = renderOptimize(oState);

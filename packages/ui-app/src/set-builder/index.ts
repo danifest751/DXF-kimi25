@@ -25,6 +25,9 @@ import { getGradesByGroup, getThicknessesByGrade, findMaterial, formatWeightKg, 
 import { esc } from './utils.js';
 import { analyzeFile, optimizeFile, downloadOptimizedDxf, downloadReportJson, createOptimizerState } from './optimizer/index.js';
 import type { OptimizerState } from './optimizer/types.js';
+import { renderEntity } from '../../../core-engine/src/render/entity-renderer.js';
+import type { EntityRenderOptions } from '../../../core-engine/src/render/entity-renderer.js';
+import { DXFEntityType } from '../../../core-engine/src/types/index.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const state = createInitialState();
@@ -50,6 +53,78 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     render();
   }
 
+  function drawOptimizerPreviewCanvas(): void {
+    if (!optiState || optiState.activeTab !== 'preview' || !state.optimizerOpenForId) return;
+    const canvas = root.querySelector<HTMLCanvasElement>('[data-a="opt-preview-canvas"]');
+    if (!canvas) return;
+    const item = state.library.find((it) => it.id === state.optimizerOpenForId);
+    if (!item || item.sourceFileId === undefined) return;
+    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    if (!lf || lf.loading || !lf.doc) return;
+
+    const critCodes = new Set<string>(JSON.parse(canvas.dataset.crit ?? '[]') as string[]);
+    const warnCodes = new Set<string>(JSON.parse(canvas.dataset.warn ?? '[]') as string[]);
+
+    const bb = lf.doc.totalBBox;
+    if (!bb) return;
+    const bbW = Math.max(1e-6, bb.max.x - bb.min.x);
+    const bbH = Math.max(1e-6, bb.max.y - bb.min.y);
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const cW = Math.max(1, rect.width || 800);
+    const cH = Math.max(1, rect.height || 600);
+    canvas.width = cW * dpr;
+    canvas.height = cH * dpr;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cW, cH);
+    ctx.fillStyle = 'rgba(7, 11, 18, 0.95)';
+    ctx.fillRect(0, 0, cW, cH);
+
+    const pad = 24;
+    const scale = Math.min((cW - pad * 2) / bbW, (cH - pad * 2) / bbH);
+    const cx = bb.min.x + bbW / 2;
+    const cy = bb.min.y + bbH / 2;
+    const pixelSize = 1 / scale;
+    const opts: EntityRenderOptions = { arcSegments: 48, splineSegments: 48, ellipseSegments: 48, pixelSize, viewExtent: Math.max(bbW, bbH) * 2 };
+
+    ctx.save();
+    ctx.translate(cW / 2, cH / 2);
+    ctx.scale(scale, -scale);
+    ctx.translate(-cx, -cy);
+
+    for (const fe of lf.doc.flatEntities) {
+      const eObj = fe.entity as Record<string, unknown>;
+      const eType = eObj['type'] as string | undefined;
+      const layer = (fe.layer ?? '') as string;
+
+      const isCrit = critCodes.size > 0 && (
+        (eType === DXFEntityType.LINE && critCodes.has('DUP_LINE')) ||
+        (eType === DXFEntityType.LINE && critCodes.has('ZERO_LEN'))
+      );
+      const isWarn = !isCrit && warnCodes.size > 0 && (
+        (eType === DXFEntityType.SPLINE && warnCodes.has('SPLINE_PRESENT')) ||
+        (layer === '0' && warnCodes.has('DEFAULT_LAYER'))
+      );
+
+      if (isCrit) {
+        ctx.strokeStyle = 'rgba(255, 80, 80, 0.95)';
+        ctx.lineWidth = 2.5 / scale;
+      } else if (isWarn) {
+        ctx.strokeStyle = 'rgba(255, 200, 50, 0.9)';
+        ctx.lineWidth = 1.8 / scale;
+      } else {
+        ctx.strokeStyle = 'rgba(100, 200, 255, 0.85)';
+        ctx.lineWidth = 1 / scale;
+      }
+      renderEntity(ctx, fe, opts);
+    }
+    ctx.restore();
+  }
+
   function render(): void {
     syncLoadedFilesIntoLibrary(state);
     // Резолвим stableKey → libraryId для сета и материалов (безопасно вызывать каждый раз)
@@ -71,6 +146,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     );
     persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
     applyModalPierceCanvas(root, modalCanvasState, state);
+    drawOptimizerPreviewCanvas();
   }
 
   function toggleOpen(next?: boolean): void {
@@ -369,7 +445,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'opt-tab') {
       const tab = button.dataset.tab as string;
-      if (optiState && ['overview','inventory','issues','optimize'].includes(tab)) {
+      if (optiState && ['overview','preview','inventory','issues','optimize'].includes(tab)) {
         optiState.activeTab = tab as typeof optiState.activeTab;
         render();
       }
