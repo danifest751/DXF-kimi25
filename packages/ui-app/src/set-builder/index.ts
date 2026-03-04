@@ -54,7 +54,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   }
 
   function drawOptimizerPreviewCanvas(): void {
-    if (!optiState || optiState.activeTab !== 'preview' || !state.optimizerOpenForId) return;
+    if (!optiState || optiState.activeTab !== 'overview' || !state.optimizerOpenForId) return;
     const canvas = root.querySelector<HTMLCanvasElement>('[data-a="opt-preview-canvas"]');
     if (!canvas) return;
     const item = state.library.find((it) => it.id === state.optimizerOpenForId);
@@ -445,7 +445,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'opt-tab') {
       const tab = button.dataset.tab as string;
-      if (optiState && ['overview','preview','inventory','issues','optimize'].includes(tab)) {
+      if (optiState && ['overview','inventory','optimize'].includes(tab)) {
         optiState.activeTab = tab as typeof optiState.activeTab;
         render();
       }

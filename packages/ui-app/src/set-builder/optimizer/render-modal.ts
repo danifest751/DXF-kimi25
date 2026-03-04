@@ -17,7 +17,7 @@ function severityIcon(severity: string): string {
   return '🔵';
 }
 
-// ─── Tab: Overview ───────────────────────────────────────────────────────────
+// ─── Tab: Overview (canvas + stats + issues + run) ───────────────────────────
 
 function renderOverview(oState: OptimizerState): string {
   const d = oState.diagnostics;
@@ -31,55 +31,10 @@ function renderOverview(oState: OptimizerState): string {
   const warnCount = d.issues.filter((i) => i.severity === 'warning').length;
   const infoCount = d.issues.filter((i) => i.severity === 'info').length;
 
-  return `
-    <div class="opt-overview">
-      <div class="opt-score-block">
-        <div class="opt-score ${scoreClass(d.healthScore)}">${d.healthScore}</div>
-        <div class="opt-score-label">Health Score</div>
-        <div class="opt-score-badges">
-          ${critCount > 0 ? `<span class="opt-badge opt-badge--critical">${critCount} critical</span>` : ''}
-          ${warnCount > 0 ? `<span class="opt-badge opt-badge--warning">${warnCount} warning</span>` : ''}
-          ${infoCount > 0 ? `<span class="opt-badge opt-badge--info">${infoCount} info</span>` : ''}
-        </div>
-      </div>
-      <div class="opt-stats-grid">
-        <div class="opt-stat"><span>${t('optimizer.stat.entities')}</span><b>${d.totalEntities}</b></div>
-        <div class="opt-stat"><span>${t('optimizer.stat.vertices')}</span><b>${d.totalVertices}</b></div>
-        <div class="opt-stat"><span>${t('optimizer.stat.layers')}</span><b>${d.layersCount}</b></div>
-        <div class="opt-stat"><span>${t('optimizer.stat.extents')}</span><b>${d.extentW} × ${d.extentH} мм</b></div>
-      </div>
-      ${d.issues.length > 0 ? `
-        <div class="opt-issues-summary">
-          ${d.issues.slice(0, 3).map((issue) => `
-            <div class="opt-issue-row opt-issue-row--${issue.severity}">
-              <span>${severityIcon(issue.severity)}</span>
-              <span>${esc(issue.message)}</span>
-            </div>
-          `).join('')}
-          ${d.issues.length > 3 ? `<div class="opt-issue-more">${d.issues.length - 3} ${t('optimizer.moreIssues')}</div>` : ''}
-        </div>
-      ` : `<div class="opt-ok">${t('optimizer.noIssues')}</div>`}
-      <div class="opt-overview-actions">
-        <button class="sb-btn sb-btn--ghost" data-a="opt-tab" data-tab="preview">${t('optimizer.tab.preview')}</button>
-        <button class="sb-btn sb-btn--primary opt-run-btn" data-a="opt-run"
-          ${!d ? 'disabled' : ''}>${t('optimizer.runOptimize')}</button>
-      </div>
-    </div>
-  `;
-}
+  const critCodes = new Set(d.issues.filter((i) => i.severity === 'critical').map((i) => i.code));
+  const warnCodes = new Set(d.issues.filter((i) => i.severity === 'warning').map((i) => i.code));
 
-// ─── Tab: Preview ───────────────────────────────────────────────────────────
-
-function renderPreview(oState: OptimizerState): string {
-  const d = oState.diagnostics;
-  if (!d) return `<div class="opt-empty">${t('optimizer.noData')}</div>`;
-
-  const critCodes = new Set(oState.diagnostics?.issues
-    .filter((i) => i.severity === 'critical')
-    .map((i) => i.code) ?? []);
-  const warnCodes = new Set(oState.diagnostics?.issues
-    .filter((i) => i.severity === 'warning')
-    .map((i) => i.code) ?? []);
+  const order: Array<'critical' | 'warning' | 'info'> = ['critical', 'warning', 'info'];
 
   const legend = [
     { cls: 'opt-legend-normal', label: t('optimizer.preview.normal') },
@@ -88,21 +43,70 @@ function renderPreview(oState: OptimizerState): string {
   ];
 
   return `
-    <div class="opt-preview-wrap">
+    <div class="opt-overview">
+
+      <div class="opt-overview-top">
+        <div class="opt-score-block">
+          <div class="opt-score ${scoreClass(d.healthScore)}">${d.healthScore}</div>
+          <div class="opt-score-label">Health Score</div>
+          <div class="opt-score-badges">
+            ${critCount > 0 ? `<span class="opt-badge opt-badge--critical">${critCount} critical</span>` : ''}
+            ${warnCount > 0 ? `<span class="opt-badge opt-badge--warning">${warnCount} warning</span>` : ''}
+            ${infoCount > 0 ? `<span class="opt-badge opt-badge--info">${infoCount} info</span>` : ''}
+          </div>
+        </div>
+
+        <div class="opt-stats-grid">
+          <div class="opt-stat"><span>${t('optimizer.stat.entities')}</span><b>${d.totalEntities}</b></div>
+          <div class="opt-stat"><span>${t('optimizer.stat.vertices')}</span><b>${d.totalVertices}</b></div>
+          <div class="opt-stat"><span>${t('optimizer.stat.layers')}</span><b>${d.layersCount}</b></div>
+          <div class="opt-stat"><span>${t('optimizer.stat.extents')}</span><b>${d.extentW} × ${d.extentH} мм</b></div>
+        </div>
+      </div>
+
       <div class="opt-preview-legend">
         ${legend.map((l) => `<span class="opt-legend-item"><i class="${l.cls}"></i>${esc(l.label)}</span>`).join('')}
+        ${oState.result ? `<span class="opt-legend-item opt-preview-after">${t('optimizer.after')}: <b>${oState.result.afterEntities}</b></span>` : ''}
       </div>
+
       <div class="opt-preview-canvas-wrap">
         <canvas class="opt-preview-canvas" data-a="opt-preview-canvas"
           data-crit="${esc(JSON.stringify([...critCodes]))}"
           data-warn="${esc(JSON.stringify([...warnCodes]))}"
           width="800" height="600"></canvas>
       </div>
-      <div class="opt-preview-info">
-        <span>${t('optimizer.stat.entities')}: <b>${d.totalEntities}</b></span>
-        <span>${t('optimizer.stat.extents')}: <b>${d.extentW} × ${d.extentH} мм</b></span>
-        ${oState.result ? `<span class="opt-preview-after">${t('optimizer.after')}: <b>${oState.result.afterEntities}</b></span>` : ''}
+
+      ${d.issues.length > 0 ? `
+        <div class="opt-section-title" style="margin-top:8px">${t('optimizer.tab.issues')}</div>
+        <div class="opt-issues-list">
+          ${order.flatMap((sev) => {
+            const group = d.issues.filter((i) => i.severity === sev);
+            if (group.length === 0) return [];
+            return [`
+              <div class="opt-issues-group">
+                <div class="opt-issues-group-title opt-issues-group-title--${sev}">
+                  ${severityIcon(sev)} ${sev.toUpperCase()}
+                </div>
+                ${group.map((issue) => `
+                  <div class="opt-issue-card opt-issue-card--${issue.severity}">
+                    <div class="opt-issue-head">
+                      <span class="opt-issue-code">${esc(issue.code)}</span>
+                      <span class="opt-issue-count">×${issue.count}</span>
+                    </div>
+                    <div class="opt-issue-msg">${esc(issue.message)}</div>
+                    ${issue.recommendation ? `<div class="opt-issue-rec">${esc(issue.recommendation)}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            `];
+          }).join('')}
+        </div>
+      ` : `<div class="opt-ok">${t('optimizer.noIssues')}</div>`}
+
+      <div class="opt-overview-actions">
+        <button class="sb-btn sb-btn--primary opt-run-btn" data-a="opt-run">${t('optimizer.runOptimize')}</button>
       </div>
+
     </div>
   `;
 }
@@ -147,41 +151,6 @@ function renderInventory(oState: OptimizerState): string {
           `).join('')}
         </tbody>
       </table>
-    </div>
-  `;
-}
-
-// ─── Tab: Issues ─────────────────────────────────────────────────────────────
-
-function renderIssues(oState: OptimizerState): string {
-  const d = oState.diagnostics;
-  if (!d) return `<div class="opt-empty">${t('optimizer.noData')}</div>`;
-  if (d.issues.length === 0) return `<div class="opt-ok">${t('optimizer.noIssues')}</div>`;
-
-  const order: Array<'critical' | 'warning' | 'info'> = ['critical', 'warning', 'info'];
-  return `
-    <div class="opt-issues-list">
-      ${order.flatMap((sev) => {
-        const group = d.issues.filter((i) => i.severity === sev);
-        if (group.length === 0) return [];
-        return [`
-          <div class="opt-issues-group">
-            <div class="opt-issues-group-title opt-issues-group-title--${sev}">
-              ${severityIcon(sev)} ${sev.toUpperCase()}
-            </div>
-            ${group.map((issue) => `
-              <div class="opt-issue-card opt-issue-card--${issue.severity}">
-                <div class="opt-issue-head">
-                  <span class="opt-issue-code">${esc(issue.code)}</span>
-                  <span class="opt-issue-count">×${issue.count}</span>
-                </div>
-                <div class="opt-issue-msg">${esc(issue.message)}</div>
-                ${issue.recommendation ? `<div class="opt-issue-rec">${esc(issue.recommendation)}</div>` : ''}
-              </div>
-            `).join('')}
-          </div>
-        `];
-      }).join('')}
     </div>
   `;
 }
@@ -280,21 +249,16 @@ export function renderOptimizerModal(
 
   const tabs: Array<{ id: string; label: string }> = [
     { id: 'overview', label: t('optimizer.tab.overview') },
-    { id: 'preview', label: t('optimizer.tab.preview') },
     { id: 'inventory', label: t('optimizer.tab.inventory') },
-    { id: 'issues', label: t('optimizer.tab.issues') },
     { id: 'optimize', label: t('optimizer.tab.optimize') },
   ];
 
   let tabContent = '';
-  if (oState.activeTab === 'overview') tabContent = renderOverview(oState);
-  else if (oState.activeTab === 'preview') tabContent = renderPreview(oState);
-  else if (oState.activeTab === 'inventory') tabContent = renderInventory(oState);
-  else if (oState.activeTab === 'issues') tabContent = renderIssues(oState);
-  else tabContent = renderOptimize(oState);
+  if (oState.activeTab === 'inventory') tabContent = renderInventory(oState);
+  else if (oState.activeTab === 'optimize') tabContent = renderOptimize(oState);
+  else tabContent = renderOverview(oState);
 
   const d = oState.diagnostics;
-  const issueCount = d ? d.issues.filter((i) => i.severity !== 'info').length : 0;
 
   return `
     <div class="sb-modal-backdrop sb-modal-backdrop--optimizer" data-a="opt-backdrop">
@@ -312,10 +276,9 @@ export function renderOptimizerModal(
 
         <div class="opt-tabs">
           ${tabs.map((tab) => `
-            <button class="opt-tab ${oState.activeTab === tab.id ? 'active' : ''}"
+            <button class="opt-tab ${(oState.activeTab === tab.id || (tab.id === 'overview' && (oState.activeTab === 'preview' || oState.activeTab === 'issues'))) ? 'active' : ''}"
               data-a="opt-tab" data-tab="${tab.id}">
               ${tab.label}
-              ${tab.id === 'issues' && issueCount > 0 ? `<span class="opt-tab-badge">${issueCount}</span>` : ''}
             </button>
           `).join('')}
         </div>

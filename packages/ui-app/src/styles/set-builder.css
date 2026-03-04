@@ -1760,7 +1760,22 @@
 .opt-ok { color: #4caf50; }
 
 /* ── Overview ── */
-.opt-overview { display: flex; flex-direction: column; gap: 14px; }
+.opt-overview { display: flex; flex-direction: column; gap: 10px; }
+
+.opt-overview-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.opt-overview-top .opt-score-block {
+  flex-shrink: 0;
+}
+
+.opt-overview-top .opt-stats-grid {
+  flex: 1;
+  grid-template-columns: repeat(2, 1fr);
+}
 
 .opt-score-block {
   display: flex;
@@ -2006,6 +2021,11 @@
 .opt-overview-actions .opt-run-btn {
   flex: 1;
   min-width: 140px;
+}
+
+.opt-overview .opt-preview-canvas-wrap {
+  min-height: 240px;
+  max-height: 340px;
 }
 
 /* ── Preview tab ── */

@@ -72,7 +72,7 @@ export interface OptimizationResult {
 
 // ─── State внутри optimizer ───────────────────────────────────────────────────
 
-export type OptimizerTab = 'overview' | 'preview' | 'inventory' | 'issues' | 'optimize';
+export type OptimizerTab = 'overview' | 'inventory' | 'optimize';
 export type OptimizerPhase = 'idle' | 'analyzing' | 'optimizing' | 'done';
 
 export interface OptimizerState {
