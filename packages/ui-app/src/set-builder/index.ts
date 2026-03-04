@@ -28,6 +28,9 @@ import type { OptimizerState } from './optimizer/types.js';
 import { renderEntity } from '../../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../../core-engine/src/render/entity-renderer.js';
 import { DXFEntityType } from '../../../core-engine/src/types/index.js';
+import { buildBatchEntries, analyzeBatchEntries, runBatchOptimization, downloadBatchZip, createBatchState, createDefaultPlan } from './optimizer/batch-index.js';
+import type { BatchOptimizerState } from './optimizer/batch-types.js';
+import { renderBatchModal } from './optimizer/batch-render.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const state = createInitialState();
@@ -45,6 +48,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   const dxfThumbCache = new Map<string, string>();
   const modalCanvasState: ModalCanvasState = createModalCanvasState();
   let optiState: OptimizerState | null = null;
+  let batchState: BatchOptimizerState | null = null;
 
   function showToast(msg: string): void {
     toastText = msg;
@@ -187,6 +191,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       toastText, lastEngineResult, dxfThumbCache,
       authSessionToken, authWorkspaceId,
       optiState,
+      batchState,
     );
     persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
     applyModalPierceCanvas(root, modalCanvasState, state);
@@ -523,6 +528,80 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (optiState?.result) downloadReportJson(optiState.result);
       return;
     }
+
+    // ── Batch Optimizer ──────────────────────────────────────────────────
+    if (action === 'open-batch-optimizer') {
+      const catalogName = button.dataset.catalog ?? null;
+      const items = catalogName
+        ? state.library.filter((it) => it.catalog === catalogName)
+        : state.library;
+      batchState = createBatchState(catalogName, createDefaultPlan());
+      batchState.entries = buildBatchEntries(items, loadedFiles);
+      render();
+      void analyzeBatchEntries(batchState, loadedFiles, render);
+      return;
+    }
+    if (action === 'batch-close' || target.classList.contains('sb-modal-backdrop--batch')) {
+      batchState = null;
+      render();
+      return;
+    }
+    if (action === 'batch-all-catalogs') {
+      if (!batchState) return;
+      batchState.allCatalogs = (button as HTMLInputElement).checked;
+      if (batchState.allCatalogs) {
+        batchState.catalogName = null;
+        batchState.entries = buildBatchEntries(state.library, loadedFiles);
+      } else {
+        // restore original catalog
+        const catalog = batchState.catalogName;
+        const items = catalog
+          ? state.library.filter((it) => it.catalog === catalog)
+          : state.library;
+        batchState.entries = buildBatchEntries(items, loadedFiles);
+      }
+      render();
+      void analyzeBatchEntries(batchState, loadedFiles, render);
+      return;
+    }
+    if (action === 'batch-toggle-all') {
+      if (!batchState) return;
+      const checked = (button as HTMLInputElement).checked;
+      for (const e of batchState.entries) e.enabled = checked;
+      render();
+      return;
+    }
+    if (action === 'batch-toggle-file') {
+      if (!batchState) return;
+      const fileId = Number(button.dataset.id ?? '0');
+      const entry = batchState.entries.find((e) => e.libraryId === fileId);
+      if (entry) { entry.enabled = (button as HTMLInputElement).checked; render(); }
+      return;
+    }
+    if (action === 'batch-rule') {
+      if (!batchState) return;
+      const ruleId = button.dataset.rule as string;
+      if ((button as HTMLInputElement).checked) {
+        batchState.plan.enabled.add(ruleId as Parameters<typeof batchState.plan.enabled.add>[0]);
+      } else {
+        batchState.plan.enabled.delete(ruleId as Parameters<typeof batchState.plan.enabled.delete>[0]);
+      }
+      render();
+      return;
+    }
+    if (action === 'batch-run') {
+      if (!batchState || batchState.phase === 'running') return;
+      void runBatchOptimization(batchState, loadedFiles, render);
+      return;
+    }
+    if (action === 'batch-abort') {
+      if (batchState) { batchState.aborted = true; render(); }
+      return;
+    }
+    if (action === 'batch-download-zip') {
+      if (batchState) void downloadBatchZip(batchState);
+      return;
+    }
   });
 
   // ─── drag & drop ─────────────────────────────────────────────────────
@@ -607,6 +686,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'seed' && el instanceof HTMLInputElement) {
       state.seed = Number.isFinite(Number(el.value)) ? Math.trunc(Number(el.value)) : 0;
       render();
+      return;
+    }
+    if (action === 'batch-epsilon' && el instanceof HTMLInputElement) {
+      if (batchState) { batchState.plan.epsilonMm = Math.max(0.001, Number(el.value) || 0.01); }
       return;
     }
     if (action === 'cl-dist' && el instanceof HTMLInputElement) { state.commonLineMaxMergeDistanceMm = Math.max(0, Number(el.value) || 0); render(); return; }

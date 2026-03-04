@@ -7,6 +7,8 @@ import type { NestingResult } from '../../../core-engine/src/nesting/index.js';
 import type { LibraryItem, SetBuilderState, SheetResult } from './types.js';
 import { calcWeightKg, findMaterial, formatMaterialLabel, formatWeightKg, getMaterialGroups, getGradesByGroup, getThicknessesByGrade } from './materials.js';
 import { renderOptimizerModal } from './optimizer/render-modal.js';
+import { renderBatchModal } from './optimizer/batch-render.js';
+import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
 import type { SheetPreset } from './context.js';
@@ -449,6 +451,7 @@ export function renderMain(
   authSessionToken: string,
   authWorkspaceId: string,
   optimizerState: OptimizerState | null,
+  batchOptimizerState: BatchOptimizerState | null,
 ): void {
   const filtered = getVisibleLibraryItems(state);
   const setRows = getSetRows(state);
@@ -502,12 +505,13 @@ export function renderMain(
                 <span class="sb-catalog-folder-icon">📁</span><span class="sb-catalog-group-name">${esc(catalogName)}</span>
                 <span class="sb-catalog-group-count">${items.length}</span>
               </div>
-              ${canManageCatalog ? `
-                <div class="sb-catalog-group-actions">
+              <div class="sb-catalog-group-actions">
+                <button class="sb-icon sb-batch-opt-icon" data-a="open-batch-optimizer" data-catalog="${esc(catalogName)}" title="${t('batch.openBatchOptimizer')}">⚡</button>
+                ${canManageCatalog ? `
                   <button class="sb-icon" data-a="catalog-rename" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogRename')}">✎</button>
                   <button class="sb-icon" data-a="catalog-delete" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogDelete')}">🗑</button>
-                </div>
-              ` : ''}
+                ` : ''}
+              </div>
             </div>
             <div class="sb-catalog-group-body sb-library--table">
               ${items.length === 0
@@ -742,6 +746,7 @@ export function renderMain(
         state.optimizerOpenForId,
         state.library.find((it) => it.id === state.optimizerOpenForId)?.name ?? '',
       )}
+      ${batchOptimizerState ? renderBatchModal(batchOptimizerState) : ''}
     </div>
   `;
 }
