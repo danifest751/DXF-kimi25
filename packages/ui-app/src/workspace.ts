@@ -196,6 +196,7 @@ export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
                 placeholder.stats      = loaded.stats;
                 placeholder.loading    = false;
                 placeholder.loadError  = undefined;
+                placeholder.sizeBytes  = loaded.sizeBytes;
                 // Если это активный файл — рендерим
                 if (placeholder.id === loadedFiles[0]?.id) {
                   _setActiveFile(placeholder.id);
