@@ -25,6 +25,7 @@ export function createInitialState(): SetBuilderState {
     activeTab: 'library',
     open: false,
     loading: false,
+    nestingPhase: 'idle',
     previewLibraryId: null,
     previewSheetId: null,
     previewShowPierces: false,

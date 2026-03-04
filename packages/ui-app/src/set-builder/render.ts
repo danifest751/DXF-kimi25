@@ -702,7 +702,18 @@ export function renderMain(
               </div>
             </div>
 
-            <button class="sb-btn sb-btn--primary sb-btn--run" data-a="run" ${runDisabled}>${state.loading ? t('setBuilder.running') : t('setBuilder.runNesting')}</button>
+            ${state.loading ? `
+            <div class="sb-run-progress">
+              <div class="sb-run-progress-bar">
+                <div class="sb-run-progress-fill sb-run-progress-fill--${state.nestingPhase}"></div>
+              </div>
+              <div class="sb-run-progress-label">
+                <span class="sb-run-spinner"></span>
+                <span>${state.nestingPhase === 'preparing' ? t('setBuilder.phase.preparing') : state.nestingPhase === 'nesting' ? t('setBuilder.phase.nesting') : t('setBuilder.phase.saving')}</span>
+              </div>
+            </div>
+            ` : ''}
+            <button class="sb-btn sb-btn--primary sb-btn--run" data-a="run" ${runDisabled}>${t('setBuilder.runNesting')}</button>
           </div>
           <div class="sb-totals">
             <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>

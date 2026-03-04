@@ -164,25 +164,35 @@ export async function runNesting(
   showToast: (msg: string) => void,
   render: () => void,
 ): Promise<void> {
+  // Защита от двойного запуска: если уже выполняется — игнорировать
+  if (state.loading) return;
   if (!canRunNesting(state)) return;
 
   const sheet = getActiveSheetPreset(state, sheetPresets);
   const options = createNestingOptions(state);
   const gap = options.commonLine?.enabled ? 0 : Math.max(0, state.gapMm);
+
+  // Фаза 1: подготовка данных
+  state.loading = true;
+  state.nestingPhase = 'preparing';
+  render();
+
   const { items, skipped } = buildSetNestingItems(state);
 
   if (items.length === 0) {
     state.loading = false;
+    state.nestingPhase = 'idle';
     render();
     showToast(t('setBuilder.toast.noEligible'));
     return;
   }
 
-  state.loading = true;
-  render();
-
   let result: NestingResult | null = null;
   try {
+    // Фаза 2: выполнение раскладки
+    state.nestingPhase = 'nesting';
+    render();
+
     try {
       const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
         items,
@@ -217,6 +227,10 @@ export async function runNesting(
     const itemDocs = buildItemDocsForSet(state);
     setLastItemDocs(itemDocs);
 
+    // Фаза 3: сохранение хешей
+    state.nestingPhase = 'saving';
+    render();
+
     let hashes: string[] = [];
     try {
       const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting-share', {
@@ -237,6 +251,7 @@ export async function runNesting(
     );
   } finally {
     state.loading = false;
+    state.nestingPhase = 'idle';
     render();
   }
 }

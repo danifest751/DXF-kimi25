@@ -1,4 +1,5 @@
 export type ItemStatus = 'ok' | 'warn' | 'error';
+export type NestingPhase = 'idle' | 'preparing' | 'nesting' | 'saving';
 export type SetBuilderTab = 'library' | 'results';
 export type NestMode = 'normal' | 'commonLine';
 export type SetBuilderNestingStrategy = 'maxrects_bbox' | 'true_shape';
@@ -84,6 +85,7 @@ export interface SetBuilderState {
   activeTab: SetBuilderTab;
   open: boolean;
   loading: boolean;
+  nestingPhase: NestingPhase;
   previewLibraryId: number | null;
   previewSheetId: string | null;
   previewShowPierces: boolean;

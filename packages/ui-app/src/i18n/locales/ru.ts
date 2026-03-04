@@ -318,6 +318,9 @@ export const ru = {
   'material.selectGrade': '— Марка —',
   'material.selectThickness': '— Толщина —',
   'setBuilder.totalWeight': 'Суммарный вес',
+  'setBuilder.phase.preparing': 'Подготовка данных…',
+  'setBuilder.phase.nesting': 'Выполняется раскладка…',
+  'setBuilder.phase.saving': 'Сохранение результатов…',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

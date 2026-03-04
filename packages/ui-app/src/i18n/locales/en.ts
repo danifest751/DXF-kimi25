@@ -320,4 +320,7 @@ export const en: Record<TranslationKey, string> = {
   'material.selectGrade': '— Grade —',
   'material.selectThickness': '— Thickness —',
   'setBuilder.totalWeight': 'Total weight',
+  'setBuilder.phase.preparing': 'Preparing data…',
+  'setBuilder.phase.nesting': 'Nesting in progress…',
+  'setBuilder.phase.saving': 'Saving results…',
 } as const;
