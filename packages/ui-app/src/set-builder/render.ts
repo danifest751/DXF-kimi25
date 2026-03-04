@@ -97,6 +97,12 @@ export function buildThumbMarkup(
   return thumbSvg(item, large);
 }
 
+const SHEET_PART_COLORS = [
+  '#818cf8', '#4ade80', '#fbbf24', '#22d3ee', '#f87171',
+  '#c084fc', '#f472b6', '#2dd4bf', '#fb923c', '#a78bfa',
+  '#34d399', '#60a5fa', '#facc15', '#e879f9', '#38bdf8',
+];
+
 export function buildSheetPlacementsMarkup(
   sheet: SheetResult,
   dxfThumbCache: Map<string, string>,
@@ -105,6 +111,14 @@ export function buildSheetPlacementsMarkup(
   const safeW = Math.max(1, sheet.sheetWidth);
   const safeH = Math.max(1, sheet.sheetHeight);
   const ratio = (safeW / safeH).toFixed(4);
+
+  // Assign a unique color index to each unique itemId
+  const colorMap = new Map<number, number>();
+  let colorIdx = 0;
+  for (const p of sheet.placements) {
+    if (!colorMap.has(p.itemId)) colorMap.set(p.itemId, colorIdx++ % SHEET_PART_COLORS.length);
+  }
+
   const placements = sheet.placements
     .slice(0, 120)
     .map((p) => {
@@ -113,14 +127,14 @@ export function buildSheetPlacementsMarkup(
       const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
       const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
       const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
-      // Render thumb with correct aspect ratio matching the placed bounding box
+      const color = SHEET_PART_COLORS[colorMap.get(p.itemId) ?? 0]!;
       const thumbSize = 256;
       const tRatio = p.w > 0 && p.h > 0 ? p.w / p.h : 1;
       const tW = tRatio >= 1 ? thumbSize : Math.round(thumbSize * tRatio);
       const tH = tRatio >= 1 ? Math.round(thumbSize / tRatio) : thumbSize;
       const thumb = renderDxfThumbDataUrl(p.itemId, Math.max(4, tW), Math.max(4, tH), angle, dxfThumbCache, 1);
       return `
-        <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;" title="${esc(p.name)}">
+        <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;--part-color:${color};" title="${esc(p.name)}">
           ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
           <span class="sb-sheet-part-name">${esc(p.name)}</span>
         </div>
