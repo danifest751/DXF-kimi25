@@ -211,7 +211,7 @@
 
 .sb-table-head {
   display: grid;
-  grid-template-columns: 26px 96px minmax(180px, 1fr) 88px 74px 60px 80px 180px;
+  grid-template-columns: 26px 96px minmax(180px, 1fr) 112px 74px 60px 80px 180px;
   gap: 8px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
@@ -266,7 +266,7 @@
 
 .sb-lib-row--table {
   display: grid;
-  grid-template-columns: 26px 96px minmax(180px, 1fr) 88px 74px 60px 80px 180px;
+  grid-template-columns: 26px 96px minmax(180px, 1fr) 112px 74px 60px 80px 180px;
   gap: 8px;
   align-items: center;
 }
@@ -1466,7 +1466,7 @@
   .sb-tabs { grid-template-columns: 1fr; }
   .sb-table-head,
   .sb-lib-row--table {
-    grid-template-columns: 22px 82px minmax(140px, 1fr) 76px 70px 60px 74px 160px;
+    grid-template-columns: 22px 82px minmax(140px, 1fr) 100px 70px 60px 74px 160px;
   }
   .sb-set-row--view-b {
     grid-template-columns: 1fr;
