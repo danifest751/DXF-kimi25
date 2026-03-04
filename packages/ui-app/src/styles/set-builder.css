@@ -2269,6 +2269,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  table-layout: fixed;
 }
 
 .batch-table th {
@@ -2293,13 +2294,12 @@
 .batch-row--disabled td { opacity: 0.45; }
 .batch-row--active { background: rgba(74,122,255,0.06); }
 
-.batch-cell-check { width: 28px; }
-.batch-cell-name  { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.batch-cell-catalog { font-size: 11px; color: var(--text-secondary); }
-.batch-cell-size  { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-.batch-cell-entities { font-size: 12px; white-space: nowrap; }
-.batch-cell-status { width: 40px; text-align: center; }
-.batch-cell-error  { font-size: 11px; color: #f44336; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-cell-check    { width: 28px; }
+.batch-cell-name     { width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-cell-catalog  { width: 18%; font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-cell-size     { width: 56px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; text-align: right; }
+.batch-cell-entities { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-cell-status   { width: 36px; text-align: center; }
 
 .batch-empty {
   padding: 24px;

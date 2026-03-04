@@ -19,7 +19,7 @@ function statusIcon(entry: BatchFileEntry): string {
     case 'running':   return '<span class="batch-status batch-status--spin"><span class="sb-run-spinner"></span></span>';
     case 'done':      return '<span class="batch-status batch-status--done">✓</span>';
     case 'skipped':   return '<span class="batch-status batch-status--skip">—</span>';
-    case 'error':     return '<span class="batch-status batch-status--error">✕</span>';
+    case 'error':     return `<span class="batch-status batch-status--error" title="${esc(entry.error ?? '')}">✕</span>`;
   }
 }
 
@@ -49,7 +49,6 @@ function renderFileRow(entry: BatchFileEntry): string {
       <td class="batch-cell-size batch-dim">${fmtSize(entry.fileSizeBytes)}</td>
       <td class="batch-cell-entities">${renderDelta(entry)}</td>
       <td class="batch-cell-status">${statusIcon(entry)}</td>
-      ${entry.status === 'error' ? `<td class="batch-cell-error" colspan="1" title="${esc(entry.error ?? '')}">⚠ ${esc(entry.error ?? '')}</td>` : '<td></td>'}
     </tr>
   `;
 }
@@ -128,12 +127,11 @@ export function renderBatchModal(bState: BatchOptimizerState): string {
                   <th>${t('batch.col.size')}</th>
                   <th>${t('batch.col.entities')}</th>
                   <th>${t('batch.col.status')}</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 ${entries.length === 0
-                  ? `<tr><td colspan="7" class="batch-empty">${t('batch.noFiles')}</td></tr>`
+                  ? `<tr><td colspan="6" class="batch-empty">${t('batch.noFiles')}</td></tr>`
                   : entries.map(renderFileRow).join('')}
               </tbody>
             </table>
