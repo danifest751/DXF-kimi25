@@ -6,6 +6,33 @@ import { SHEET_PRESETS } from './mock-data.js';
 import { STORAGE_KEY, MATERIALS_STORAGE_KEY } from './context.js';
 import type { SheetPreset } from './context.js';
 
+/**
+ * Возвращает стабильный ключ для элемента сета:
+ * - remoteId (UUID Supabase) для авторизованных файлов
+ * - "name:<имя файла>" для гостевых файлов
+ * Этот ключ не зависит от эфемерного числового libraryId.
+ */
+function getStableKey(sourceFileId: number): string | null {
+  const lf = loadedFiles.find((f) => f.id === sourceFileId);
+  if (!lf) return null;
+  if (lf.remoteId) return lf.remoteId;
+  return `name:${lf.name}`;
+}
+
+/**
+ * По стабильному ключу находит libraryId в текущей библиотеке.
+ */
+function resolveLibraryId(state: SetBuilderState, stableKey: string): number | null {
+  for (const item of state.library) {
+    if (item.sourceFileId === undefined) continue;
+    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    if (!lf) continue;
+    if (lf.remoteId && lf.remoteId === stableKey) return item.id;
+    if (!lf.remoteId && `name:${lf.name}` === stableKey) return item.id;
+  }
+  return null;
+}
+
 export function hydrateState(
   state: SetBuilderState,
   _sheetPresets: SheetPreset[],
@@ -35,7 +62,7 @@ export function hydrateState(
       customSheetPresets?: Array<{ id: string; label: string; w: number; h: number }>;
       customSheetWidthMm?: number;
       customSheetHeightMm?: number;
-      set?: Array<{ libraryId: number; qty: number; enabled: boolean }>;
+      set?: Array<{ stableKey?: string; libraryId?: number; qty: number; enabled: boolean }>;
     };
     state.search = typeof parsed.search === 'string' ? parsed.search : '';
     state.catalogFilter = typeof parsed.catalogFilter === 'string' ? parsed.catalogFilter : 'All';
@@ -77,16 +104,44 @@ export function hydrateState(
     }
     state.set.clear();
     for (const row of parsed.set ?? []) {
-      if (!Number.isFinite(row.libraryId) || !Number.isFinite(row.qty)) continue;
-      if (row.qty <= 0) continue;
-      state.set.set(row.libraryId, {
-        libraryId: row.libraryId,
-        qty: Math.max(1, Math.round(row.qty)),
-        enabled: row.enabled !== false,
-      });
+      if (!Number.isFinite(row.qty) || row.qty <= 0) continue;
+      const qty = Math.max(1, Math.round(row.qty));
+      const enabled = row.enabled !== false;
+
+      if (row.stableKey) {
+        // Новый формат: stableKey → резолвим в libraryId после загрузки библиотеки
+        // Сохраняем во временную структуру; применяем в applyPendingSet()
+        _pendingSet.set(row.stableKey, { qty, enabled });
+      } else if (Number.isFinite(row.libraryId) && row.libraryId !== undefined) {
+        // Обратная совместимость: старый формат с libraryId
+        state.set.set(row.libraryId!, {
+          libraryId: row.libraryId!,
+          qty,
+          enabled,
+        });
+      }
     }
   } catch {
     // ignore malformed persisted state
+  }
+}
+
+/** Временное хранилище pending-сета до появления библиотеки */
+const _pendingSet = new Map<string, { qty: number; enabled: boolean }>();
+
+/**
+ * Вызывается после syncLoadedFilesIntoLibrary — резолвит stableKey → libraryId
+ * и применяет к state.set. Безопасно вызывать многократно.
+ */
+export function applyPendingSet(state: SetBuilderState): void {
+  if (_pendingSet.size === 0) return;
+  for (const [stableKey, { qty, enabled }] of _pendingSet) {
+    const libraryId = resolveLibraryId(state, stableKey);
+    if (libraryId === null) continue;
+    _pendingSet.delete(stableKey);
+    if (!state.set.has(libraryId)) {
+      state.set.set(libraryId, { libraryId, qty, enabled });
+    }
   }
 }
 
@@ -117,33 +172,68 @@ export function persistState(
     customSheetPresets,
     customSheetWidthMm,
     customSheetHeightMm,
-    set: [...state.set.values()].map((s) => ({ libraryId: s.libraryId, qty: s.qty, enabled: s.enabled })),
+    // Сериализуем сет по stableKey (remoteId или name:filename) вместо libraryId
+    set: [...state.set.values()].map((s) => {
+      const stableKey = getStableKey(s.libraryId);
+      return { stableKey: stableKey ?? undefined, libraryId: s.libraryId, qty: s.qty, enabled: s.enabled };
+    }),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
 
+/**
+ * Сохраняет материалы по stableKey (remoteId или name:filename), не по libraryId.
+ */
 export function saveMaterials(state: SetBuilderState): void {
   const obj: Record<string, string> = {};
-  for (const [id, a] of state.materialAssignments) {
-    obj[String(id)] = a.materialId;
+  for (const [libId, a] of state.materialAssignments) {
+    const item = state.library.find((it) => it.id === libId);
+    if (!item || item.sourceFileId === undefined) continue;
+    const stableKey = getStableKey(item.sourceFileId);
+    if (!stableKey) continue;
+    obj[stableKey] = a.materialId;
   }
   localStorage.setItem(MATERIALS_STORAGE_KEY, JSON.stringify(obj));
 }
 
+/** Временное хранилище pending-материалов до появления библиотеки */
+const _pendingMaterials = new Map<string, string>();
+
+/**
+ * Загружает материалы из localStorage по stableKey.
+ * Резолвинг в libraryId происходит в applyPendingMaterials() после загрузки библиотеки.
+ */
 export function loadMaterials(state: SetBuilderState): void {
   try {
     const raw = localStorage.getItem(MATERIALS_STORAGE_KEY);
     if (!raw) return;
     const obj = JSON.parse(raw) as Record<string, string>;
+    _pendingMaterials.clear();
     state.materialAssignments.clear();
-    for (const [idStr, materialId] of Object.entries(obj)) {
-      const id = Number(idStr);
-      if (Number.isFinite(id) && id > 0 && typeof materialId === 'string' && materialId.length > 0) {
-        state.materialAssignments.set(id, { materialId, appliedAt: 0 });
-      }
+    for (const [key, materialId] of Object.entries(obj)) {
+      if (typeof materialId !== 'string' || materialId.length === 0) continue;
+      _pendingMaterials.set(key, materialId);
     }
+    // Сразу пытаемся применить (на случай если библиотека уже есть)
+    applyPendingMaterials(state);
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Вызывается после syncLoadedFilesIntoLibrary — резолвит stableKey → libraryId
+ * для материалов из localStorage.
+ */
+export function applyPendingMaterials(state: SetBuilderState): void {
+  if (_pendingMaterials.size === 0) return;
+  for (const [stableKey, materialId] of _pendingMaterials) {
+    const libraryId = resolveLibraryId(state, stableKey);
+    if (libraryId === null) continue;
+    _pendingMaterials.delete(stableKey);
+    if (!state.materialAssignments.has(libraryId)) {
+      state.materialAssignments.set(libraryId, { materialId, appliedAt: 0 });
+    }
   }
 }
 
@@ -183,5 +273,33 @@ export async function syncMaterialsToServer(
     } catch (err) {
       console.error('[material-sync] upsert failed:', err);
     }
+  }
+}
+
+/**
+ * Мигрирует гостевые материалы из localStorage на сервер после логина.
+ * Вызывается после migrateGuestDraftToWorkspace() + _reloadFromServer().
+ */
+export async function migrateGuestMaterialsToServer(): Promise<void> {
+  if (!authSessionToken) return;
+  // Прочитаем localStorage напрямую, т.к. state.materialAssignments уже перезаписан с сервера
+  const raw = localStorage.getItem(MATERIALS_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const obj = JSON.parse(raw) as Record<string, string>;
+    for (const [stableKey, materialId] of Object.entries(obj)) {
+      if (!stableKey.startsWith('name:')) continue; // только гостевые (name:filename)
+      const fileName = stableKey.slice(5);
+      // Ищем загруженный файл по имени, у которого теперь есть remoteId
+      const lf = loadedFiles.find((f) => f.name === fileName && f.remoteId);
+      if (!lf) continue;
+      try {
+        await apiPostJSON<{ success: boolean }>('/api/file-materials-upsert', { fileId: lf.remoteId, materialId }, getAuthHeaders());
+      } catch (err) {
+        console.warn('[material-migrate] upsert failed:', err);
+      }
+    }
+  } catch {
+    // ignore
   }
 }

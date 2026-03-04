@@ -15,7 +15,7 @@ import {
 import type { MaterialAssignment } from './types.js';
 import { SHEET_PRESETS } from './mock-data.js';
 import type { SheetPreset } from './context.js';
-import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer } from './persist.js';
+import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog } from './library.js';
 import { runNesting, exportSheetByIndex } from './nesting.js';
 import { renderMain } from './render.js';
@@ -49,6 +49,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   function render(): void {
     syncLoadedFilesIntoLibrary(state);
+    // Резолвим stableKey → libraryId для сета и материалов (безопасно вызывать каждый раз)
+    applyPendingSet(state);
+    applyPendingMaterials(state);
     root.classList.toggle('hidden', !state.open);
     root.setAttribute('aria-hidden', state.open ? 'false' : 'true');
     trigger.classList.toggle('active', state.open);
@@ -484,7 +487,18 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if ((e as CustomEvent<{ added: number }>).detail?.added > 0) showToast(t('setBuilder.toast.filesSynced'));
   });
 
-  window.addEventListener(AUTH_SESSION_EVENT, () => { if (!state.open) return; render(); });
+  window.addEventListener(AUTH_SESSION_EVENT, () => {
+    if (authSessionToken) {
+      // При логине: мигрируем гостевые материалы на сервер, затем перезагружаем с сервера
+      void migrateGuestMaterialsToServer().then(() =>
+        loadMaterialsFromServer(state),
+      ).then(() => render());
+    } else {
+      // При выходе: перезагружаем материалы из localStorage
+      loadMaterials(state);
+      if (state.open) render();
+    }
+  });
 
   onLocaleChange(() => { if (!state.open) return; render(); });
 
