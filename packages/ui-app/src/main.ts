@@ -14,20 +14,17 @@ import './styles/animations.css';
 import './styles/responsive.css';
 import './styles/set-builder.css';
 
-import { apiGetJSON, apiPatchJSON, apiPostJSON, apiPostBlob, arrayBufferToBase64, downloadBlob } from './api.js';
-import type { LoadedFile, UICuttingStats, ComputeMode } from './types.js';
+import { apiPostJSON } from './api.js';
+import type { LoadedFile, UICuttingStats } from './types.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
-import { SHEET_PRESETS } from '../../core-engine/src/nesting/index.js';
-import type { FlattenedEntity } from '../../core-engine/src/normalize/index.js';
-import type { Color } from '../../core-engine/src/types/index.js';
 
 // ─── Modules ─────────────────────────────────────────────────────────
 
 import {
-  renderer, loadedFiles, activeFileId, setActiveFileId,
+  renderer, loadedFiles, setActiveFileId,
   workspaceCatalogs, selectedCatalogIds,
   authSessionToken, cuttingComputeMode, nestingComputeMode,
-  setCuttingComputeMode, setNestingComputeMode,
+  setCuttingComputeMode,
   nestingMode, currentNestResult, nestHoveredSheet, nestCellRects,
   setNestHoveredSheet, setShowGrid, showGrid,
 } from './state.js';
@@ -58,15 +55,13 @@ import {
 import {
   initWorkspaceCallbacks,
   reloadWorkspaceLibraryFromServer, loadSingleFile, removeFile, toggleFileChecked,
-  isFileInSelectedCatalogs, selectAllCatalogsForCurrentData, ensureSelectedCatalogsDefaults,
-  refreshCatalogSelectionViews, getPreferredUploadCatalogId,
+  isFileInSelectedCatalogs,
 } from './workspace.js';
 import {
   initSidebarCallbacks,
   renderCatalogFilter, renderFileList, recalcTotals, updateUploadTargetHint, updateBulkControlsUi,
 } from './sidebar.js';
 import {
-  initNestingPanelCallbacks,
   updateNestItems, runNesting, autoRerunNesting, exitNestingMode,
   exportAllSheetsDXF, exportFullNestingDXF, copyAllHashes,
   renderAllNestingSheets,
@@ -76,6 +71,7 @@ import {
   setZoomLevel, setZoomPanX, setZoomPanY, setZoomPopupLocked, setZoomPanning,
   setZoomPanStartX, setZoomPanStartY, setZoomHideTimer,
 } from './nesting-panel.js';
+import * as NP from './nesting-panel.js';
 import { createCanvasInteractionController } from './canvas-interaction.js';
 import { createFileIngestController } from './file-ingest.js';
 import { createInspectorPanelController } from './inspector-panel.js';
