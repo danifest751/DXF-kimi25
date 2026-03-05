@@ -5,20 +5,27 @@
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
+function withCredentials(init: RequestInit): RequestInit {
+  return {
+    credentials: 'include',
+    ...init,
+  };
+}
+
 async function apiRequestJSON<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   payload?: unknown,
   headers: Record<string, string> = {},
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, withCredentials({
     method,
     headers: {
       ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...headers,
     },
     body: payload === undefined ? undefined : JSON.stringify(payload),
-  });
+  }));
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `HTTP ${response.status}`);
@@ -43,16 +50,29 @@ export async function apiDeleteJSON<T>(path: string, headers: Record<string, str
 }
 
 export async function apiPostBlob(path: string, payload: unknown): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, withCredentials({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  });
+  }));
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `HTTP ${response.status}`);
   }
   return response.blob();
+}
+
+export async function apiUploadFormDataJSON<T>(path: string, formData: FormData, headers: Record<string, string> = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, withCredentials({
+    method: 'POST',
+    headers,
+    body: formData,
+  }));
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
 }
 
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {

@@ -3,7 +3,7 @@
  * Telegram-аутентификация: вход, выход, восстановление сессии, guest draft.
  */
 
-import { apiGetJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
+import { apiGetJSON, apiPostJSON, apiUploadFormDataJSON } from './api.js';
 import { t } from './i18n/index.js';
 import type { LoadedFile, WorkspaceCatalog } from './types.js';
 import {
@@ -22,6 +22,7 @@ import {
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 
 export const AUTH_SESSION_EVENT = 'dxf-auth-session-changed';
+const COOKIE_SESSION_TOKEN = '__cookie_session__';
 
 function emitAuthSessionChanged(): void {
   window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
@@ -108,7 +109,9 @@ export function initAuthCallbacks(cbs: {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 export function getAuthHeaders(): Record<string, string> {
-  return authSessionToken ? { Authorization: `Bearer ${authSessionToken}` } : {};
+  return authSessionToken && authSessionToken !== COOKIE_SESSION_TOKEN
+    ? { Authorization: `Bearer ${authSessionToken}` }
+    : {};
 }
 
 export function showAuthHint(message: string, timeoutMs = 2200): void {
@@ -121,6 +124,10 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
+}
+
+function base64ToBlob(base64: string, type = 'application/dxf'): Blob {
+  return new Blob([base64ToArrayBuffer(base64)], { type });
 }
 
 // ─── Guest draft ─────────────────────────────────────────────────────
@@ -217,13 +224,12 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
     if (!file.base64) continue;
     migrated++;
     try {
-      await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
-        name: file.name,
-        base64: file.base64,
-        catalogId: null,
-        checked: Boolean(file.checked),
-        quantity: Math.max(1, Number(file.quantity) || 1),
-      }, getAuthHeaders());
+      const formData = new FormData();
+      formData.append('file', base64ToBlob(file.base64), file.name);
+      formData.append('catalogId', '');
+      formData.append('checked', String(Boolean(file.checked)));
+      formData.append('quantity', String(Math.max(1, Number(file.quantity) || 1)));
+      await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
     } catch (err) {
       console.warn('Failed to migrate file:', file.name, err instanceof Error ? err.message : String(err));
     }
@@ -231,9 +237,23 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
   clearGuestDraft();
 }
 
+async function adoptLegacyToken(savedToken: string): Promise<AuthMeResponse> {
+  await apiPostJSON<{ success: boolean; workspaceId: string; expiresAt: string }>(
+    '/api/auth-adopt-token',
+    {},
+    { Authorization: `Bearer ${savedToken}` },
+  );
+  return apiGetJSON<AuthMeResponse>('/api/auth-me');
+}
+
 // ─── Session ─────────────────────────────────────────────────────────
 
 export async function logoutWorkspace(): Promise<void> {
+  try {
+    await apiPostJSON<{ success: boolean }>('/api/auth-logout', {}, getAuthHeaders());
+  } catch (error) {
+    console.warn('Server logout failed:', error instanceof Error ? error.message : String(error));
+  }
   clearAuthSession();
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   _updateAuthUi();
@@ -255,17 +275,13 @@ export async function logoutWorkspace(): Promise<void> {
 
 export async function restoreAuthSession(): Promise<void> {
   const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '';
-  if (!savedToken) {
-    _updateAuthUi();
-    emitAuthSessionChanged();
-    await restoreGuestDraft();
-    return;
-  }
   try {
-    setAuthSession(savedToken, '');
-    const me = await apiGetJSON<AuthMeResponse>('/api/auth-me', getAuthHeaders());
+    const me = savedToken
+      ? await adoptLegacyToken(savedToken)
+      : await apiGetJSON<AuthMeResponse>('/api/auth-me');
     if (!me.authenticated) throw new Error('Session rejected');
-    setAuthSession(savedToken, me.workspaceId);
+    setAuthSession(COOKIE_SESSION_TOKEN, me.workspaceId);
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     _updateAuthUi();
     emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();
@@ -284,8 +300,8 @@ export async function runTelegramLoginFlow(): Promise<void> {
   if (!code) return;
   try {
     const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
-    setAuthSession(response.sessionToken, response.workspaceId);
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.sessionToken);
+    setAuthSession(COOKIE_SESSION_TOKEN, response.workspaceId);
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     _updateAuthUi();
     emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();

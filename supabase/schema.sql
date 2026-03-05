@@ -95,6 +95,18 @@ create index if not exists file_materials_workspace_id_idx
 
 alter table file_materials enable row level security;
 
+create table if not exists api_rate_limits (
+  key             text primary key,
+  window_start_ms bigint not null,
+  count           integer not null default 0,
+  updated_at      timestamptz not null default now()
+);
+
+create index if not exists api_rate_limits_updated_at_idx
+  on api_rate_limits (updated_at);
+
+alter table api_rate_limits enable row level security;
+
 -- ─── 6. Auto-delete expired shared_sheets (optional cron) ───
 -- Supabase pg_cron extension (Dashboard → Database → Extensions → pg_cron):
 --

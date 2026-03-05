@@ -442,3 +442,21 @@ export async function getAuthSessionByToken(tokenInput: string): Promise<{ userI
     expiresAt: session.expiresAt,
   };
 }
+
+export async function revokeAuthSessionByToken(tokenInput: string): Promise<void> {
+  pruneLocalMaps();
+  const token = tokenInput.trim();
+  if (token.length === 0) return;
+
+  const tokenHash = hashToken(token);
+  sessionsByTokenHash.delete(tokenHash);
+  if (!supabaseEnabled) return;
+
+  const params = new URLSearchParams({ token_hash: `eq.${tokenHash}` });
+  const response = await supabaseRequest(`/${APP_SESSIONS_TABLE}?${params.toString()}`, {
+    method: 'DELETE',
+  });
+  if (!response?.ok) {
+    console.error('[telegram-auth] failed to revoke session');
+  }
+}

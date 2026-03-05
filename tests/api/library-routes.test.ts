@@ -5,6 +5,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 const getAuthSessionByTokenMock = vi.fn();
+const revokeAuthSessionByTokenMock = vi.fn();
 const isWorkspaceLibraryEnabledMock = vi.fn();
 const createWorkspaceCatalogMock = vi.fn();
 const renameWorkspaceCatalogMock = vi.fn();
@@ -13,6 +14,7 @@ const updateWorkspaceFileMock = vi.fn();
 const deleteWorkspaceFileMock = vi.fn();
 const setWorkspaceFilesCheckedMock = vi.fn();
 const downloadWorkspaceFileMock = vi.fn();
+const uploadWorkspaceFileBufferMock = vi.fn();
 
 vi.mock('../../packages/core-engine/src/dxf/reader/index.js', () => ({
   parseDXF: vi.fn(),
@@ -57,6 +59,8 @@ vi.mock('../../packages/api-service/src/shared-sheets.js', () => ({
 vi.mock('../../packages/api-service/src/telegram-auth.js', () => ({
   exchangeTelegramLoginCode: vi.fn(),
   getAuthSessionByToken: getAuthSessionByTokenMock,
+  checkCodeExchangeRateLimit: vi.fn(() => true),
+  revokeAuthSessionByToken: revokeAuthSessionByTokenMock,
 }));
 
 vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
@@ -70,6 +74,7 @@ vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
   setWorkspaceFilesChecked: setWorkspaceFilesCheckedMock,
   updateWorkspaceFile: updateWorkspaceFileMock,
   uploadWorkspaceFile: vi.fn(),
+  uploadWorkspaceFileBuffer: uploadWorkspaceFileBufferMock,
 }));
 
 let server: Server;
@@ -126,6 +131,25 @@ async function requestJson(method: string, path: string, body?: unknown, token?:
   return { status: response.status, text, json };
 }
 
+async function requestWithCookie(method: string, path: string, cookie: string, body?: unknown) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      cookie,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let json: unknown = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  return { status: response.status, text, json, headers: response.headers };
+}
+
 describe('workspace library routes', () => {
   it('returns 401 for create catalog without auth token', async () => {
     const response = await requestJson('POST', '/api/library-catalogs', { name: 'New catalog' });
@@ -148,6 +172,69 @@ describe('workspace library routes', () => {
     expect(response.status).toBe(200);
     expect(createWorkspaceCatalogMock).toHaveBeenCalledWith('ws-1', 'Laser');
     expect(response.json).toMatchObject({ success: true, catalog: { id: 'c1', name: 'Laser' } });
+  });
+
+  it('accepts auth cookie instead of authorization header', async () => {
+    createWorkspaceCatalogMock.mockResolvedValue({
+      id: 'c-cookie',
+      workspaceId: 'ws-1',
+      name: 'Cookie',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const response = await requestWithCookie('POST', '/api/library-catalogs', 'dxf_auth_session=cookie-token', { name: 'Cookie' });
+
+    expect(response.status).toBe(200);
+    expect(getAuthSessionByTokenMock).toHaveBeenCalledWith('cookie-token');
+    expect(createWorkspaceCatalogMock).toHaveBeenCalledWith('ws-1', 'Cookie');
+  });
+
+  it('revokes session and clears cookie on logout', async () => {
+    const response = await requestWithCookie('POST', '/api/auth-logout', 'dxf_auth_session=cookie-token');
+
+    expect(response.status).toBe(200);
+    expect(revokeAuthSessionByTokenMock).toHaveBeenCalledWith('cookie-token');
+    expect(response.json).toEqual({ success: true });
+    expect(response.headers.get('set-cookie') || '').toContain('dxf_auth_session=;');
+  });
+
+  it('uploads file through multipart route', async () => {
+    uploadWorkspaceFileBufferMock.mockResolvedValue({
+      id: 'file-upload-1',
+      workspaceId: 'ws-1',
+      catalogId: 'cat-1',
+      name: 'part.dxf',
+      storagePath: 'workspace/ws-1/part.dxf',
+      sizeBytes: 3,
+      checked: true,
+      quantity: 2,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
+    formData.append('catalogId', 'cat-1');
+    formData.append('checked', 'true');
+    formData.append('quantity', '2');
+
+    const response = await fetch(`${baseUrl}/api/library-files-upload`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer token-1' },
+      body: formData,
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(uploadWorkspaceFileBufferMock).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'ws-1',
+      name: 'part.dxf',
+      catalogId: 'cat-1',
+      checked: true,
+      quantity: 2,
+    }));
+    expect(json).toMatchObject({ success: true, file: { id: 'file-upload-1', name: 'part.dxf' } });
   });
 
   it('updates file quantity through flat alias route', async () => {

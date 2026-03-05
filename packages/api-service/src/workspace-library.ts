@@ -246,10 +246,10 @@ export async function deleteWorkspaceCatalog(
   if (!response?.ok) throw new Error('Failed to delete catalog');
 }
 
-export async function uploadWorkspaceFile(input: {
+async function storeWorkspaceFile(input: {
   workspaceId: string;
   name: string;
-  base64: string;
+  bodyBuffer: Buffer;
   catalogId?: string | null;
   checked?: boolean;
   quantity?: number;
@@ -260,7 +260,6 @@ export async function uploadWorkspaceFile(input: {
   const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
   if (name.length < 1) throw new Error('File name is required');
 
-  // P3: validate catalogId is a proper UUID to prevent injection
   if (input.catalogId !== null && input.catalogId !== undefined && !UUID_RE.test(input.catalogId)) {
     throw new Error('Invalid catalogId: must be a UUID');
   }
@@ -270,8 +269,7 @@ export async function uploadWorkspaceFile(input: {
     throw new Error(`Лимит: максимум ${MAX_FILES_PER_WORKSPACE} файлов на workspace`);
   }
 
-  const bodyBuffer = Buffer.from(input.base64, 'base64');
-  if (bodyBuffer.byteLength === 0) throw new Error('File content is empty');
+  if (input.bodyBuffer.byteLength === 0) throw new Error('File content is empty');
 
   const id = crypto.randomUUID();
   const storagePath = `workspace/${workspaceId}/${id}.dxf`;
@@ -281,7 +279,7 @@ export async function uploadWorkspaceFile(input: {
       'Content-Type': 'application/dxf',
       'x-upsert': 'true',
     },
-    body: bodyBuffer,
+    body: new Uint8Array(input.bodyBuffer),
   });
   if (!uploadResp?.ok) throw new Error('Failed to upload DXF to storage');
 
@@ -292,7 +290,7 @@ export async function uploadWorkspaceFile(input: {
     catalog_id: input.catalogId ?? null,
     name,
     storage_path: storagePath,
-    size_bytes: bodyBuffer.byteLength,
+    size_bytes: input.bodyBuffer.byteLength,
     checked: input.checked ?? true,
     quantity: Math.max(1, Math.floor(input.quantity ?? 1)),
     created_at: nowIso,
@@ -312,6 +310,36 @@ export async function uploadWorkspaceFile(input: {
   const rows = await rowResp.json() as WorkspaceFileRow[];
   if (!Array.isArray(rows) || rows.length === 0) throw new Error('Upload metadata returned empty payload');
   return toFileMeta(rows[0]!);
+}
+
+export async function uploadWorkspaceFile(input: {
+  workspaceId: string;
+  name: string;
+  base64: string;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+}): Promise<WorkspaceFileMeta> {
+  const bodyBuffer = Buffer.from(input.base64, 'base64');
+  return storeWorkspaceFile({
+    workspaceId: input.workspaceId,
+    name: input.name,
+    bodyBuffer,
+    catalogId: input.catalogId,
+    checked: input.checked,
+    quantity: input.quantity,
+  });
+}
+
+export async function uploadWorkspaceFileBuffer(input: {
+  workspaceId: string;
+  name: string;
+  bodyBuffer: Buffer;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+}): Promise<WorkspaceFileMeta> {
+  return storeWorkspaceFile(input);
 }
 
 export async function updateWorkspaceFile(

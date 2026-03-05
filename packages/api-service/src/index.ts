@@ -6,6 +6,7 @@
 
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import { parseDXF } from '../../core-engine/src/dxf/reader/index.js';
 import { normalizeDocument } from '../../core-engine/src/normalize/index.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
@@ -15,7 +16,8 @@ import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from 
 import { calculatePrice } from '../../pricing/src/index.js';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
-import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit } from './telegram-auth.js';
+import { exchangeTelegramLoginCode, getAuthSessionByToken, revokeAuthSessionByToken } from './telegram-auth.js';
+import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 import {
   createWorkspaceCatalog,
   deleteWorkspaceCatalog,
@@ -29,9 +31,14 @@ import {
   updateWorkspaceFile,
   upsertFileMaterial,
   uploadWorkspaceFile,
+  uploadWorkspaceFileBuffer,
 } from './workspace-library.js';
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024, files: 1 },
+});
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -46,6 +53,47 @@ const telegramAutoRegisterWebhook = telegramAutoRegisterWebhookRaw.length > 0
   ? telegramAutoRegisterWebhookRaw !== 'false'
   : !isLocalRuntime;
 let telegramWebhookRegistrationStarted = false;
+const AUTH_COOKIE_NAME = 'dxf_auth_session';
+const authCookieSameSite = isLocalRuntime ? 'lax' : 'none';
+
+function parseCookies(cookieHeader: string): Record<string, string> {
+  const pairs = cookieHeader.split(';');
+  const out: Record<string, string> = {};
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx <= 0) continue;
+    const key = pair.slice(0, idx).trim();
+    const value = pair.slice(idx + 1).trim();
+    if (!key) continue;
+    out[key] = decodeURIComponent(value);
+  }
+  return out;
+}
+
+function getAuthCookieToken(req: Request): string {
+  const cookieHeader = req.header('cookie') ?? '';
+  if (!cookieHeader) return '';
+  return parseCookies(cookieHeader)[AUTH_COOKIE_NAME] ?? '';
+}
+
+function setAuthCookie(res: Response, token: string, expiresAt: number): void {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: !isLocalRuntime,
+    sameSite: authCookieSameSite,
+    expires: new Date(expiresAt),
+    path: '/',
+  });
+}
+
+function clearAuthCookie(res: Response): void {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: !isLocalRuntime,
+    sameSite: authCookieSameSite,
+    path: '/',
+  });
+}
 
 function ensureTelegramWebhookRegistrationOnStartup(): void {
   if (telegramWebhookRegistrationStarted) return;
@@ -85,6 +133,7 @@ app.use(cors({
     }
     callback(null, false);
   },
+  credentials: true,
 }));
 // Default body limit 1 MB; DXF endpoints override with 50 MB; share endpoint 20 MB for itemDocs
 app.use((req, _res, next) => {
@@ -101,14 +150,22 @@ interface RateLimitState {
   count: number;
 }
 
+interface RateLimitRow {
+  readonly key: string;
+  readonly window_start_ms: number;
+  readonly count: number;
+  readonly updated_at?: string;
+}
+
 const rateLimitStore = new Map<string, RateLimitState>();
 const RATE_LIMIT_MAX_ENTRIES = 10_000; // защита от DDoS с уникальных IP
+const RATE_LIMITS_TABLE = process.env.SUPABASE_RATE_LIMITS_TABLE?.trim() || 'api_rate_limits';
 
 /**
  * Простой rate limiter (sliding window по IP).
  * @returns true если запрос разрешён, false если лимит превышен
  */
-function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+function checkLocalRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
   const state = rateLimitStore.get(key);
   if (state === undefined || now - state.windowStart > windowMs) {
@@ -124,34 +181,60 @@ function checkRateLimit(key: string, maxRequests: number, windowMs: number): boo
   return state.count <= maxRequests;
 }
 
+async function checkRateLimit(key: string, maxRequests: number, windowMs: number): Promise<boolean> {
+  if (!supabaseEnabled) return checkLocalRateLimit(key, maxRequests, windowMs);
+
+  const now = Date.now();
+  try {
+    const params = new URLSearchParams({
+      select: 'key,window_start_ms,count,updated_at',
+      key: `eq.${key}`,
+      limit: '1',
+    });
+    const currentResp = await supabaseRequest(`/${RATE_LIMITS_TABLE}?${params.toString()}`);
+    if (!currentResp?.ok) return checkLocalRateLimit(key, maxRequests, windowMs);
+
+    const rows = await currentResp.json() as RateLimitRow[];
+    const current = Array.isArray(rows) && rows.length > 0 ? rows[0]! : null;
+    const expired = !current || now - Number(current.window_start_ms) > windowMs;
+    const nextCount = expired ? 1 : Number(current.count) + 1;
+    const windowStartMs = expired ? now : Number(current.window_start_ms);
+
+    const upsertResp = await supabaseRequest(`/${RATE_LIMITS_TABLE}?on_conflict=key`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{
+        key,
+        window_start_ms: windowStartMs,
+        count: nextCount,
+        updated_at: new Date(now).toISOString(),
+      }]),
+    });
+    if (!upsertResp?.ok) return checkLocalRateLimit(key, maxRequests, windowMs);
+    return nextCount <= maxRequests;
+  } catch {
+    return checkLocalRateLimit(key, maxRequests, windowMs);
+  }
+}
+
 function getClientIp(req: Request): string {
   const forwarded = req.header('x-forwarded-for');
   if (forwarded) return forwarded.split(',')[0]!.trim();
   return req.socket?.remoteAddress ?? 'unknown';
 }
 
-// Очищаем устаревшие записи каждые 10 минут
-setInterval(() => {
-  const cutoff = Date.now() - 60_000;
-  for (const [key, state] of rateLimitStore) {
-    if (state.windowStart < cutoff) rateLimitStore.delete(key);
-  }
-}, 10 * 60_000).unref();
-
-// Middleware для тяжёлых вычислительных эндпоинтов (10 req/min per IP)
-function heavyRateLimit(req: Request, res: Response, next: () => void): void {
+async function heavyRateLimit(req: Request, res: Response, next: () => void): Promise<void> {
   const ip = getClientIp(req);
-  if (!checkRateLimit(`heavy:${ip}`, 10, 60_000)) {
+  if (!await checkRateLimit(`heavy:${ip}`, 10, 60_000)) {
     res.status(429).json({ error: 'Too many requests. Limit: 10 per minute.' });
     return;
   }
   next();
 }
 
-// Middleware для нестинга (3 req/min per IP — очень тяжёлая операция)
-function nestingRateLimit(req: Request, res: Response, next: () => void): void {
+async function nestingRateLimit(req: Request, res: Response, next: () => void): Promise<void> {
   const ip = getClientIp(req);
-  if (!checkRateLimit(`nest:${ip}`, 3, 60_000)) {
+  if (!await checkRateLimit(`nest:${ip}`, 3, 60_000)) {
     res.status(429).json({ error: 'Too many nesting requests. Limit: 3 per minute.' });
     return;
   }
@@ -193,6 +276,8 @@ function getBufferFromRequest(req: Request): Buffer | null {
 }
 
 function getAuthTokenFromRequest(req: Request): string {
+  const cookieToken = getAuthCookieToken(req);
+  if (cookieToken) return cookieToken;
   const header = req.header('authorization') ?? req.header('Authorization') ?? '';
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim();
@@ -223,9 +308,8 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
 
 app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'], async (req: Request, res: Response): Promise<void> => {
   try {
-    // P2: brute-force protection — 10 attempts per IP per 5 min
     const ip = getClientIp(req);
-    if (!checkCodeExchangeRateLimit(ip)) {
+    if (!await checkRateLimit(`auth-code:${ip}`, 10, 5 * 60_000)) {
       res.status(429).json({ error: 'Too many code exchange attempts. Try again in 5 minutes.' });
       return;
     }
@@ -237,6 +321,8 @@ app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'
       return;
     }
 
+    setAuthCookie(res, session.sessionToken, session.expiresAt);
+
     res.json({
       success: true,
       sessionToken: session.sessionToken,
@@ -246,6 +332,33 @@ app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Auth code exchange failed', details: message });
+  }
+});
+
+app.post(['/api/auth/adopt-token', '/api/auth-adopt-token'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    const header = req.header('authorization') ?? req.header('Authorization') ?? '';
+    const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+    if (!token) {
+      res.status(401).json({ success: false, error: 'Missing session token' });
+      return;
+    }
+
+    const session = await getAuthSessionByToken(token);
+    if (!session) {
+      res.status(401).json({ success: false, error: 'Session not found or expired' });
+      return;
+    }
+
+    setAuthCookie(res, token, session.expiresAt);
+    res.json({
+      success: true,
+      workspaceId: session.workspaceId,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Auth adopt token failed', details: message });
   }
 });
 
@@ -293,6 +406,20 @@ app.get(['/api/auth/me', '/api/auth-me'], async (req: Request, res: Response): P
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Auth me failed', details: message });
+  }
+});
+
+app.post(['/api/auth/logout', '/api/auth-logout'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = getAuthTokenFromRequest(req);
+    if (token) {
+      await revokeAuthSessionByToken(token);
+    }
+    clearAuthCookie(res);
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Auth logout failed', details: message });
   }
 });
 
@@ -402,6 +529,40 @@ app.post(['/api/library/files', '/api/library-files'], async (req: Request, res:
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Upload file failed', details: message });
+  }
+});
+
+app.post(['/api/library/files/upload', '/api/library-files-upload'], upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const uploaded = req.file;
+    if (!uploaded || !uploaded.buffer || uploaded.buffer.byteLength === 0) {
+      res.status(400).json({ error: 'Missing uploaded file' });
+      return;
+    }
+
+    const catalogIdRaw = typeof req.body?.catalogId === 'string' ? req.body.catalogId.trim() : '';
+    const checkedRaw = typeof req.body?.checked === 'string' ? req.body.checked.trim().toLowerCase() : '';
+    const quantityRaw = typeof req.body?.quantity === 'string' ? req.body.quantity.trim() : '';
+    const file = await uploadWorkspaceFileBuffer({
+      workspaceId,
+      name: uploaded.originalname || uploaded.fieldname || 'upload.dxf',
+      bodyBuffer: uploaded.buffer,
+      catalogId: catalogIdRaw.length > 0 ? catalogIdRaw : null,
+      checked: checkedRaw.length > 0 ? checkedRaw !== 'false' : true,
+      quantity: quantityRaw.length > 0 ? Number(quantityRaw) : 1,
+    });
+    res.json({ success: true, file });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Multipart upload file failed', details: message });
   }
 });
 

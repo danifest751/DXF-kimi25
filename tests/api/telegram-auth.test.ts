@@ -159,3 +159,16 @@ describe('getAuthSessionByToken', () => {
     expect(found!.workspaceId).toBe(session!.workspaceId);
   });
 });
+
+describe('revokeAuthSessionByToken', () => {
+  it('removes an existing session from lookup', async () => {
+    const { createTelegramLoginCode, exchangeTelegramLoginCode, getAuthSessionByToken, revokeAuthSessionByToken } = await freshModule();
+    const { code } = await createTelegramLoginCode(333, 444);
+    const session = await exchangeTelegramLoginCode(code);
+    expect(await getAuthSessionByToken(session!.sessionToken)).not.toBeNull();
+
+    await revokeAuthSessionByToken(session!.sessionToken);
+
+    expect(await getAuthSessionByToken(session!.sessionToken)).toBeNull();
+  });
+});

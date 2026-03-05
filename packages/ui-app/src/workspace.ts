@@ -4,7 +4,7 @@
  * Загрузка/удаление файлов, reload библиотеки с сервера.
  */
 
-import { apiGetJSON, apiPatchJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
+import { apiGetJSON, apiPatchJSON, apiPostJSON, apiUploadFormDataJSON, arrayBufferToBase64 } from './api.js';
 import { tx } from './i18n/index.js';
 import type { LoadedFile, UICuttingStats, WorkspaceCatalog } from './types.js';
 import {
@@ -261,50 +261,49 @@ export async function loadSingleFile(
 
     const stats = await _computeStats(base64, result.document);
 
-    let entry: LoadedFile;
-    if (authSessionToken) {
-      const uploadResp = await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files', {
-        name: file.name,
-        base64,
-        catalogId: getPreferredUploadCatalogId(),
-        checked: true,
-        quantity: 1,
-      }, getAuthHeaders());
+   let entry: LoadedFile;
+   if (authSessionToken) {
+     const formData = new FormData();
+     formData.append('file', file, file.name);
+     formData.append('catalogId', getPreferredUploadCatalogId() ?? '');
+     formData.append('checked', 'true');
+     formData.append('quantity', '1');
+     const uploadResp = await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
 
-      entry = {
-        id: bumpNextFileId(),
-        remoteId: uploadResp.file.id,
-        workspaceId: uploadResp.file.workspaceId,
-        catalogId: uploadResp.file.catalogId,
-        name: file.name,
-        doc: result.document,
-        stats,
-        checked: uploadResp.file.checked,
-        quantity: uploadResp.file.quantity,
-        sizeBytes: file.size,
-      };
-    } else {
-      entry = {
-        id: bumpNextFileId(),
-        remoteId: '',
-        workspaceId: '',
-        catalogId: null,
-        name: file.name,
-        localBase64: base64,
-        doc: result.document,
-        stats,
-        checked: true,
-        quantity: 1,
-        sizeBytes: file.size,
-      };
-    }
-    loadedFiles.push(entry);
-    setActiveFileFn(entry.id);
-    _renderCatalogFilter();
-    _renderFileList();
-    _recalcTotals();
-    _updateNestItems();
-    saveGuestDraft();
+     entry = {
+       id: bumpNextFileId(),
+       remoteId: uploadResp.file.id,
+       workspaceId: uploadResp.file.workspaceId,
+       catalogId: uploadResp.file.catalogId,
+       name: file.name,
+       doc: result.document,
+       stats,
+       checked: uploadResp.file.checked,
+       quantity: uploadResp.file.quantity,
+       sizeBytes: file.size,
+     };
+   } else {
+     entry = {
+       id: bumpNextFileId(),
+       remoteId: '',
+       workspaceId: '',
+       catalogId: null,
+       name: file.name,
+       localBase64: base64,
+       doc: result.document,
+       stats,
+       checked: true,
+       quantity: 1,
+       sizeBytes: file.size,
+     };
+   }
+   loadedFiles.push(entry);
+   setActiveFileFn(entry.id);
+   _renderCatalogFilter();
+   _renderFileList();
+   _recalcTotals();
+   _updateNestItems();
+   saveGuestDraft();
   } catch (err) {
     progressBar.classList.add('hidden');
     const msg = err instanceof Error ? err.message : String(err);
