@@ -16,7 +16,7 @@ import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from 
 import { calculatePrice } from '../../pricing/src/index.js';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
-import { exchangeTelegramLoginCode, getAuthSessionByToken, revokeAuthSessionByToken } from './telegram-auth.js';
+import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit, revokeAuthSessionByToken } from './telegram-auth.js';
 import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 import {
   createWorkspaceCatalog,
@@ -309,6 +309,10 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
 app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'], async (req: Request, res: Response): Promise<void> => {
   try {
     const ip = getClientIp(req);
+    if (!checkCodeExchangeRateLimit(ip)) {
+      res.status(429).json({ error: 'Too many code exchange attempts. Try again in 5 minutes.' });
+      return;
+    }
     if (!await checkRateLimit(`auth-code:${ip}`, 10, 5 * 60_000)) {
       res.status(429).json({ error: 'Too many code exchange attempts. Try again in 5 minutes.' });
       return;
