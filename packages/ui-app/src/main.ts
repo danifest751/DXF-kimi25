@@ -197,6 +197,14 @@ createCanvasInteractionController({
   inspectorPanel,
   statusCoords,
   updateStatusBar,
+  getZoomPanning: () => NP.zoomPanning,
+  getZoomPanStartX: () => NP.zoomPanStartX,
+  getZoomPanStartY: () => NP.zoomPanStartY,
+  getHoveredSheet: () => nestHoveredSheet,
+  renderZoomSheet,
+  setZoomPanX,
+  setZoomPanY,
+  setZoomPanning,
 });
 
 const mobileUi = createMobileUiController({
