@@ -15,6 +15,8 @@ const deleteWorkspaceFileMock = vi.fn();
 const setWorkspaceFilesCheckedMock = vi.fn();
 const downloadWorkspaceFileMock = vi.fn();
 const uploadWorkspaceFileBufferMock = vi.fn();
+const createSignedWorkspaceFileUploadMock = vi.fn();
+const finalizeSignedWorkspaceFileUploadMock = vi.fn();
 
 vi.mock('../../packages/core-engine/src/dxf/reader/index.js', () => ({
   parseDXF: vi.fn(),
@@ -64,10 +66,12 @@ vi.mock('../../packages/api-service/src/telegram-auth.js', () => ({
 }));
 
 vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
+  createSignedWorkspaceFileUpload: createSignedWorkspaceFileUploadMock,
   createWorkspaceCatalog: createWorkspaceCatalogMock,
   deleteWorkspaceCatalog: deleteWorkspaceCatalogMock,
   deleteWorkspaceFile: deleteWorkspaceFileMock,
   downloadWorkspaceFile: downloadWorkspaceFileMock,
+  finalizeSignedWorkspaceFileUpload: finalizeSignedWorkspaceFileUploadMock,
   isWorkspaceLibraryEnabled: isWorkspaceLibraryEnabledMock,
   listWorkspaceLibrary: vi.fn(),
   renameWorkspaceCatalog: renameWorkspaceCatalogMock,
@@ -200,10 +204,11 @@ describe('workspace library routes', () => {
   });
 
   it('uploads file through multipart route', async () => {
+    const catalogId = '11111111-1111-1111-1111-111111111111';
     uploadWorkspaceFileBufferMock.mockResolvedValue({
       id: 'file-upload-1',
       workspaceId: 'ws-1',
-      catalogId: 'cat-1',
+      catalogId,
       name: 'part.dxf',
       storagePath: 'workspace/ws-1/part.dxf',
       sizeBytes: 3,
@@ -215,7 +220,7 @@ describe('workspace library routes', () => {
 
     const formData = new FormData();
     formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
-    formData.append('catalogId', 'cat-1');
+    formData.append('catalogId', catalogId);
     formData.append('checked', 'true');
     formData.append('quantity', '2');
 
@@ -230,11 +235,98 @@ describe('workspace library routes', () => {
     expect(uploadWorkspaceFileBufferMock).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId: 'ws-1',
       name: 'part.dxf',
-      catalogId: 'cat-1',
+      catalogId,
       checked: true,
       quantity: 2,
     }));
     expect(json).toMatchObject({ success: true, file: { id: 'file-upload-1', name: 'part.dxf' } });
+  });
+
+  it('creates a signed direct upload ticket', async () => {
+    createSignedWorkspaceFileUploadMock.mockResolvedValue({
+      fileId: 'file-direct-1',
+      workspaceId: 'ws-1',
+      catalogId: null,
+      name: 'part.dxf',
+      storagePath: 'workspace/ws-1/file-direct-1.dxf',
+      sizeBytes: 3,
+      checked: true,
+      quantity: 1,
+      signedUrl: 'https://example.supabase.co/storage/v1/object/upload/sign/dxf-files/workspace/ws-1/file-direct-1.dxf?token=abc',
+      token: 'abc',
+    });
+
+    const response = await requestJson('POST', '/api/library-files-direct-upload-init', {
+      name: 'part.dxf',
+      sizeBytes: 3,
+      catalogId: null,
+      checked: true,
+      quantity: 1,
+    }, 'token-1');
+
+    expect(response.status).toBe(200);
+    expect(createSignedWorkspaceFileUploadMock).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      name: 'part.dxf',
+      sizeBytes: 3,
+      catalogId: null,
+      checked: true,
+      quantity: 1,
+    });
+    expect(response.json).toMatchObject({ success: true, upload: { fileId: 'file-direct-1', token: 'abc' } });
+  });
+
+  it('finalizes a signed direct upload', async () => {
+    finalizeSignedWorkspaceFileUploadMock.mockResolvedValue({
+      id: 'file-direct-1',
+      workspaceId: 'ws-1',
+      catalogId: null,
+      name: 'part.dxf',
+      storagePath: 'workspace/ws-1/file-direct-1.dxf',
+      sizeBytes: 3,
+      checked: true,
+      quantity: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const response = await requestJson('POST', '/api/library-files-direct-upload-complete', {
+      fileId: 'file-direct-1',
+      name: 'part.dxf',
+      sizeBytes: 3,
+      catalogId: null,
+      checked: true,
+      quantity: 1,
+    }, 'token-1');
+
+    expect(response.status).toBe(200);
+    expect(finalizeSignedWorkspaceFileUploadMock).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      fileId: 'file-direct-1',
+      name: 'part.dxf',
+      sizeBytes: 3,
+      catalogId: null,
+      checked: true,
+      quantity: 1,
+    });
+    expect(response.json).toMatchObject({ success: true, file: { id: 'file-direct-1', name: 'part.dxf' } });
+  });
+
+  it('rejects multipart upload with invalid catalogId', async () => {
+    const formData = new FormData();
+    formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
+    formData.append('catalogId', 'not-a-uuid');
+
+    const response = await fetch(`${baseUrl}/api/library-files-upload`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer token-1' },
+      body: formData,
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(uploadWorkspaceFileBufferMock).not.toHaveBeenCalled();
+    expect(json).toEqual({ error: 'catalogId must be a UUID or empty' });
   });
 
   it('updates file quantity through flat alias route', async () => {
@@ -246,6 +338,17 @@ describe('workspace library routes', () => {
     expect(response.status).toBe(200);
     expect(updateWorkspaceFileMock).toHaveBeenCalledWith('ws-1', 'file-1', { quantity: 11 });
     expect(response.json).toEqual({ success: true });
+  });
+
+  it('rejects file update with invalid quantity', async () => {
+    const response = await requestJson('PATCH', '/api/library-files-update', {
+      fileId: 'file-1',
+      quantity: 0,
+    }, 'token-1');
+
+    expect(response.status).toBe(400);
+    expect(updateWorkspaceFileMock).not.toHaveBeenCalled();
+    expect(response.json).toEqual({ error: 'quantity must be an integer between 1 and 10000' });
   });
 
   it('deletes file through flat alias route', async () => {

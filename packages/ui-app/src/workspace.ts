@@ -4,7 +4,7 @@
  * Загрузка/удаление файлов, reload библиотеки с сервера.
  */
 
-import { apiGetJSON, apiPatchJSON, apiPostJSON, apiUploadFormDataJSON, arrayBufferToBase64 } from './api.js';
+import { apiGetJSON, apiPatchJSON, apiPostJSON, apiUploadArrayBufferToSignedUrl, apiUploadFormDataJSON, arrayBufferToBase64 } from './api.js';
 import { tx } from './i18n/index.js';
 import type { LoadedFile, UICuttingStats, WorkspaceCatalog } from './types.js';
 import {
@@ -61,6 +61,57 @@ export interface LibraryTreeResponse {
   readonly success: boolean;
   readonly catalogs: WorkspaceCatalog[];
   readonly files: WorkspaceFileMeta[];
+}
+
+interface DirectUploadTicket {
+  readonly fileId: string;
+  readonly workspaceId: string;
+  readonly catalogId: string | null;
+  readonly name: string;
+  readonly storagePath: string;
+  readonly sizeBytes: number;
+  readonly checked: boolean;
+  readonly quantity: number;
+  readonly signedUrl: string;
+  readonly token: string;
+}
+
+interface DirectUploadInitResponse {
+  readonly success: boolean;
+  readonly upload: DirectUploadTicket;
+}
+
+async function uploadWorkspaceFileAuthenticated(file: File, buffer: ArrayBuffer): Promise<WorkspaceFileMeta> {
+  const payload = {
+    name: file.name,
+    sizeBytes: file.size,
+    catalogId: getPreferredUploadCatalogId(),
+    checked: true,
+    quantity: 1,
+  };
+
+  try {
+    const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
+    await apiUploadArrayBufferToSignedUrl(init.upload.signedUrl, buffer, file.type || 'application/dxf');
+    const finalize = await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-direct-upload-complete', {
+      fileId: init.upload.fileId,
+      name: init.upload.name,
+      sizeBytes: init.upload.sizeBytes,
+      catalogId: init.upload.catalogId,
+      checked: init.upload.checked,
+      quantity: init.upload.quantity,
+    }, getAuthHeaders());
+    return finalize.file;
+  } catch (error) {
+    console.warn('Direct upload failed, falling back to multipart upload:', error);
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    formData.append('catalogId', getPreferredUploadCatalogId() ?? '');
+    formData.append('checked', 'true');
+    formData.append('quantity', '1');
+    const uploadResp = await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
+    return uploadResp.file;
+  }
 }
 
 // ─── Catalog helpers ─────────────────────────────────────────────────
@@ -261,49 +312,44 @@ export async function loadSingleFile(
 
     const stats = await _computeStats(base64, result.document);
 
-   let entry: LoadedFile;
-   if (authSessionToken) {
-     const formData = new FormData();
-     formData.append('file', file, file.name);
-     formData.append('catalogId', getPreferredUploadCatalogId() ?? '');
-     formData.append('checked', 'true');
-     formData.append('quantity', '1');
-     const uploadResp = await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
+    let entry: LoadedFile;
+    if (authSessionToken) {
+      const uploadedFile = await uploadWorkspaceFileAuthenticated(file, buffer);
 
-     entry = {
-       id: bumpNextFileId(),
-       remoteId: uploadResp.file.id,
-       workspaceId: uploadResp.file.workspaceId,
-       catalogId: uploadResp.file.catalogId,
-       name: file.name,
-       doc: result.document,
-       stats,
-       checked: uploadResp.file.checked,
-       quantity: uploadResp.file.quantity,
-       sizeBytes: file.size,
-     };
-   } else {
-     entry = {
-       id: bumpNextFileId(),
-       remoteId: '',
-       workspaceId: '',
-       catalogId: null,
-       name: file.name,
-       localBase64: base64,
-       doc: result.document,
-       stats,
-       checked: true,
-       quantity: 1,
-       sizeBytes: file.size,
-     };
-   }
-   loadedFiles.push(entry);
-   setActiveFileFn(entry.id);
-   _renderCatalogFilter();
-   _renderFileList();
-   _recalcTotals();
-   _updateNestItems();
-   saveGuestDraft();
+      entry = {
+        id: bumpNextFileId(),
+        remoteId: uploadedFile.id,
+        workspaceId: uploadedFile.workspaceId,
+        catalogId: uploadedFile.catalogId,
+        name: file.name,
+        doc: result.document,
+        stats,
+        checked: uploadedFile.checked,
+        quantity: uploadedFile.quantity,
+        sizeBytes: file.size,
+      };
+    } else {
+      entry = {
+        id: bumpNextFileId(),
+        remoteId: '',
+        workspaceId: '',
+        catalogId: null,
+        name: file.name,
+        localBase64: base64,
+        doc: result.document,
+        stats,
+        checked: true,
+        quantity: 1,
+        sizeBytes: file.size,
+      };
+    }
+    loadedFiles.push(entry);
+    setActiveFileFn(entry.id);
+    _renderCatalogFilter();
+    _renderFileList();
+    _recalcTotals();
+    _updateNestItems();
+    saveGuestDraft();
   } catch (err) {
     progressBar.classList.add('hidden');
     const msg = err instanceof Error ? err.message : String(err);

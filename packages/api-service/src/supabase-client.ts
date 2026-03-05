@@ -4,7 +4,7 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? 
 export const supabaseEnabled = supabaseUrl.length > 0 && supabaseServiceRoleKey.length > 0;
 
 const supabaseRestBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
-const supabaseStorageBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1`;
+export const supabaseStorageBaseUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1`;
 
 export async function supabaseRequest(pathWithQuery: string, init: RequestInit = {}): Promise<Response | null> {
   if (!supabaseEnabled) return null;

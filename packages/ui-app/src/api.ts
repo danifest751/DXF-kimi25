@@ -75,6 +75,22 @@ export async function apiUploadFormDataJSON<T>(path: string, formData: FormData,
   return response.json() as Promise<T>;
 }
 
+export async function apiUploadArrayBufferToSignedUrl(uploadUrl: string, buffer: ArrayBuffer, contentType: string): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'cache-control': 'max-age=3600',
+      'content-type': contentType,
+      'x-upsert': 'false',
+    },
+    body: buffer,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+}
+
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 0x8000;

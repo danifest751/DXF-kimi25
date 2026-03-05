@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { supabaseEnabled, supabaseRequest, supabaseStorageRequest } from './supabase-client.js';
+import { supabaseEnabled, supabaseRequest, supabaseStorageBaseUrl, supabaseStorageRequest } from './supabase-client.js';
 
 export interface WorkspaceCatalog {
   readonly id: string;
@@ -7,6 +7,19 @@ export interface WorkspaceCatalog {
   readonly name: string;
   readonly createdAt: number;
   readonly updatedAt: number;
+}
+
+export interface WorkspaceDirectUploadTicket {
+  readonly fileId: string;
+  readonly workspaceId: string;
+  readonly catalogId: string | null;
+  readonly name: string;
+  readonly storagePath: string;
+  readonly sizeBytes: number;
+  readonly checked: boolean;
+  readonly quantity: number;
+  readonly signedUrl: string;
+  readonly token: string;
 }
 
 export interface WorkspaceFileMeta {
@@ -50,6 +63,7 @@ const DXF_FILES_BUCKET = process.env.SUPABASE_DXF_FILES_BUCKET?.trim() || 'dxf-f
 
 const MAX_FILES_PER_WORKSPACE = 200;
 const MAX_CATALOGS_PER_WORKSPACE = 20;
+const MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024;
 
 export function isWorkspaceLibraryEnabled(): boolean {
   return supabaseEnabled;
@@ -100,6 +114,104 @@ function encodeStoragePath(path: string): string {
     .split('/')
     .map((part) => encodeURIComponent(part))
     .join('/');
+}
+
+function buildWorkspaceStoragePath(workspaceId: string, fileId: string): string {
+  return `workspace/${workspaceId}/${fileId}.dxf`;
+}
+
+async function ensureWorkspaceFileCapacity(workspaceId: string): Promise<void> {
+  const fileCount = await countRows(WORKSPACE_FILES_TABLE, workspaceId);
+  if (fileCount >= MAX_FILES_PER_WORKSPACE) {
+    throw new Error(`Лимит: максимум ${MAX_FILES_PER_WORKSPACE} файлов на workspace`);
+  }
+}
+
+function normalizeWorkspaceFileInput(input: {
+  name: string;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+  sizeBytes?: number;
+}): {
+  name: string;
+  catalogId: string | null;
+  checked: boolean;
+  quantity: number;
+  sizeBytes?: number;
+} {
+  const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
+  if (name.length < 1) throw new Error('File name is required');
+
+  if (input.catalogId !== null && input.catalogId !== undefined && !UUID_RE.test(input.catalogId)) {
+    throw new Error('Invalid catalogId: must be a UUID');
+  }
+
+  const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
+  const sizeBytes = input.sizeBytes === undefined ? undefined : Math.floor(input.sizeBytes);
+  if (sizeBytes !== undefined && (!Number.isFinite(sizeBytes) || sizeBytes < 1 || sizeBytes > MAX_UPLOAD_SIZE_BYTES)) {
+    throw new Error('Invalid file size');
+  }
+
+  return {
+    name,
+    catalogId: input.catalogId ?? null,
+    checked: input.checked ?? true,
+    quantity,
+    ...(sizeBytes === undefined ? {} : { sizeBytes }),
+  };
+}
+
+async function insertWorkspaceFileRow(input: {
+  fileId: string;
+  workspaceId: string;
+  catalogId: string | null;
+  name: string;
+  storagePath: string;
+  sizeBytes: number;
+  checked: boolean;
+  quantity: number;
+  cleanupStorageOnFailure?: boolean;
+}): Promise<WorkspaceFileMeta> {
+  const nowIso = new Date().toISOString();
+  const row: WorkspaceFileRow = {
+    id: input.fileId,
+    workspace_id: input.workspaceId,
+    catalog_id: input.catalogId,
+    name: input.name,
+    storage_path: input.storagePath,
+    size_bytes: input.sizeBytes,
+    checked: input.checked,
+    quantity: input.quantity,
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+
+  const rowResp = await supabaseRequest(`/${WORKSPACE_FILES_TABLE}`, {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify([row]),
+  });
+  if (!rowResp?.ok) {
+    if (input.cleanupStorageOnFailure) {
+      await deleteStorageByPath(input.storagePath);
+    }
+    throw new Error('Failed to save file metadata');
+  }
+
+  const rows = await rowResp.json() as WorkspaceFileRow[];
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Upload metadata returned empty payload');
+  return toFileMeta(rows[0]!);
+}
+
+async function storageObjectExists(storagePath: string): Promise<boolean> {
+  const response = await supabaseStorageRequest(`/object/${encodeURIComponent(DXF_FILES_BUCKET)}/${encodeStoragePath(storagePath)}`, {
+    method: 'HEAD',
+  });
+  if (!response) return false;
+  if (response.ok) return true;
+  if (response.status === 400 || response.status === 404) return false;
+  throw new Error('Failed to verify uploaded DXF in storage');
 }
 
 
@@ -257,22 +369,20 @@ async function storeWorkspaceFile(input: {
   if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
 
   const { workspaceId } = input;
-  const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
-  if (name.length < 1) throw new Error('File name is required');
+  const normalized = normalizeWorkspaceFileInput({
+    name: input.name,
+    catalogId: input.catalogId,
+    checked: input.checked,
+    quantity: input.quantity,
+    sizeBytes: input.bodyBuffer.byteLength,
+  });
 
-  if (input.catalogId !== null && input.catalogId !== undefined && !UUID_RE.test(input.catalogId)) {
-    throw new Error('Invalid catalogId: must be a UUID');
-  }
-
-  const fileCount = await countRows(WORKSPACE_FILES_TABLE, workspaceId);
-  if (fileCount >= MAX_FILES_PER_WORKSPACE) {
-    throw new Error(`Лимит: максимум ${MAX_FILES_PER_WORKSPACE} файлов на workspace`);
-  }
+  await ensureWorkspaceFileCapacity(workspaceId);
 
   if (input.bodyBuffer.byteLength === 0) throw new Error('File content is empty');
 
-  const id = crypto.randomUUID();
-  const storagePath = `workspace/${workspaceId}/${id}.dxf`;
+  const fileId = crypto.randomUUID();
+  const storagePath = buildWorkspaceStoragePath(workspaceId, fileId);
   const uploadResp = await supabaseStorageRequest(`/object/${encodeURIComponent(DXF_FILES_BUCKET)}/${encodeStoragePath(storagePath)}`, {
     method: 'POST',
     headers: {
@@ -283,33 +393,91 @@ async function storeWorkspaceFile(input: {
   });
   if (!uploadResp?.ok) throw new Error('Failed to upload DXF to storage');
 
-  const nowIso = new Date().toISOString();
-  const row: WorkspaceFileRow = {
-    id,
-    workspace_id: workspaceId,
-    catalog_id: input.catalogId ?? null,
-    name,
-    storage_path: storagePath,
-    size_bytes: input.bodyBuffer.byteLength,
-    checked: input.checked ?? true,
-    quantity: Math.max(1, Math.floor(input.quantity ?? 1)),
-    created_at: nowIso,
-    updated_at: nowIso,
-  };
-
-  const rowResp = await supabaseRequest(`/${WORKSPACE_FILES_TABLE}`, {
-    method: 'POST',
-    headers: { Prefer: 'return=representation' },
-    body: JSON.stringify([row]),
+  return insertWorkspaceFileRow({
+    fileId,
+    workspaceId,
+    catalogId: normalized.catalogId,
+    name: normalized.name,
+    storagePath,
+    sizeBytes: normalized.sizeBytes ?? input.bodyBuffer.byteLength,
+    checked: normalized.checked,
+    quantity: normalized.quantity,
+    cleanupStorageOnFailure: true,
   });
-  if (!rowResp?.ok) {
-    await deleteStorageByPath(storagePath);
-    throw new Error('Failed to save file metadata');
-  }
+}
 
-  const rows = await rowResp.json() as WorkspaceFileRow[];
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Upload metadata returned empty payload');
-  return toFileMeta(rows[0]!);
+export async function createSignedWorkspaceFileUpload(input: {
+  workspaceId: string;
+  name: string;
+  sizeBytes: number;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+}): Promise<WorkspaceDirectUploadTicket> {
+  if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
+
+  const normalized = normalizeWorkspaceFileInput(input);
+  await ensureWorkspaceFileCapacity(input.workspaceId);
+
+  const fileId = crypto.randomUUID();
+  const storagePath = buildWorkspaceStoragePath(input.workspaceId, fileId);
+  const signResp = await supabaseStorageRequest(`/object/upload/sign/${encodeURIComponent(DXF_FILES_BUCKET)}/${encodeStoragePath(storagePath)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!signResp?.ok) throw new Error('Failed to create signed upload URL');
+
+  const payload = await signResp.json() as { url?: string };
+  const relativeUrl = typeof payload?.url === 'string' ? payload.url : '';
+  if (!relativeUrl) throw new Error('Signed upload URL payload is empty');
+
+  const signedUrl = new URL(relativeUrl, `${supabaseStorageBaseUrl}/`).toString();
+  const token = new URL(signedUrl).searchParams.get('token') ?? '';
+  if (!token) throw new Error('Signed upload token is missing');
+
+  return {
+    fileId,
+    workspaceId: input.workspaceId,
+    catalogId: normalized.catalogId,
+    name: normalized.name,
+    storagePath,
+    sizeBytes: normalized.sizeBytes ?? input.sizeBytes,
+    checked: normalized.checked,
+    quantity: normalized.quantity,
+    signedUrl,
+    token,
+  };
+}
+
+export async function finalizeSignedWorkspaceFileUpload(input: {
+  workspaceId: string;
+  fileId: string;
+  name: string;
+  sizeBytes: number;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+}): Promise<WorkspaceFileMeta> {
+  if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
+  if (!input.fileId || input.fileId.length > 200) throw new Error('Invalid fileId');
+
+  const normalized = normalizeWorkspaceFileInput(input);
+  const storagePath = buildWorkspaceStoragePath(input.workspaceId, input.fileId);
+  const exists = await storageObjectExists(storagePath);
+  if (!exists) throw new Error('Uploaded file not found in storage');
+
+  return insertWorkspaceFileRow({
+    fileId: input.fileId,
+    workspaceId: input.workspaceId,
+    catalogId: normalized.catalogId,
+    name: normalized.name,
+    storagePath,
+    sizeBytes: normalized.sizeBytes ?? input.sizeBytes,
+    checked: normalized.checked,
+    quantity: normalized.quantity,
+    cleanupStorageOnFailure: true,
+  });
 }
 
 export async function uploadWorkspaceFile(input: {

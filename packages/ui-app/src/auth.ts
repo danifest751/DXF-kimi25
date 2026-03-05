@@ -4,6 +4,13 @@
  */
 
 import { apiGetJSON, apiPostJSON, apiUploadFormDataJSON } from './api.js';
+import {
+  clearGuestDraftSnapshot,
+  guestDraftBinaryStorageAvailable,
+  loadGuestDraftContent,
+  loadGuestDraftPointers,
+  saveGuestDraftSnapshot,
+} from './guest-draft-storage.js';
 import { t } from './i18n/index.js';
 import type { LoadedFile, WorkspaceCatalog } from './types.js';
 import {
@@ -57,6 +64,14 @@ export interface GuestDraftPayload {
   readonly files: GuestDraftFile[];
 }
 
+interface GuestDraftStoredFile {
+  readonly id: string;
+  readonly name: string;
+  readonly checked: boolean;
+  readonly quantity: number;
+  readonly catalogId: string | null;
+}
+
 export interface WorkspaceFileMeta {
   readonly id: string;
   readonly workspaceId: string;
@@ -68,6 +83,10 @@ export interface WorkspaceFileMeta {
   readonly quantity: number;
   readonly createdAt: number;
   readonly updatedAt: number;
+}
+
+interface ResolvedGuestDraftFile extends GuestDraftStoredFile {
+  readonly base64: string;
 }
 
 // ─── Callbacks (заполняются из main.ts после инициализации) ──────────
@@ -132,31 +151,92 @@ function base64ToBlob(base64: string, type = 'application/dxf'): Blob {
 
 // ─── Guest draft ─────────────────────────────────────────────────────
 
-export function saveGuestDraft(): void {
-  if (authSessionToken) return;
-  const files: GuestDraftFile[] = loadedFiles
-    .filter((f) => typeof f.localBase64 === 'string' && f.localBase64.length > 0)
-    .map((f) => ({
-      name: f.name,
-      base64: f.localBase64!,
-      checked: f.checked,
-      quantity: f.quantity,
-      catalogId: f.catalogId,
-    }));
+function saveLegacyGuestDraft(files: GuestDraftFile[]): void {
   const payload: GuestDraftPayload = { version: 1, files };
   localStorage.setItem(GUEST_DRAFT_STORAGE_KEY, JSON.stringify(payload));
 }
 
-export function clearGuestDraft(): void {
-  localStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+async function loadGuestDraftFiles(): Promise<ResolvedGuestDraftFile[]> {
+  const storedFiles = loadGuestDraftPointers(GUEST_DRAFT_STORAGE_KEY);
+  if (storedFiles.length > 0) {
+    const resolved: ResolvedGuestDraftFile[] = [];
+    for (const file of storedFiles) {
+      const base64 = await loadGuestDraftContent(file.id);
+      if (!base64) continue;
+      resolved.push({ ...file, base64 });
+    }
+    return resolved;
+  }
+
+  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as GuestDraftPayload;
+    if (parsed.version !== 1 || !Array.isArray(parsed.files)) return [];
+    const legacyFiles = parsed.files.filter((file) => typeof file?.base64 === 'string' && file.base64.length > 0);
+    if (!guestDraftBinaryStorageAvailable()) {
+      return legacyFiles.map((file, index) => ({ id: `legacy_${index}`, ...file }));
+    }
+    const migrated = await saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, legacyFiles.map((file) => ({
+      name: file.name,
+      base64: file.base64,
+      checked: Boolean(file.checked),
+      quantity: Math.max(1, Number(file.quantity) || 1),
+      catalogId: file.catalogId,
+    })));
+    return migrated.map((file, index) => ({ ...file, base64: legacyFiles[index]!.base64 }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveGuestDraft(): void {
+  if (authSessionToken) return;
+  const guestFiles = loadedFiles.filter((f) => typeof f.localBase64 === 'string' && f.localBase64.length > 0);
+  const snapshot = guestFiles.map((f) => ({
+    id: f.guestDraftId,
+    name: f.name,
+    base64: f.localBase64!,
+    checked: f.checked,
+    quantity: f.quantity,
+    catalogId: f.catalogId,
+  }));
+  if (!guestDraftBinaryStorageAvailable()) {
+    saveLegacyGuestDraft(snapshot.map((file) => ({
+      name: file.name,
+      base64: file.base64,
+      checked: file.checked,
+      quantity: file.quantity,
+      catalogId: file.catalogId,
+    })));
+    return;
+  }
+  void saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot)
+    .then((storedFiles) => {
+      storedFiles.forEach((file, index) => {
+        const target = guestFiles[index];
+        if (target) target.guestDraftId = file.id;
+      });
+    })
+    .catch(() => {
+      saveLegacyGuestDraft(snapshot.map((file) => ({
+        name: file.name,
+        base64: file.base64,
+        checked: file.checked,
+        quantity: file.quantity,
+        catalogId: file.catalogId,
+      })));
+    });
+}
+
+export async function clearGuestDraft(): Promise<void> {
+  await clearGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY);
 }
 
 export async function restoreGuestDraft(): Promise<void> {
-  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
-  if (!raw) return;
   try {
-    const parsed = JSON.parse(raw) as GuestDraftPayload;
-    if (parsed.version !== 1 || !Array.isArray(parsed.files)) return;
+    const guestFiles = await loadGuestDraftFiles();
+    if (guestFiles.length === 0) return;
 
     workspaceCatalogs.splice(0, workspaceCatalogs.length);
     selectedCatalogIds.clear();
@@ -165,7 +245,7 @@ export async function restoreGuestDraft(): Promise<void> {
     const MAX_GUEST_FILE_SIZE_B64 = 270_000_000; // ~200 MB
     const MAX_GUEST_FILES = 50;
     let restored = 0;
-    for (const file of parsed.files) {
+    for (const file of guestFiles) {
       if (restored >= MAX_GUEST_FILES) break;
       if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
       restored++;
@@ -177,6 +257,7 @@ export async function restoreGuestDraft(): Promise<void> {
         remoteId: '',
         workspaceId: '',
         catalogId: null,
+        guestDraftId: file.id,
         name: file.name,
         localBase64: file.base64,
         doc: result.document,
@@ -202,23 +283,15 @@ export async function restoreGuestDraft(): Promise<void> {
 
 export async function migrateGuestDraftToWorkspace(): Promise<void> {
   if (!authSessionToken) return;
-  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
-  if (!raw) return;
-
-  let parsed: GuestDraftPayload;
-  try {
-    parsed = JSON.parse(raw) as GuestDraftPayload;
-  } catch {
-    return;
-  }
-  if (parsed.version !== 1 || !Array.isArray(parsed.files) || parsed.files.length === 0) {
-    clearGuestDraft();
+  const guestFiles = await loadGuestDraftFiles();
+  if (guestFiles.length === 0) {
+    await clearGuestDraft();
     return;
   }
 
   const MAX_MIGRATE_FILES = 50;
   let migrated = 0;
-  for (const file of parsed.files) {
+  for (const file of guestFiles) {
     if (migrated >= MAX_MIGRATE_FILES) break;
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
     if (!file.base64) continue;
@@ -234,7 +307,7 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
       console.warn('Failed to migrate file:', file.name, err instanceof Error ? err.message : String(err));
     }
   }
-  clearGuestDraft();
+  await clearGuestDraft();
 }
 
 async function adoptLegacyToken(savedToken: string): Promise<AuthMeResponse> {

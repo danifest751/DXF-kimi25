@@ -55,10 +55,12 @@ vi.mock('../../packages/api-service/src/telegram-auth.js', () => ({
   checkCodeExchangeRateLimit: checkCodeExchangeRateLimitMock,
 }));
 vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
+  createSignedWorkspaceFileUpload: vi.fn(),
   createWorkspaceCatalog: vi.fn(),
   deleteWorkspaceCatalog: vi.fn(),
   deleteWorkspaceFile: vi.fn(),
   downloadWorkspaceFile: vi.fn(),
+  finalizeSignedWorkspaceFileUpload: vi.fn(),
   isWorkspaceLibraryEnabled: vi.fn(() => false),
   listWorkspaceLibrary: vi.fn(),
   renameWorkspaceCatalog: vi.fn(),
@@ -385,6 +387,29 @@ describe('P6: /api/nesting/share max sheets', () => {
     const r = await req('POST', '/api/nesting-share', makeResult(1));
     expect(r.status).toBe(200);
     expect((r.json as { hashes: string[] }).hashes).toHaveLength(1);
+  });
+
+  it('returns 400 when itemDocs is not an object', async () => {
+    const r = await req('POST', '/api/nesting-share', {
+      ...makeResult(1),
+      itemDocs: ['bad'],
+    });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toContain('itemDocs');
+  });
+});
+
+describe('P7: export payload validation', () => {
+  it('returns 400 for malformed nestingResult on /api/export/dxf', async () => {
+    const r = await req('POST', '/api/export/dxf', { nestingResult: { sheets: 'bad' } });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toContain('nestingResult');
+  });
+
+  it('returns 400 for malformed cuttingStats on /api/export/csv', async () => {
+    const r = await req('POST', '/api/export/csv', { cuttingStats: 'bad', fileName: 'report' });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toContain('cuttingStats');
   });
 });
 

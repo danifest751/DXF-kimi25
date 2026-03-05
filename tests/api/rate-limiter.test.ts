@@ -48,10 +48,12 @@ vi.mock('../../packages/api-service/src/telegram-auth.js', () => ({
   checkCodeExchangeRateLimit: vi.fn(() => true),
 }));
 vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
+  createSignedWorkspaceFileUpload: vi.fn(),
   createWorkspaceCatalog: vi.fn(),
   deleteWorkspaceCatalog: vi.fn(),
   deleteWorkspaceFile: vi.fn(),
   downloadWorkspaceFile: vi.fn(),
+  finalizeSignedWorkspaceFileUpload: vi.fn(),
   isWorkspaceLibraryEnabled: vi.fn(() => false),
   listWorkspaceLibrary: vi.fn(),
   renameWorkspaceCatalog: vi.fn(),

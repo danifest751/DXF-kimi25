@@ -30,6 +30,7 @@ export interface LoadedFile {
   remoteId: string;
   workspaceId: string;
   catalogId: string | null;
+  guestDraftId?: string;
   name: string;
   localBase64?: string;
   doc: NormalizedDocument;

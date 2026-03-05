@@ -19,10 +19,12 @@ import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, 
 import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit, revokeAuthSessionByToken } from './telegram-auth.js';
 import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 import {
+  createSignedWorkspaceFileUpload,
   createWorkspaceCatalog,
   deleteWorkspaceCatalog,
   deleteWorkspaceFile,
   downloadWorkspaceFile,
+  finalizeSignedWorkspaceFileUpload,
   getFileMaterials,
   isWorkspaceLibraryEnabled,
   listWorkspaceLibrary,
@@ -244,6 +246,8 @@ async function nestingRateLimit(req: Request, res: Response, next: () => void): 
 // ─── Validation helpers ───────────────────────────────────────────────
 
 const MAX_DXF_BASE64_LEN = 270_000_000; // ~200MB в base64
+const MAX_LIBRARY_FILE_QTY = 10_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateDxfPayload(req: Request, res: Response): boolean {
   const body = req.body as { base64?: string; text?: string };
@@ -262,6 +266,43 @@ function validateDxfPayload(req: Request, res: Response): boolean {
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+}
+
+function isValidCatalogIdInput(value: string | null): boolean {
+  return value === null || UUID_RE.test(value);
+}
+
+function parseQuantityInput(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  if (normalized < 1 || normalized > MAX_LIBRARY_FILE_QTY) return null;
+  return normalized;
+}
+
+function parseQuantityStringInput(value: string): number | null {
+  if (!value) return 1;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = Math.floor(parsed);
+  if (normalized < 1 || normalized > MAX_LIBRARY_FILE_QTY) return null;
+  return normalized;
+}
+
+function parseBooleanStringInput(value: string): boolean | null {
+  if (!value) return true;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasNestingResultShape(value: unknown): value is NestingResult {
+  return isPlainObject(value)
+    && Array.isArray(value.sheets)
+    && isPlainObject(value.sheet);
 }
 
 function getBufferFromRequest(req: Request): Buffer | null {
@@ -519,7 +560,28 @@ app.post(['/api/library/files', '/api/library-files'], async (req: Request, res:
     const base64 = typeof req.body?.base64 === 'string' ? req.body.base64 : '';
     const catalogId = typeof req.body?.catalogId === 'string' ? req.body.catalogId : null;
     const checked = typeof req.body?.checked === 'boolean' ? req.body.checked : true;
-    const quantity = typeof req.body?.quantity === 'number' ? req.body.quantity : 1;
+    const quantity = parseQuantityInput(typeof req.body?.quantity === 'number' ? req.body.quantity : 1);
+
+    if (!name.trim()) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    if (!base64) {
+      res.status(400).json({ error: 'base64 is required' });
+      return;
+    }
+    if (base64.length > MAX_DXF_BASE64_LEN) {
+      res.status(413).json({ error: 'DXF file too large (max 200 MB)' });
+      return;
+    }
+    if (!isValidCatalogIdInput(catalogId)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or null' });
+      return;
+    }
+    if (quantity === null) {
+      res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+      return;
+    }
 
     const file = await uploadWorkspaceFile({
       workspaceId,
@@ -555,18 +617,138 @@ app.post(['/api/library/files/upload', '/api/library-files-upload'], upload.sing
     const catalogIdRaw = typeof req.body?.catalogId === 'string' ? req.body.catalogId.trim() : '';
     const checkedRaw = typeof req.body?.checked === 'string' ? req.body.checked.trim().toLowerCase() : '';
     const quantityRaw = typeof req.body?.quantity === 'string' ? req.body.quantity.trim() : '';
+    const checked = parseBooleanStringInput(checkedRaw);
+    const quantity = parseQuantityStringInput(quantityRaw);
+    if (!uploaded.originalname?.trim()) {
+      res.status(400).json({ error: 'Uploaded file name is required' });
+      return;
+    }
+    if (catalogIdRaw.length > 0 && !isValidCatalogIdInput(catalogIdRaw)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or empty' });
+      return;
+    }
+    if (checked === null) {
+      res.status(400).json({ error: 'checked must be true or false' });
+      return;
+    }
+    if (quantity === null) {
+      res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+      return;
+    }
     const file = await uploadWorkspaceFileBuffer({
       workspaceId,
       name: uploaded.originalname || uploaded.fieldname || 'upload.dxf',
       bodyBuffer: uploaded.buffer,
       catalogId: catalogIdRaw.length > 0 ? catalogIdRaw : null,
-      checked: checkedRaw.length > 0 ? checkedRaw !== 'false' : true,
-      quantity: quantityRaw.length > 0 ? Number(quantityRaw) : 1,
+      checked,
+      quantity,
     });
     res.json({ success: true, file });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Multipart upload file failed', details: message });
+  }
+});
+
+app.post(['/api/library/files/direct-upload-init', '/api/library-files-direct-upload-init'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const sizeBytes = typeof req.body?.sizeBytes === 'number' ? req.body.sizeBytes : NaN;
+    const catalogId = req.body?.catalogId === null || typeof req.body?.catalogId === 'string' ? req.body.catalogId : null;
+    const checked = typeof req.body?.checked === 'boolean' ? req.body.checked : true;
+    const quantity = parseQuantityInput(typeof req.body?.quantity === 'number' ? req.body.quantity : 1);
+
+    if (!name.trim()) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    if (!Number.isFinite(sizeBytes) || sizeBytes < 1) {
+      res.status(400).json({ error: 'sizeBytes must be a positive number' });
+      return;
+    }
+    if (!isValidCatalogIdInput(catalogId)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or null' });
+      return;
+    }
+    if (quantity === null) {
+      res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+      return;
+    }
+
+    const upload = await createSignedWorkspaceFileUpload({
+      workspaceId,
+      name,
+      sizeBytes,
+      catalogId,
+      checked,
+      quantity,
+    });
+    res.json({ success: true, upload });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Direct upload init failed', details: message });
+  }
+});
+
+app.post(['/api/library/files/direct-upload-complete', '/api/library-files-direct-upload-complete'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId : '';
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const sizeBytes = typeof req.body?.sizeBytes === 'number' ? req.body.sizeBytes : NaN;
+    const catalogId = req.body?.catalogId === null || typeof req.body?.catalogId === 'string' ? req.body.catalogId : null;
+    const checked = typeof req.body?.checked === 'boolean' ? req.body.checked : true;
+    const quantity = parseQuantityInput(typeof req.body?.quantity === 'number' ? req.body.quantity : 1);
+
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
+    if (!name.trim()) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+    if (!Number.isFinite(sizeBytes) || sizeBytes < 1) {
+      res.status(400).json({ error: 'sizeBytes must be a positive number' });
+      return;
+    }
+    if (!isValidCatalogIdInput(catalogId)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or null' });
+      return;
+    }
+    if (quantity === null) {
+      res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+      return;
+    }
+
+    const file = await finalizeSignedWorkspaceFileUpload({
+      workspaceId,
+      fileId,
+      name,
+      sizeBytes,
+      catalogId,
+      checked,
+      quantity,
+    });
+    res.json({ success: true, file });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Direct upload finalize failed', details: message });
   }
 });
 
@@ -581,11 +763,30 @@ app.patch(['/api/library/files/:fileId', '/api/library-files/:fileId', '/api/lib
     if (!workspaceId) return;
 
     const fileId = req.params.fileId ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
     const patch: { name?: string; catalogId?: string | null; checked?: boolean; quantity?: number } = {};
     if (typeof req.body?.name === 'string') patch.name = req.body.name;
     if (req.body?.catalogId === null || typeof req.body?.catalogId === 'string') patch.catalogId = req.body.catalogId;
     if (typeof req.body?.checked === 'boolean') patch.checked = req.body.checked;
-    if (typeof req.body?.quantity === 'number') patch.quantity = req.body.quantity;
+    if (req.body?.quantity !== undefined) {
+      const quantity = parseQuantityInput(req.body.quantity);
+      if (quantity === null) {
+        res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+        return;
+      }
+      patch.quantity = quantity;
+    }
+    if (patch.catalogId !== undefined && !isValidCatalogIdInput(patch.catalogId)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or null' });
+      return;
+    }
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: 'At least one patch field is required' });
+      return;
+    }
 
     await updateWorkspaceFile(workspaceId, fileId, patch);
     res.json({ success: true });
@@ -608,6 +809,10 @@ app.delete(['/api/library/files/:fileId', '/api/library-files/:fileId'], async (
     const fileId = req.params.fileId
       ?? (typeof req.query?.fileId === 'string' ? req.query.fileId : '')
       ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
     await deleteWorkspaceFile(workspaceId, fileId);
     res.json({ success: true });
   } catch (error) {
@@ -627,6 +832,10 @@ app.post('/api/library-files-delete', async (req: Request, res: Response): Promi
     if (!workspaceId) return;
 
     const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId : '';
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
     await deleteWorkspaceFile(workspaceId, fileId);
     res.json({ success: true });
   } catch (error) {
@@ -670,6 +879,10 @@ app.get(['/api/library/files/:fileId/download', '/api/library-files/:fileId-down
     const fileId = req.params.fileId
       ?? (typeof req.query?.fileId === 'string' ? req.query.fileId : '')
       ?? (typeof req.body?.fileId === 'string' ? req.body.fileId : '');
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
     const file = await downloadWorkspaceFile(workspaceId, fileId);
     res.json({ success: true, ...file });
   } catch (error) {
@@ -906,8 +1119,8 @@ app.post('/api/price', heavyRateLimit, async (req: Request, res: Response): Prom
 app.post('/api/export/dxf', heavyRateLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const { nestingResult } = req.body as { nestingResult?: unknown };
-    if (!nestingResult) {
-      res.status(400).json({ error: 'nestingResult is required' });
+    if (!hasNestingResultShape(nestingResult)) {
+      res.status(400).json({ error: 'nestingResult with sheet and sheets is required' });
       return;
     }
 
@@ -929,6 +1142,15 @@ app.post('/api/export/csv', heavyRateLimit, async (req: Request, res: Response):
       cuttingStats?: unknown;
       fileName?: string;
     };
+
+    if (nestingResult !== undefined && !hasNestingResultShape(nestingResult)) {
+      res.status(400).json({ error: 'nestingResult with sheet and sheets is required' });
+      return;
+    }
+    if (cuttingStats !== undefined && !isPlainObject(cuttingStats)) {
+      res.status(400).json({ error: 'cuttingStats must be an object' });
+      return;
+    }
 
     let csv: string;
     if (nestingResult) {
@@ -959,8 +1181,12 @@ app.post(['/api/nesting/share', '/api/nesting-share'], heavyRateLimit, async (re
   try {
     await pruneExpiredSheets();
     const { nestingResult, itemDocs: itemDocsRaw } = req.body as { nestingResult?: NestingResult; itemDocs?: Record<number, unknown> };
-    if (!nestingResult || !nestingResult.sheets) {
-      res.status(400).json({ error: 'nestingResult is required' });
+    if (!hasNestingResultShape(nestingResult)) {
+      res.status(400).json({ error: 'nestingResult with sheet and sheets is required' });
+      return;
+    }
+    if (itemDocsRaw !== undefined && !isPlainObject(itemDocsRaw)) {
+      res.status(400).json({ error: 'itemDocs must be an object when provided' });
       return;
     }
     const itemDocs = itemDocsRaw as Record<number, import('../../core-engine/src/export/index.js').ItemDocData> | undefined;
