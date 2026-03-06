@@ -545,15 +545,52 @@ export function renderMain(
   const authWorkspaceLabel = authActive
     ? `WS: ${authWorkspaceId.length > 12 ? authWorkspaceId.slice(0, 12) + '…' : authWorkspaceId}`
     : t('toolbar.guest');
+  const brandMarkup = `
+    <div class="sb-brand" aria-label="DXF SnapView">
+      <svg class="sb-brand-logo" viewBox="0 0 210 64" role="img" aria-hidden="true">
+        <defs>
+          <linearGradient id="sb-brand-blue" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#79d4ff" />
+            <stop offset="55%" stop-color="#1f88ff" />
+            <stop offset="100%" stop-color="#103b8e" />
+          </linearGradient>
+          <linearGradient id="sb-brand-steel" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f3f8ff" />
+            <stop offset="100%" stop-color="#9fb5d8" />
+          </linearGradient>
+          <filter id="sb-brand-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#021126" flood-opacity="0.45" />
+          </filter>
+        </defs>
+        <g filter="url(#sb-brand-shadow)">
+          <circle cx="31" cy="31" r="25" fill="#081526" stroke="url(#sb-brand-blue)" stroke-width="3.5" />
+          <circle cx="31" cy="31" r="18" fill="none" stroke="url(#sb-brand-steel)" stroke-width="2.6" />
+          <circle cx="31" cy="31" r="11" fill="#0d2f67" stroke="#d8ecff" stroke-width="1.8" />
+          <path d="M10 52 L2 60" fill="none" stroke="url(#sb-brand-steel)" stroke-width="6" stroke-linecap="round" />
+          <path d="M10 52 L2 60" fill="none" stroke="#062043" stroke-width="2.4" stroke-linecap="round" />
+          <path d="M17 14 H43 M17 48 H43 M17 14 V48 M43 14 V48" fill="none" stroke="#d9efff" stroke-width="1.8" opacity="0.9" />
+          <path d="M22 19 H31 Q39 19 39 27 Q39 35 31 35 H22 Z" fill="none" stroke="#d9efff" stroke-width="2" stroke-linejoin="round" />
+          <path d="M24 38 H38" stroke="#d9efff" stroke-width="2" stroke-linecap="round" />
+        </g>
+        <g transform="translate(66 10)">
+          <text x="0" y="21" fill="#d8ecff" font-size="26" font-weight="800" letter-spacing="1.1" font-family="Segoe UI, Arial, sans-serif">DXF</text>
+          <text x="0" y="43" fill="#9dc6ff" font-size="20" font-weight="700" font-family="Segoe UI, Arial, sans-serif">SnapView</text>
+        </g>
+      </svg>
+    </div>
+  `;
 
   root.innerHTML = `
     <div class="sb-shell">
       <div class="sb-topbar">
-        <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
-        <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
-        <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
-        ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
-        <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
+        ${brandMarkup}
+        <div class="sb-topbar-actions">
+          <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
+          <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
+          <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
+          ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}
+          <button class="sb-btn sb-btn--ghost" data-a="close">${t('setBuilder.close')}</button>
+        </div>
       </div>
 
       <div class="sb-main">
