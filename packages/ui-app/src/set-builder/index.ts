@@ -872,8 +872,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       fileReadyDebounceTimer = null;
       pendingReadyFileIds.clear();
       syncLoadedFilesIntoLibrary(state);
-      state.isCacheLoaded = false;
-      if (authSessionToken) saveLibraryCache(state, authSessionToken);
+      if (authSessionToken && !state.isCacheLoaded) saveLibraryCache(state, authSessionToken);
       lastRenderSnapshot = null;
       if (renderFrameId !== null) return;
       renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });
@@ -949,9 +948,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     setActiveFile: (id: number) => { state.activeLibraryId = id; scheduleRender(); },
     reloadFromServer: async () => {
       await reloadWorkspaceLibraryFromServer();
-      syncLoadedFilesIntoLibrary(state);
-      state.isCacheLoaded = false;
-      saveLibraryCache(state, authSessionToken);
       scheduleRender();
     },
   };

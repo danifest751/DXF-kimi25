@@ -90,6 +90,7 @@ export function loadLibraryCache(state: SetBuilderState, authToken: string): num
     const cacheItems: LibraryItem[] = payload.items.map((ci, idx) => ({
       id: -(idx + 1), // временные отрицательные id
       sourceFileId: undefined,
+      remoteId: ci.remoteId,
       name: ci.name,
       catalog: ci.catalog,
       w: ci.w,

@@ -9,6 +9,7 @@ export type LibrarySortDir = 'asc' | 'desc';
 export interface LibraryItem {
   readonly id: number;
   readonly sourceFileId?: number;
+  readonly remoteId?: string;
   readonly name: string;
   readonly catalog: string;
   readonly w: number;

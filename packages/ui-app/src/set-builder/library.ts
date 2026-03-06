@@ -54,29 +54,59 @@ export function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: numb
 }
 
 export function syncLoadedFilesIntoLibrary(state: SetBuilderState): void {
-  const loadedIds = new Set<number>(loadedFiles.map((f) => f.id));
-  const existingLoadedBySource = new Map<number, LibraryItem>();
-  for (const item of state.library) {
+  // Build lookup maps for existing real items (by sourceFileId) and cache items (by remoteId)
+  const existingBySource = new Map<number, LibraryItem>();
+  const cacheByRemote = new Map<string, { item: LibraryItem; idx: number }>();
+  for (let i = 0; i < state.library.length; i++) {
+    const item = state.library[i]!;
     if (item.sourceFileId !== undefined) {
-      existingLoadedBySource.set(item.sourceFileId, item);
+      existingBySource.set(item.sourceFileId, item);
+    } else if (item.remoteId) {
+      cacheByRemote.set(item.remoteId, { item, idx: i });
     }
   }
 
-  state.library = state.library.filter((item) => item.sourceFileId !== undefined && loadedIds.has(item.sourceFileId));
+  const loadedIds = new Set<number>(loadedFiles.map((f) => f.id));
+  // Track which remoteIds are covered by loadedFiles
+  const coveredRemoteIds = new Set<string>(
+    loadedFiles.filter((f) => f.remoteId).map((f) => f.remoteId!),
+  );
 
-  let nextLibraryId = Math.max(0, ...state.library.map((i) => i.id)) + 1;
+  // Pass 1: replace in-place cache entries that now have a real loadedFile
   for (const lf of loadedFiles) {
-    const existing = existingLoadedBySource.get(lf.id);
-    const mapped = mapLoadedFileToLibraryItem(lf.id, existing?.id ?? nextLibraryId);
-    if (!mapped) continue;
-
-    if (existing) {
-      const idx = state.library.findIndex((i) => i.id === existing.id);
-      if (idx >= 0) state.library[idx] = mapped;
-    } else {
-      state.library.push(mapped);
-      nextLibraryId++;
+    if (!lf.remoteId) continue;
+    const cached = cacheByRemote.get(lf.remoteId);
+    if (!cached) continue;
+    // Replace cache item with real data (preserves list order and id slot)
+    const mapped = mapLoadedFileToLibraryItem(lf.id, cached.item.id);
+    if (mapped) {
+      state.library[cached.idx] = mapped;
+      existingBySource.set(lf.id, mapped);
+      cacheByRemote.delete(lf.remoteId);
     }
+  }
+
+  // Pass 2: remove real items whose source file is gone, keep cache items for files not yet loaded
+  let nextLibraryId = Math.max(1, ...state.library.map((i) => Math.abs(i.id))) + 1;
+  state.library = state.library.filter((item) => {
+    if (item.sourceFileId !== undefined) return loadedIds.has(item.sourceFileId);
+    // Cache item: keep if its remoteId is still in the server list (not yet loaded)
+    if (item.remoteId) return coveredRemoteIds.has(item.remoteId);
+    return false;
+  });
+
+  // Pass 3: add brand-new loadedFiles that have no cache entry and no real entry yet
+  for (const lf of loadedFiles) {
+    if (existingBySource.has(lf.id)) continue; // already handled in pass 1 or existed before
+    const mapped = mapLoadedFileToLibraryItem(lf.id, nextLibraryId);
+    if (!mapped) continue;
+    state.library.push(mapped);
+    nextLibraryId++;
+  }
+
+  // Clear cache flag once all cached entries have been replaced by real data
+  if (state.isCacheLoaded && !state.library.some((item) => item.sourceFileId === undefined)) {
+    state.isCacheLoaded = false;
   }
 
   const availableCatalogs = new Set<string>(['All', t('setBuilder.unnamedCatalog')]);
