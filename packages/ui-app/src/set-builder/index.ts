@@ -470,6 +470,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (!Number.isFinite(qty) || qty < 1) return;
       for (const sid of state.selectedLibraryIds) setQty(state, sid, Math.round(qty));
       showToast(t('setBuilder.toast.qtyUpdated'));
+      scheduleRender();
       return;
     }
     if (action === 'bulk-clear') { state.selectedLibraryIds.clear(); scheduleRender(); return; }
@@ -519,6 +520,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'stub') {
       showToast(`${t('setBuilder.action')} (${t('setBuilder.stub')})`);
       state.openMenuLibraryId = null;
+      scheduleRender();
       return;
     }
     if (action === 'assign-material') { state.materialModalOpenForId = id; state.openMenuLibraryId = null; scheduleRender(); return; }
@@ -542,6 +544,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       saveMaterials(state);
       if (authSessionToken) void syncMaterialsToServer(state, targetIds, materialId);
       showToast(t('material.saved'));
+      scheduleRender();
       return;
     }
     if (target.classList.contains('sb-modal-backdrop--material')) { state.materialModalOpenForId = null; scheduleRender(); return; }
@@ -835,7 +838,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'opt-epsilon' && el instanceof HTMLInputElement && optiState) {
       const v = parseFloat(el.value);
-      if (Number.isFinite(v) && v > 0) { optiState.plan.epsilonMm = v; }
+      if (Number.isFinite(v) && v > 0) { optiState.plan.epsilonMm = v; scheduleRender(); }
       return;
     }
   });
