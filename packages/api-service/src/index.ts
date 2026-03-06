@@ -8,7 +8,7 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
-import { registerDxfRoutes } from './routes-dxf.js';
+import { registerDxfRoutes, MAX_DXF_BASE64_LEN } from './routes-dxf.js';
 import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit, revokeAuthSessionByToken } from './telegram-auth.js';
 import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 import {
