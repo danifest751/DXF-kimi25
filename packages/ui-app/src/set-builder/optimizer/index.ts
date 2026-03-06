@@ -47,8 +47,6 @@ export async function optimizeFile(
     const pipelineResult = runOptimizationPipeline(input.flatEntities, oState.plan);
     const afterEntities = pipelineResult.entities.length;
 
-    const optimizedDxf = serializeEntitiesToDxf(pipelineResult.entities);
-
     const report = {
       fileName: input.fileName,
       parameters: { epsilonMm: oState.plan.epsilonMm, rules: [...oState.plan.enabled] },
@@ -66,7 +64,7 @@ export async function optimizeFile(
       beforeEntities,
       afterEntities,
       rulesApplied: pipelineResult.rulesApplied,
-      optimizedDxf,
+      optimizedEntities: pipelineResult.entities,
       reportJson: JSON.stringify(report, null, 2),
       fileName: input.fileName,
     } satisfies OptimizationResult;
@@ -81,7 +79,8 @@ export async function optimizeFile(
 
 export function downloadOptimizedDxf(result: OptimizationResult): void {
   const baseName = result.fileName.replace(/\.dxf$/i, '');
-  const blob = new Blob([result.optimizedDxf], { type: 'application/dxf' });
+  const dxf = serializeEntitiesToDxf(result.optimizedEntities);
+  const blob = new Blob([dxf], { type: 'application/dxf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

@@ -65,7 +65,7 @@ export interface OptimizationResult {
   readonly beforeEntities: number;
   readonly afterEntities: number;
   readonly rulesApplied: RuleApplied[];
-  readonly optimizedDxf: string;
+  readonly optimizedEntities: FlattenedEntity[];
   readonly reportJson: string;
   readonly fileName: string;
 }

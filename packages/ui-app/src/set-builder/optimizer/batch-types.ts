@@ -1,3 +1,5 @@
+import type { FlattenedEntity } from '../../../../core-engine/src/normalize/index.js';
+
 import type { OptimizationPlan, RuleId } from './types.js';
 
 export function createDefaultPlan(): OptimizationPlan {
@@ -19,7 +21,7 @@ export interface BatchFileEntry {
   beforeEntities: number | null;
   afterEntities: number | null;
   savedEntities: number | null;
-  optimizedDxf: string | null;
+  optimizedEntities: FlattenedEntity[] | null;
   error: string | null;
 }
 

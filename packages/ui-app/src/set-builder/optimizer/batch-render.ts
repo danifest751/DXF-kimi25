@@ -64,7 +64,7 @@ export function renderBatchModal(bState: BatchOptimizerState): string {
   const isRunning = phase === 'running' || phase === 'analyzing';
   const isDone = phase === 'done';
   const canRun = enabledCount > 0 && !isRunning;
-  const hasResults = entries.some((e) => e.status === 'done' && e.optimizedDxf);
+  const hasResults = entries.some((e) => e.status === 'done' && e.optimizedEntities);
 
   const progressPct = totalCount > 0 ? Math.round((processedCount / totalCount) * 100) : 0;
 

@@ -32,7 +32,7 @@ export function buildBatchEntries(
       beforeEntities: null,
       afterEntities: null,
       savedEntities: null,
-      optimizedDxf: null,
+      optimizedEntities: null,
       error: null,
     });
   }
@@ -111,11 +111,10 @@ export async function runBatchOptimization(
 
       const pipelineResult = runOptimizationPipeline(flatEntities, bState.plan);
       const after = pipelineResult.entities.length;
-      const optimizedDxf = serializeEntitiesToDxf(pipelineResult.entities);
 
       entry.afterEntities = after;
       entry.savedEntities = before - after;
-      entry.optimizedDxf = optimizedDxf;
+      entry.optimizedEntities = pipelineResult.entities;
       entry.status = 'done';
     } catch (err) {
       entry.status = 'error';
@@ -228,13 +227,13 @@ function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
 // ─── Download all results as ZIP archive ──────────────────────────────────────
 
 export async function downloadBatchZip(bState: BatchOptimizerState): Promise<void> {
-  const doneEntries = bState.entries.filter((e) => e.status === 'done' && e.optimizedDxf);
+  const doneEntries = bState.entries.filter((e) => e.status === 'done' && e.optimizedEntities);
   if (doneEntries.length === 0) return;
 
   const enc = new TextEncoder();
   const files = doneEntries.map((entry) => ({
     name: entry.name.replace(/\.dxf$/i, '') + '_optimized.dxf',
-    data: enc.encode(entry.optimizedDxf!),
+    data: enc.encode(serializeEntitiesToDxf(entry.optimizedEntities!)),
   }));
 
   const zipBytes = buildZip(files);
