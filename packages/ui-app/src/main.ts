@@ -14,5 +14,5 @@ import { setBuilderRoot, btnSetBuilder } from './ui-shell.js';
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 
-void restoreAuthSession();
 initSetBuilder(setBuilderRoot, btnSetBuilder);
+void restoreAuthSession();
