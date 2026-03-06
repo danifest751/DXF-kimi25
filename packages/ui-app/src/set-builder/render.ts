@@ -27,11 +27,22 @@ export interface RenderSnapshot {
   catalogFilter: string;
   mode: string;
   sheetPresetId: string;
+  gapMm: number;
+  nestStrategy: string;
+  rotationEnabled: boolean;
+  rotationStepDeg: number;
+  multiStart: boolean;
+  seed: number;
+  commonLineMaxMergeDistanceMm: number;
+  commonLineMinSharedLenMm: number;
+  nestingPhase: string;
   previewShowPierces: boolean;
   previewLibraryId: number | null;
   previewSheetId: string | null;
   optimizerOpenForId: number | null;
   materialModalOpenForId: number | null;
+  materialAssignmentsKey: string;
+  lastUsedMaterialId: string | null;
   loading: boolean;
   resultsId: string;
   resultsSheets: number;
@@ -62,7 +73,18 @@ export function snapshotState(
     catalogFilter: state.catalogFilter,
     mode: state.mode,
     sheetPresetId: state.sheetPresetId,
+    gapMm: state.gapMm,
+    nestStrategy: state.nestStrategy,
+    rotationEnabled: state.rotationEnabled,
+    rotationStepDeg: state.rotationStepDeg,
+    multiStart: state.multiStart,
+    seed: state.seed,
+    commonLineMaxMergeDistanceMm: state.commonLineMaxMergeDistanceMm,
+    commonLineMinSharedLenMm: state.commonLineMinSharedLenMm,
+    nestingPhase: state.nestingPhase,
     previewShowPierces: state.previewShowPierces,
+    materialAssignmentsKey: [...state.materialAssignments.entries()].map(([id, a]) => `${id}:${a.materialId}`).join(','),
+    lastUsedMaterialId: state.lastUsedMaterialId,
     previewLibraryId: state.previewLibraryId,
     previewSheetId: state.previewSheetId,
     optimizerOpenForId: state.optimizerOpenForId,
