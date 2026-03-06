@@ -270,6 +270,31 @@ async function adoptLegacyToken(savedToken: string): Promise<AuthMeResponse> {
   return apiGetJSON<AuthMeResponse>('/api/auth-me');
 }
 
+function applyAuthenticatedSession(workspaceId: string): void {
+  setAuthSession(COOKIE_SESSION_TOKEN, workspaceId);
+  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  authUiBridge.updateAuthUi();
+  emitAuthSessionChanged();
+}
+
+function clearStoredAuthSession(): void {
+  clearAuthSession();
+  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  authUiBridge.updateAuthUi();
+  emitAuthSessionChanged();
+}
+
+async function finalizeAuthenticatedSession(workspaceId: string): Promise<void> {
+  applyAuthenticatedSession(workspaceId);
+  await migrateGuestDraftToWorkspace();
+  await authUiBridge.reloadFromServer();
+}
+
+async function restoreGuestSessionFallback(): Promise<void> {
+  clearStoredAuthSession();
+  await restoreGuestDraft();
+}
+
 // ─── Session ─────────────────────────────────────────────────────────
 
 export async function logoutWorkspace(): Promise<void> {
@@ -278,10 +303,7 @@ export async function logoutWorkspace(): Promise<void> {
   } catch (error) {
     console.warn('Server logout failed:', error instanceof Error ? error.message : String(error));
   }
-  clearAuthSession();
-  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  authUiBridge.updateAuthUi();
-  emitAuthSessionChanged();
+  clearStoredAuthSession();
 
   resetWorkspaceToGuestState();
 
@@ -296,18 +318,9 @@ export async function restoreAuthSession(): Promise<void> {
       ? await adoptLegacyToken(savedToken)
       : await apiGetJSON<AuthMeResponse>('/api/auth-me');
     if (!me.authenticated) throw new Error('Session rejected');
-    setAuthSession(COOKIE_SESSION_TOKEN, me.workspaceId);
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    authUiBridge.updateAuthUi();
-    emitAuthSessionChanged();
-    await migrateGuestDraftToWorkspace();
-    await authUiBridge.reloadFromServer();
+    await finalizeAuthenticatedSession(me.workspaceId);
   } catch {
-    clearAuthSession();
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    authUiBridge.updateAuthUi();
-    emitAuthSessionChanged();
-    await restoreGuestDraft();
+    await restoreGuestSessionFallback();
   }
 }
 
@@ -316,12 +329,7 @@ export async function runTelegramLoginFlow(): Promise<void> {
   if (!code) return;
   try {
     const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
-    setAuthSession(COOKIE_SESSION_TOKEN, response.workspaceId);
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    authUiBridge.updateAuthUi();
-    emitAuthSessionChanged();
-    await migrateGuestDraftToWorkspace();
-    await authUiBridge.reloadFromServer();
+    await finalizeAuthenticatedSession(response.workspaceId);
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     showAuthHint(t('auth.codeInvalid'));

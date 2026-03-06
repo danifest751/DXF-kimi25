@@ -70,33 +70,27 @@ import {
   setZoomPanStartX, setZoomPanStartY, setZoomHideTimer,
 } from './nesting-panel.js';
 import * as NP from './nesting-panel.js';
-import { createCanvasInteractionController } from './canvas-interaction.js';
-import { createFileIngestController } from './file-ingest.js';
-import { createInspectorPanelController } from './inspector-panel.js';
 import { initSetBuilder } from './set-builder/index.js';
-import { createMobileUiController } from './mobile-ui.js';
-import { createViewportSceneController } from './viewport-scene.js';
 import { initNestingControls } from './nesting-controls.js';
 import { initNestingZoomUi } from './nesting-zoom-ui.js';
 import { initToolbarActions } from './toolbar-actions.js';
 import { initMainModuleCallbacks } from './main-module-callbacks.js';
+import { initMainShellUi } from './main-shell-ui.js';
 import { createMainToolbarBridgeController } from './main-toolbar-bridge.js';
 import { createMainUiHelpersController } from './main-ui-helpers.js';
 import { createMainRuntimeUiController } from './main-runtime-ui.js';
-import { createViewerActionsController } from './viewer-actions.js';
-import { t, applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
+import { createMainViewerShellController } from './main-viewer-shell.js';
+import { t } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
 
-applyLocale();
-
-const btnLangToggle = document.getElementById('btn-lang-toggle') as HTMLButtonElement | null;
-btnLangToggle?.addEventListener('click', () => {
-  setLocale(getLocale() === 'ru' ? 'en' : 'ru');
-});
-onLocaleChange(() => {
-  applyAuthUiState(updateUploadTargetHint);
-  updateBulkControlsUi();
+initMainShellUi({
+  container,
+  applyAuthUiState,
+  updateUploadTargetHint,
+  updateBulkControlsUi,
+  onResizeRenderer: () => renderer.resizeToContainer(),
+  onResizeViewport: () => viewportScene.handleResize(),
 });
 
 const mainRuntimeUi = createMainRuntimeUiController({
@@ -135,70 +129,43 @@ const setActiveFile = (id: number): void => mainUiHelpers.setActiveFile(id);
 const syncWelcomeVisibility = (): void => mainUiHelpers.syncWelcomeVisibility();
 const updateStatusBar = (): void => mainUiHelpers.updateStatusBar();
 
-const viewportScene = createViewportSceneController({
-  container,
-  files: loadedFiles,
-});
+const statusCoords = document.getElementById('status-coords')!;
 
-const inspectorPanel = createInspectorPanelController({
-  inspectorContent,
-  renderer,
-  sidebarInspector,
-});
-
-const fileIngest = createFileIngestController({
+const mainViewerShell = createMainViewerShellController({
+  canvas,
   container,
   dropOverlay,
   fileInput,
   files: loadedFiles,
-  loadSingleFile,
-  setActiveFile,
-  syncWelcomeVisibility,
-  viewportScene,
-});
-
-const statusCoords = document.getElementById('status-coords')!;
-
-createCanvasInteractionController({
-  canvas,
-  renderer,
-  inspectorPanel,
-  statusCoords,
-  updateStatusBar,
-  getZoomPanning: () => NP.zoomPanning,
+  getHoveredSheet: () => nestHoveredSheet,
+  getNestingMode: () => nestingMode,
+  getShowGrid: () => showGrid,
   getZoomPanStartX: () => NP.zoomPanStartX,
   getZoomPanStartY: () => NP.zoomPanStartY,
-  getHoveredSheet: () => nestHoveredSheet,
+  getZoomPanning: () => NP.zoomPanning,
+  inspectorContent,
+  loadSingleFile,
+  mobileBackdrop,
+  nestingPanel,
+  onExitNesting: exitNestingMode,
   renderZoomSheet,
+  renderer,
+  setActiveFile,
+  setShowGrid,
   setZoomPanX,
   setZoomPanY,
   setZoomPanning,
-});
-
-const viewerActions = createViewerActionsController({
-  fileIngest,
-  inspectorPanel,
-  renderer,
-  updateStatusBar,
-  getShowGrid: () => showGrid,
-  setShowGrid,
-});
-
-const mobileUi = createMobileUiController({
-  mobileBackdrop,
+  shortcutsClose,
+  shortcutsOverlay,
   sidebarFiles,
   sidebarInspector,
-  nestingPanel,
-  shortcutsOverlay,
-  shortcutsClose,
+  statusCoords,
+  syncWelcomeVisibility,
   updateNestingButtonState,
-  onOpenFileDialog: viewerActions.openFileDialog,
-  onZoomToFit: viewerActions.zoomToFit,
-  onToggleGrid: viewerActions.toggleGrid,
-  onExitNesting: exitNestingMode,
-  onClearSelection: viewerActions.clearSelection,
-  getNestingMode: () => nestingMode,
+  updateStatusBar,
 });
+
+const { mobileUi, viewerActions, viewportScene } = mainViewerShell;
 
 const mainToolbarBridge = createMainToolbarBridgeController({
   authSessionToken,
@@ -278,11 +245,6 @@ initMainModuleCallbacks({
 });
 
 // ─── Resize ───────────────────────────────────────────────────────────
-
-new ResizeObserver(() => {
-  renderer.resizeToContainer();
-  viewportScene.handleResize();
-}).observe(container);
 
 // ─── Nesting panel ────────────────────────────────────────────────────
 

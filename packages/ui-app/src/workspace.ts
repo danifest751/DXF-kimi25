@@ -209,68 +209,115 @@ export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
   workspaceUiBridge.refreshCatalogSelectionViews();
 }
 
+function beginWorkspaceLoadProgress(fileName: string): void {
+  progressBar.classList.remove('hidden');
+  progressFill.style.width = '0%';
+  progressLabel.textContent = tx('workspace.loading', { name: fileName });
+}
+
+function updateWorkspaceLoadProgress(bytesProcessed: number, totalBytes: number): void {
+  const pct = totalBytes > 0 ? (bytesProcessed / totalBytes) * 100 : 0;
+  progressFill.style.width = `${Math.min(pct, 95)}%`;
+}
+
+function completeWorkspaceLoadProgress(): void {
+  progressFill.style.width = '100%';
+  setTimeout(() => progressBar.classList.add('hidden'), 400);
+}
+
+function failWorkspaceLoadProgress(): void {
+  progressBar.classList.add('hidden');
+}
+
+async function createLoadedWorkspaceEntry(
+  file: File,
+  buffer: ArrayBuffer,
+  base64: string,
+  doc: LoadedFile['doc'],
+  stats: LoadedFile['stats'],
+): Promise<LoadedFile> {
+  if (authSessionToken) {
+    const uploadedFile = await uploadWorkspaceFileAuthenticatedImpl(file, buffer, getPreferredUploadCatalogId);
+    return {
+      id: bumpNextFileId(),
+      remoteId: uploadedFile.id,
+      workspaceId: uploadedFile.workspaceId,
+      catalogId: uploadedFile.catalogId,
+      name: file.name,
+      doc,
+      stats,
+      checked: uploadedFile.checked,
+      quantity: uploadedFile.quantity,
+      sizeBytes: file.size,
+    };
+  }
+
+  return {
+    id: bumpNextFileId(),
+    remoteId: '',
+    workspaceId: '',
+    catalogId: null,
+    name: file.name,
+    localBase64: base64,
+    doc,
+    stats,
+    checked: true,
+    quantity: 1,
+    sizeBytes: file.size,
+  };
+}
+
+async function deleteRemoteWorkspaceFile(remoteId: string): Promise<void> {
+  if (!authSessionToken || !remoteId) return;
+  try {
+    await apiPostJSON<{ success: boolean }>('/api/library-files-delete', {
+      fileId: remoteId,
+    }, getAuthHeaders());
+  } catch (error) {
+    console.error('Delete file failed:', error);
+  }
+}
+
+async function persistRemoteFileChecked(entry: LoadedFile): Promise<void> {
+  if (!authSessionToken || !entry.remoteId) return;
+  try {
+    await apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
+      fileId: entry.remoteId,
+      checked: entry.checked,
+    }, getAuthHeaders());
+  } catch (error) {
+    console.error('Toggle file checked failed:', error);
+  }
+}
+
 // ─── File upload / remove ─────────────────────────────────────────────
 
 export async function loadSingleFile(
   file: File,
   setActiveFileFn: (id: number) => void,
 ): Promise<void> {
-  progressBar.classList.remove('hidden');
-  progressFill.style.width = '0%';
-  progressLabel.textContent = tx('workspace.loading', { name: file.name });
+  beginWorkspaceLoadProgress(file.name);
 
   try {
     const buffer = await file.arrayBuffer();
     const base64 = arrayBufferToBase64(buffer);
     const result = await parseDXFInWorker(buffer, {
       onProgress(p) {
-        const pct = p.totalBytes > 0 ? (p.bytesProcessed / p.totalBytes) * 100 : 0;
-        progressFill.style.width = `${Math.min(pct, 95)}%`;
+        updateWorkspaceLoadProgress(p.bytesProcessed, p.totalBytes);
       },
     });
 
-    progressFill.style.width = '100%';
-    setTimeout(() => progressBar.classList.add('hidden'), 400);
+    completeWorkspaceLoadProgress();
 
     const stats = await workspaceUiBridge.computeStats(base64, result.document);
 
-    let entry: LoadedFile;
-    if (authSessionToken) {
-      const uploadedFile = await uploadWorkspaceFileAuthenticatedImpl(file, buffer, getPreferredUploadCatalogId);
-
-      entry = {
-        id: bumpNextFileId(),
-        remoteId: uploadedFile.id,
-        workspaceId: uploadedFile.workspaceId,
-        catalogId: uploadedFile.catalogId,
-        name: file.name,
-        doc: result.document,
-        stats,
-        checked: uploadedFile.checked,
-        quantity: uploadedFile.quantity,
-        sizeBytes: file.size,
-      };
-    } else {
-      entry = {
-        id: bumpNextFileId(),
-        remoteId: '',
-        workspaceId: '',
-        catalogId: null,
-        name: file.name,
-        localBase64: base64,
-        doc: result.document,
-        stats,
-        checked: true,
-        quantity: 1,
-        sizeBytes: file.size,
-      };
-    }
+    const entry = await createLoadedWorkspaceEntry(file, buffer, base64, result.document, stats);
     loadedFiles.push(entry);
     setActiveFileFn(entry.id);
     workspaceUiBridge.refreshCatalogSelectionViews();
     saveGuestDraft();
   } catch (err) {
-    progressBar.classList.add('hidden');
+    failWorkspaceLoadProgress();
     const msg = err instanceof Error ? err.message : String(err);
     alert(tx('workspace.loadError', { name: file.name, msg }));
   }
@@ -283,15 +330,7 @@ export async function removeFile(
   const idx = loadedFiles.findIndex(f => f.id === id);
   if (idx < 0) return;
   const target = loadedFiles[idx]!;
-  if (authSessionToken && target.remoteId) {
-    try {
-      await apiPostJSON<{ success: boolean }>('/api/library-files-delete', {
-        fileId: target.remoteId,
-      }, getAuthHeaders());
-    } catch (error) {
-      console.error('Delete file failed:', error);
-    }
-  }
+  await deleteRemoteWorkspaceFile(target.remoteId);
   loadedFiles.splice(idx, 1);
 
   if (loadedFiles.length === 0) {
@@ -310,16 +349,7 @@ export async function toggleFileChecked(id: number): Promise<void> {
   const entry = loadedFiles.find(f => f.id === id);
   if (!entry) return;
   entry.checked = !entry.checked;
-  if (authSessionToken && entry.remoteId) {
-    try {
-      await apiPatchJSON<{ success: boolean }>('/api/library-files-update', {
-        fileId: entry.remoteId,
-        checked: entry.checked,
-      }, getAuthHeaders());
-    } catch (error) {
-      console.error('Toggle file checked failed:', error);
-    }
-  }
+  await persistRemoteFileChecked(entry);
   workspaceUiBridge.refreshFileMetrics();
   saveGuestDraft();
 }
