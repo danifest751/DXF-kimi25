@@ -98,6 +98,14 @@ function clearAuthCookie(res: Response): void {
   });
 }
 
+function decodeHeaderFileName(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function ensureTelegramWebhookRegistrationOnStartup(): void {
   if (telegramWebhookRegistrationStarted) return;
   if (!telegramAutoRegisterWebhook) return;
@@ -713,7 +721,8 @@ app.put(
       if (!workspaceId) return;
 
       const fileId = typeof req.params.fileId === 'string' ? req.params.fileId : '';
-      const name = typeof req.header('x-file-name') === 'string' ? req.header('x-file-name')! : '';
+      const nameHeader = typeof req.header('x-file-name') === 'string' ? req.header('x-file-name')! : '';
+      const name = decodeHeaderFileName(nameHeader);
       const sizeBytes = Number(req.header('x-file-size') ?? NaN);
       const catalogIdHeader = req.header('x-catalog-id');
       const checkedHeader = req.header('x-file-checked') ?? 'true';

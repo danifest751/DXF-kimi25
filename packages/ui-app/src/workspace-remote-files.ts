@@ -28,6 +28,10 @@ interface DirectUploadInitResponse {
   readonly upload: DirectUploadTicket;
 }
 
+function encodeHeaderFileName(fileName: string): string {
+  return encodeURIComponent(fileName);
+}
+
 export async function uploadWorkspaceFileAuthenticated(
   file: File,
   buffer: ArrayBuffer,
@@ -49,7 +53,7 @@ export async function uploadWorkspaceFileAuthenticated(
       file.type || 'application/dxf',
       {
         ...getAuthHeaders(),
-        'x-file-name': init.upload.name,
+        'x-file-name': encodeHeaderFileName(init.upload.name),
         'x-file-size': String(init.upload.sizeBytes),
         'x-catalog-id': init.upload.catalogId ?? '',
         'x-file-checked': String(init.upload.checked),
