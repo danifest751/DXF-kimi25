@@ -14,6 +14,72 @@ import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
+export interface RenderSnapshot {
+  libCount: number;
+  libIds: string;
+  activeTab: string;
+  search: string;
+  sortBy: string;
+  sortDir: string;
+  previewLibraryId: number | null;
+  previewSheetId: string | null;
+  optimizerOpenForId: number | null;
+  materialModalOpenForId: number | null;
+  loading: boolean;
+  resultsId: string;
+  openMenuLibraryId: number | null;
+  authToken: string;
+  locale: string;
+  batchPhase: string;
+}
+
+export function snapshotState(
+  state: SetBuilderState,
+  authSessionToken: string,
+  lastEngineResult: NestingResult | null,
+  batchOptimizerState: BatchOptimizerState | null,
+): RenderSnapshot {
+  return {
+    libCount: state.library.length,
+    libIds: state.library.map((i) => `${i.id}:${i.sourceFileId}`).join(','),
+    activeTab: state.activeTab,
+    search: state.search,
+    sortBy: state.sortBy,
+    sortDir: state.sortDir,
+    previewLibraryId: state.previewLibraryId,
+    previewSheetId: state.previewSheetId,
+    optimizerOpenForId: state.optimizerOpenForId,
+    materialModalOpenForId: state.materialModalOpenForId,
+    loading: state.loading,
+    resultsId: lastEngineResult ? String(lastEngineResult.totalPlaced) + ':' + lastEngineResult.sheets.length : '',
+    openMenuLibraryId: state.openMenuLibraryId,
+    authToken: authSessionToken.slice(0, 8),
+    locale: getLocale(),
+    batchPhase: batchOptimizerState?.phase ?? '',
+  };
+}
+
+export function snapshotsEqual(a: RenderSnapshot, b: RenderSnapshot): boolean {
+  return (
+    a.libCount === b.libCount &&
+    a.libIds === b.libIds &&
+    a.activeTab === b.activeTab &&
+    a.search === b.search &&
+    a.sortBy === b.sortBy &&
+    a.sortDir === b.sortDir &&
+    a.previewLibraryId === b.previewLibraryId &&
+    a.previewSheetId === b.previewSheetId &&
+    a.optimizerOpenForId === b.optimizerOpenForId &&
+    a.materialModalOpenForId === b.materialModalOpenForId &&
+    a.loading === b.loading &&
+    a.resultsId === b.resultsId &&
+    a.openMenuLibraryId === b.openMenuLibraryId &&
+    a.authToken === b.authToken &&
+    a.locale === b.locale &&
+    a.batchPhase === b.batchPhase
+  );
+}
+
 export function getThumbCacheKey(
   sourceFileId: number,
   width: number,

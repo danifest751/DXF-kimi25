@@ -18,7 +18,8 @@ import type { SheetPreset } from './context.js';
 import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog } from './library.js';
 import { runNesting, exportSheetByIndex } from './nesting.js';
-import { renderMain, renderDxfThumbDataUrl } from './render.js';
+import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual } from './render.js';
+import type { RenderSnapshot } from './render.js';
 import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState } from './canvas-modal.js';
 import type { ModalCanvasState } from './canvas-modal.js';
 import { getGradesByGroup, getThicknessesByGrade, findMaterial, formatWeightKg, calcWeightKg } from './materials.js';
@@ -53,6 +54,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   const modalCanvasState: ModalCanvasState = createModalCanvasState();
   let optiState: OptimizerState | null = null;
   let batchState: BatchOptimizerState | null = null;
+  let lastRenderSnapshot: RenderSnapshot | null = null;
   let thumbQueueToken = 0;
   let thumbQueueTimer: ReturnType<typeof setTimeout> | null = null;
   let fileReadyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -185,6 +187,22 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     ctx.restore();
   }
 
+  function patchToast(root: HTMLDivElement, text: string): void {
+    const existing = root.querySelector<HTMLElement>('.sb-toast');
+    if (text) {
+      if (existing) {
+        existing.textContent = text;
+      } else {
+        const el = document.createElement('div');
+        el.className = 'sb-toast';
+        el.textContent = text;
+        root.querySelector('.sb-shell')?.appendChild(el);
+      }
+    } else {
+      existing?.remove();
+    }
+  }
+
   function stopThumbQueue(): void {
     thumbQueueToken++;
     if (thumbQueueTimer !== null) {
@@ -266,15 +284,22 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
       return;
     }
-    renderMain(
-      root, state, sheetPresets,
-      customSheetWidthMm, customSheetHeightMm,
-      toastText, lastEngineResult, dxfThumbCache,
-      authSessionToken, authWorkspaceId,
-      optiState,
-      batchState,
-    );
-    scheduleThumbQueue();
+    const snap = snapshotState(state, authSessionToken, lastEngineResult, batchState);
+    const needsFullRender = lastRenderSnapshot === null || !snapshotsEqual(lastRenderSnapshot, snap);
+    if (needsFullRender) {
+      renderMain(
+        root, state, sheetPresets,
+        customSheetWidthMm, customSheetHeightMm,
+        toastText, lastEngineResult, dxfThumbCache,
+        authSessionToken, authWorkspaceId,
+        optiState,
+        batchState,
+      );
+      lastRenderSnapshot = snap;
+      scheduleThumbQueue();
+    } else {
+      patchToast(root, toastText);
+    }
     persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
     applyModalPierceCanvas(root, modalCanvasState, state);
     drawOptimizerPreviewCanvas();
@@ -304,6 +329,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         setToastState(t('setBuilder.toast.filesSynced'));
       }
       pendingFilesUpdatedAdded = 0;
+      lastRenderSnapshot = null;
       render();
     });
   }
@@ -887,6 +913,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     fileReadyDebounceTimer = setTimeout(() => {
       fileReadyDebounceTimer = null;
       pendingReadyFileIds.clear();
+      lastRenderSnapshot = null;
       if (renderFrameId !== null) return;
       renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });
     }, 150);
