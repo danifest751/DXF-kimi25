@@ -77,6 +77,10 @@ function writeEntity(fe: FlattenedEntity): string | null {
   return null;
 }
 
+function yieldToBrowser(): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 export function serializeEntitiesToDxf(entities: FlattenedEntity[]): string {
   const header = [
     '0\nSECTION',
@@ -96,4 +100,31 @@ export function serializeEntitiesToDxf(entities: FlattenedEntity[]): string {
   const footer = ['0\nENDSEC', '0\nEOF'].join('\n');
 
   return [header, body, footer].join('\n');
+}
+
+export async function serializeEntitiesToDxfAsync(
+  entities: FlattenedEntity[],
+  chunkSize = 200,
+): Promise<string> {
+  const header = [
+    '0\nSECTION',
+    '2\nHEADER',
+    '9\n$ACADVER',
+    '1\nAC1015',
+    '0\nENDSEC',
+    '0\nSECTION',
+    '2\nENTITIES',
+  ].join('\n');
+
+  const bodyParts: string[] = [];
+  for (let i = 0; i < entities.length; i++) {
+    const serialized = writeEntity(entities[i]!);
+    if (serialized !== null) bodyParts.push(serialized);
+    if ((i + 1) % chunkSize === 0) {
+      await yieldToBrowser();
+    }
+  }
+
+  const footer = ['0\nENDSEC', '0\nEOF'].join('\n');
+  return [header, bodyParts.join('\n'), footer].join('\n');
 }
