@@ -1,6 +1,6 @@
 import { runDiagnostics } from './diagnostics.js';
 import { runOptimizationPipeline } from './rules.js';
-import { serializeEntitiesToDxfAsync } from './dxf-writer.js';
+import { serializeEntitiesToDxfBytesAsync } from './dxf-writer.js';
 import type { OptimizerInput, OptimizationResult, OptimizerState } from './types.js';
 
 export { createOptimizerState } from './types.js';
@@ -80,8 +80,8 @@ export async function optimizeFile(
 export async function downloadOptimizedDxf(result: OptimizationResult): Promise<void> {
   const baseName = result.fileName.replace(/\.dxf$/i, '');
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  const dxf = await serializeEntitiesToDxfAsync(result.optimizedEntities);
-  const blob = new Blob([dxf], { type: 'application/dxf' });
+  const dxfBytes = await serializeEntitiesToDxfBytesAsync(result.optimizedEntities);
+  const blob = new Blob([dxfBytes], { type: 'application/dxf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

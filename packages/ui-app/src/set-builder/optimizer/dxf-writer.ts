@@ -81,6 +81,10 @@ function yieldToBrowser(): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
+function encodeText(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
 export function serializeEntitiesToDxf(entities: FlattenedEntity[]): string {
   const header = [
     '0\nSECTION',
@@ -127,4 +131,47 @@ export async function serializeEntitiesToDxfAsync(
 
   const footer = ['0\nENDSEC', '0\nEOF'].join('\n');
   return [header, bodyParts.join('\n'), footer].join('\n');
+}
+
+export async function serializeEntitiesToDxfBytesAsync(
+  entities: FlattenedEntity[],
+  chunkSize = 100,
+): Promise<Uint8Array> {
+  const parts: Uint8Array[] = [encodeText([
+    '0\nSECTION',
+    '2\nHEADER',
+    '9\n$ACADVER',
+    '1\nAC1015',
+    '0\nENDSEC',
+    '0\nSECTION',
+    '2\nENTITIES',
+  ].join('\n'))];
+
+  let totalLength = parts[0]!.length;
+  for (let i = 0; i < entities.length; i++) {
+    const serialized = writeEntity(entities[i]!);
+    if (serialized !== null) {
+      const bytes = encodeText(`\n${serialized}`);
+      parts.push(bytes);
+      totalLength += bytes.length;
+    }
+    if ((i + 1) % chunkSize === 0) {
+      await yieldToBrowser();
+    }
+  }
+
+  const footer = encodeText('\n0\nENDSEC\n0\nEOF');
+  parts.push(footer);
+  totalLength += footer.length;
+
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  for (let i = 0; i < parts.length; i++) {
+    out.set(parts[i]!, offset);
+    offset += parts[i]!.length;
+    if ((i + 1) % chunkSize === 0) {
+      await yieldToBrowser();
+    }
+  }
+  return out;
 }

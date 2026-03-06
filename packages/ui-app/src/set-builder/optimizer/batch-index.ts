@@ -1,6 +1,6 @@
 import { runDiagnostics } from './diagnostics.js';
 import { runOptimizationPipeline } from './rules.js';
-import { serializeEntitiesToDxfAsync } from './dxf-writer.js';
+import { serializeEntitiesToDxfBytesAsync } from './dxf-writer.js';
 import type { BatchOptimizerState, BatchFileEntry } from './batch-types.js';
 import { createDefaultPlan } from './batch-types.js';
 import type { LibraryItem } from '../types.js';
@@ -230,14 +230,13 @@ export async function downloadBatchZip(bState: BatchOptimizerState): Promise<voi
   const doneEntries = bState.entries.filter((e) => e.status === 'done' && e.optimizedEntities);
   if (doneEntries.length === 0) return;
 
-  const enc = new TextEncoder();
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const files: { name: string; data: Uint8Array }[] = [];
   for (let i = 0; i < doneEntries.length; i++) {
     const entry = doneEntries[i]!;
     files.push({
       name: entry.name.replace(/\.dxf$/i, '') + '_optimized.dxf',
-      data: enc.encode(await serializeEntitiesToDxfAsync(entry.optimizedEntities!)),
+      data: await serializeEntitiesToDxfBytesAsync(entry.optimizedEntities!),
     });
     if ((i + 1) % 2 === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
