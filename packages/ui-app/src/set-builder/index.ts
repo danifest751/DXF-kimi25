@@ -19,6 +19,7 @@ import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterials
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog } from './library.js';
 import { runNesting, exportSheetByIndex } from './nesting.js';
 import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual } from './render.js';
+import { createThumbQueueController } from './thumb-queue.js';
 import type { RenderSnapshot } from './render.js';
 import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState } from './canvas-modal.js';
 import type { ModalCanvasState } from './canvas-modal.js';
@@ -55,8 +56,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let optiState: OptimizerState | null = null;
   let batchState: BatchOptimizerState | null = null;
   let lastRenderSnapshot: RenderSnapshot | null = null;
-  let thumbQueueToken = 0;
-  let thumbQueueTimer: ReturnType<typeof setTimeout> | null = null;
   let fileReadyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingReadyFileIds = new Set<number>();
 
@@ -203,76 +202,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
-  function stopThumbQueue(): void {
-    thumbQueueToken++;
-    if (thumbQueueTimer !== null) {
-      clearTimeout(thumbQueueTimer);
-      thumbQueueTimer = null;
-    }
-  }
-
-  function replaceThumbSlot(slot: HTMLElement, dataUrl: string, alt: string, imgClass: string): void {
-    const img = document.createElement('img');
-    img.className = imgClass;
-    img.src = dataUrl;
-    img.alt = alt;
-    img.loading = 'lazy';
-    slot.replaceChildren(img);
-    slot.dataset.thumbReady = 'true';
-  }
-
-  function scheduleThumbQueue(): void {
-    stopThumbQueue();
-    if (!state.open) return;
-    const token = thumbQueueToken;
-    thumbQueueTimer = setTimeout(() => {
-      thumbQueueTimer = null;
-      void processThumbQueue(token);
-    }, 0);
-  }
-
-  async function processThumbQueue(token: number): Promise<void> {
-    if (token !== thumbQueueToken || !state.open) return;
-    const slots = Array.from(root.querySelectorAll<HTMLElement>('[data-thumb-slot="true"][data-thumb-ready="false"]'));
-    if (slots.length === 0) return;
-
-    let processed = 0;
-    for (const slot of slots) {
-      if (token !== thumbQueueToken || !slot.isConnected) return;
-      const sourceId = Number(slot.dataset.sourceId ?? '0');
-      const width = Number(slot.dataset.thumbWidth ?? '0');
-      const height = Number(slot.dataset.thumbHeight ?? '0');
-      const angleDeg = Number(slot.dataset.thumbAngle ?? '0');
-      const padPx = Number(slot.dataset.thumbPad ?? '0');
-      const alt = slot.dataset.thumbAlt ?? '';
-      const imgClass = slot.dataset.thumbImgClass ?? 'sb-thumb-real';
-      if (!Number.isFinite(sourceId) || sourceId <= 0 || !Number.isFinite(width) || !Number.isFinite(height)) {
-        slot.dataset.thumbReady = 'true';
-        continue;
-      }
-
-      const sourceExists = loadedFiles.some((f) => f.id === sourceId);
-      if (!sourceExists) {
-        slot.dataset.thumbReady = 'error';
-        continue;
-      }
-      const dataUrl = renderDxfThumbDataUrl(sourceId, width, height, angleDeg, dxfThumbCache, padPx);
-      if (!dataUrl) {
-        slot.dataset.thumbReady = 'error';
-        continue;
-      }
-      replaceThumbSlot(slot, dataUrl, alt, imgClass);
-      processed++;
-      if (processed >= 1) break;
-    }
-
-    if (token !== thumbQueueToken || !state.open) return;
-    if (!root.querySelector('[data-thumb-slot="true"][data-thumb-ready="false"]')) return;
-    thumbQueueTimer = setTimeout(() => {
-      thumbQueueTimer = null;
-      void processThumbQueue(token);
-    }, 0);
-  }
+  const thumbQueue = createThumbQueueController({
+    root,
+    dxfThumbCache,
+    isOpen: () => state.open,
+  });
 
   function render(): void {
     if (renderFrameId !== null) {
@@ -287,7 +221,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     appRoot?.classList.toggle('set-builder-primary-active', state.open);
     trigger.classList.toggle('active', state.open);
     if (!state.open) {
-      stopThumbQueue();
+      thumbQueue.stop();
       persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
       return;
     }
@@ -303,7 +237,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         batchState,
       );
       lastRenderSnapshot = snap;
-      scheduleThumbQueue();
+      thumbQueue.schedule();
     } else {
       patchToast(root, toastText);
     }
