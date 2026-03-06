@@ -30,11 +30,13 @@ import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
 
 type VoidFn = () => void;
 
-const workspaceUiBridge = createWorkspaceUiBridgeController({
- computeStats: async (_, doc) => {
+export async function computeStatsForFile(_base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> {
   const s = computeCuttingStats(doc);
   return { totalPierces: s.totalPierces, totalCutLength: s.totalCutLength, cuttingEntityCount: s.cuttingEntityCount, chains: s.chains };
- },
+}
+
+const workspaceUiBridge = createWorkspaceUiBridgeController({
+  computeStats: computeStatsForFile,
 });
 
 export function initWorkspaceCallbacks(cbs: {

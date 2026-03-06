@@ -1,8 +1,8 @@
 import { fileInput, dropOverlay } from '../ui-shell.js';
 import { authSessionToken, authWorkspaceId, loadedFiles } from '../state.js';
-import { loadSingleFile } from '../workspace.js';
+import { loadSingleFile, initWorkspaceCallbacks, reloadWorkspaceLibraryFromServer, computeStatsForFile } from '../workspace.js';
 import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
-import { AUTH_SESSION_EVENT, logoutWorkspace, runTelegramLoginFlow } from '../auth.js';
+import { AUTH_SESSION_EVENT, logoutWorkspace, runTelegramLoginFlow, initAuthCallbacks } from '../auth.js';
 import type { NestingResult } from '../../../core-engine/src/nesting/index.js';
 import type { ItemDocData } from '../../../core-engine/src/export/index.js';
 import {
@@ -911,6 +911,22 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   );
   loadMaterials(state);
   void loadMaterialsFromServer(state).then(() => { if (state.open) scheduleRender(); });
+
+  // ─── wire up auth & workspace bridges ───────────────────────────────
+  const bridgeCbs = {
+    updateAuthUi: () => scheduleRender(),
+    renderCatalogFilter: () => scheduleRender(),
+    renderFileList: () => scheduleRender(),
+    recalcTotals: () => scheduleRender(),
+    updateNestItems: () => scheduleRender(),
+    syncWelcomeVisibility: () => scheduleRender(),
+    computeStats: computeStatsForFile,
+    setActiveFile: (id: number) => { state.activeLibraryId = id; scheduleRender(); },
+    reloadFromServer: async () => { await reloadWorkspaceLibraryFromServer(); scheduleRender(); },
+  };
+  initAuthCallbacks(bridgeCbs);
+  initWorkspaceCallbacks(bridgeCbs);
+
   trigger.addEventListener('click', () => toggleOpen());
 
   // ─── file input & drag-drop ──────────────────────────────────────────
