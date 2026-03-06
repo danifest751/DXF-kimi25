@@ -32,6 +32,7 @@ export interface RenderSnapshot {
   openMenuLibraryId: number | null;
   authToken: string;
   locale: string;
+  optiPhase: string;
   batchPhase: string;
 }
 
@@ -39,6 +40,7 @@ export function snapshotState(
   state: SetBuilderState,
   authSessionToken: string,
   lastEngineResult: NestingResult | null,
+  optimizerState: OptimizerState | null,
   batchOptimizerState: BatchOptimizerState | null,
 ): RenderSnapshot {
   return {
@@ -59,6 +61,7 @@ export function snapshotState(
     openMenuLibraryId: state.openMenuLibraryId,
     authToken: authSessionToken.slice(0, 8),
     locale: getLocale(),
+    optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
   };
 }

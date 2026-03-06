@@ -226,7 +226,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
       return;
     }
-    const snap = snapshotState(state, authSessionToken, lastEngineResult, batchState);
+    const snap = snapshotState(state, authSessionToken, lastEngineResult, optiState, batchState);
     const needsFullRender = lastRenderSnapshot === null || !snapshotsEqual(lastRenderSnapshot, snap);
     if (needsFullRender) {
       renderMain(
