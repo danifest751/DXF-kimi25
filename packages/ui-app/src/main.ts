@@ -72,10 +72,8 @@ import * as NP from './nesting-panel.js';
 import { initSetBuilder } from './set-builder/index.js';
 import { initMainNestingShell } from './main-nesting-shell.js';
 import { initMainToolbarShell } from './main-toolbar-shell.js';
+import { createMainAppShellController } from './main-app-shell.js';
 import { initMainShellUi } from './main-shell-ui.js';
-import { createMainUiHelpersController } from './main-ui-helpers.js';
-import { createMainRuntimeUiController } from './main-runtime-ui.js';
-import { createMainViewerShellController } from './main-viewer-shell.js';
 import { t } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
@@ -89,7 +87,8 @@ initMainShellUi({
   onResizeViewport: () => viewportScene.handleResize(),
 });
 
-const mainRuntimeUi = createMainRuntimeUiController({
+const statusCoords = document.getElementById('status-coords')!;
+const mainAppShell = createMainAppShellController({
   btnNesting,
   nestingPanel,
   getCuttingComputeMode: () => cuttingComputeMode,
@@ -97,17 +96,6 @@ const mainRuntimeUi = createMainRuntimeUiController({
   getNestingMode: () => nestingMode,
   setCuttingComputeMode,
   computeCuttingStats,
-});
-
-const updateModeBadge = (): void => mainRuntimeUi.updateModeBadge();
-const updateNestingButtonState = (): void => mainRuntimeUi.updateNestingButtonState();
-const computeStatsFromBuffer = (base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> => mainRuntimeUi.computeStatsFromBuffer(base64, doc);
-
-updateModeBadge();
-
-// ─── Auth UI ──────────────────────────────────────────────────────────
-
-const mainUiHelpers = createMainUiHelpersController({
   welcome,
   renderer,
   statusZoom,
@@ -118,23 +106,11 @@ const mainUiHelpers = createMainUiHelpersController({
   setActiveFileId,
   updateUploadTargetHint,
   applyAuthUiState,
-});
-
-const updateAuthUi = (): void => mainUiHelpers.updateAuthUi();
-const setActiveFile = (id: number): void => mainUiHelpers.setActiveFile(id);
-const syncWelcomeVisibility = (): void => mainUiHelpers.syncWelcomeVisibility();
-const updateStatusBar = (): void => mainUiHelpers.updateStatusBar();
-
-const statusCoords = document.getElementById('status-coords')!;
-
-const mainViewerShell = createMainViewerShellController({
   canvas,
   container,
   dropOverlay,
   fileInput,
-  files: loadedFiles,
   getHoveredSheet: () => nestHoveredSheet,
-  getNestingMode: () => nestingMode,
   getShowGrid: () => showGrid,
   getZoomPanStartX: () => NP.zoomPanStartX,
   getZoomPanStartY: () => NP.zoomPanStartY,
@@ -142,11 +118,8 @@ const mainViewerShell = createMainViewerShellController({
   inspectorContent,
   loadSingleFile,
   mobileBackdrop,
-  nestingPanel,
   onExitNesting: exitNestingMode,
   renderZoomSheet,
-  renderer,
-  setActiveFile,
   setShowGrid,
   setZoomPanX,
   setZoomPanY,
@@ -156,12 +129,19 @@ const mainViewerShell = createMainViewerShellController({
   sidebarFiles,
   sidebarInspector,
   statusCoords,
-  syncWelcomeVisibility,
-  updateNestingButtonState,
-  updateStatusBar,
 });
 
-const { mobileUi, viewerActions, viewportScene } = mainViewerShell;
+const updateModeBadge = (): void => mainAppShell.updateModeBadge();
+const updateAuthUi = (): void => mainAppShell.updateAuthUi();
+const setActiveFile = (id: number): void => mainAppShell.setActiveFile(id);
+const syncWelcomeVisibility = (): void => mainAppShell.syncWelcomeVisibility();
+const updateStatusBar = (): void => mainAppShell.updateStatusBar();
+const updateNestingButtonState = (): void => mainAppShell.updateNestingButtonState();
+const computeStatsFromBuffer = (base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> => mainAppShell.computeStatsFromBuffer(base64, doc);
+
+updateModeBadge();
+
+const { mobileUi, viewerActions, viewportScene } = mainAppShell;
 
 initMainToolbarShell({
   authSessionToken,

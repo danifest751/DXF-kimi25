@@ -3,7 +3,7 @@
  * Telegram-аутентификация: вход, выход, восстановление сессии, guest draft.
  */
 
-import { apiGetJSON, apiPostJSON, apiUploadFormDataJSON } from './api.js';
+import { apiPostJSON, apiUploadFormDataJSON } from './api.js';
 import {
   clearGuestDraftSnapshot,
   guestDraftBinaryStorageAvailable,
@@ -20,6 +20,7 @@ import {
   resetWorkspaceToGuestState,
   restoreGuestDraftFilesIntoWorkspace,
 } from './auth-guest-workspace.js';
+import { createAuthSessionFlowController } from './auth-session-flow.js';
 import { t } from './i18n/index.js';
 import type { LoadedFile } from './types.js';
 import {
@@ -198,39 +199,17 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
   await clearGuestDraft();
 }
 
-async function adoptLegacyToken(savedToken: string): Promise<AuthMeResponse> {
-  await apiPostJSON<{ success: boolean; workspaceId: string; expiresAt: string }>(
-    '/api/auth-adopt-token',
-    {},
-    { Authorization: `Bearer ${savedToken}` },
-  );
-  return apiGetJSON<AuthMeResponse>('/api/auth-me');
-}
-
-function applyAuthenticatedSession(workspaceId: string): void {
-  setAuthSession(COOKIE_SESSION_TOKEN, workspaceId);
-  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  authUiBridge.updateAuthUi();
-  emitAuthSessionChanged();
-}
-
-function clearStoredAuthSession(): void {
-  clearAuthSession();
-  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  authUiBridge.updateAuthUi();
-  emitAuthSessionChanged();
-}
-
-async function finalizeAuthenticatedSession(workspaceId: string): Promise<void> {
-  applyAuthenticatedSession(workspaceId);
-  await migrateGuestDraftToWorkspace();
-  await authUiBridge.reloadFromServer();
-}
-
-async function restoreGuestSessionFallback(): Promise<void> {
-  clearStoredAuthSession();
-  await restoreGuestDraft();
-}
+const authSessionFlow = createAuthSessionFlowController({
+  authTokenStorageKey: AUTH_TOKEN_STORAGE_KEY,
+  cookieSessionToken: COOKIE_SESSION_TOKEN,
+  clearAuthSessionState: () => clearAuthSession(),
+  setAuthSessionState: (token, workspaceId) => setAuthSession(token, workspaceId),
+  emitAuthSessionChanged,
+  updateAuthUi: () => authUiBridge.updateAuthUi(),
+  migrateGuestDraftToWorkspace,
+  reloadWorkspaceFromServer: () => authUiBridge.reloadFromServer(),
+  restoreGuestDraft,
+});
 
 // ─── Session ─────────────────────────────────────────────────────────
 
@@ -240,7 +219,7 @@ export async function logoutWorkspace(): Promise<void> {
   } catch (error) {
     console.warn('Server logout failed:', error instanceof Error ? error.message : String(error));
   }
-  clearStoredAuthSession();
+  authSessionFlow.clearStoredAuthSession();
 
   resetWorkspaceToGuestState({
     workspaceCatalogs,
@@ -256,16 +235,7 @@ export async function logoutWorkspace(): Promise<void> {
 }
 
 export async function restoreAuthSession(): Promise<void> {
-  const savedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '';
-  try {
-    const me = savedToken
-      ? await adoptLegacyToken(savedToken)
-      : await apiGetJSON<AuthMeResponse>('/api/auth-me');
-    if (!me.authenticated) throw new Error('Session rejected');
-    await finalizeAuthenticatedSession(me.workspaceId);
-  } catch {
-    await restoreGuestSessionFallback();
-  }
+  await authSessionFlow.restoreAuthSession();
 }
 
 export async function runTelegramLoginFlow(): Promise<void> {
@@ -273,7 +243,7 @@ export async function runTelegramLoginFlow(): Promise<void> {
   if (!code) return;
   try {
     const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
-    await finalizeAuthenticatedSession(response.workspaceId);
+    await authSessionFlow.finalizeAuthenticatedSession(response.workspaceId);
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     showAuthHint(t('auth.codeInvalid'));

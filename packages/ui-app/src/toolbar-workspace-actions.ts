@@ -1,5 +1,5 @@
-import { apiPostBlob, apiPostJSON, downloadBlob } from './api.js';
 import type { LoadedFile, WorkspaceCatalog } from './types.js';
+import { createToolbarWorkspaceCommands } from './toolbar-workspace-commands.js';
 
 export function initToolbarWorkspaceActions(input: {
   btnAuthLogin: HTMLButtonElement;
@@ -58,6 +58,21 @@ export function initToolbarWorkspaceActions(input: {
     getCatalogCreateErrorMessage,
   } = input;
 
+  const toolbarWorkspaceCommands = createToolbarWorkspaceCommands({
+    getVisibleFiles,
+    isAuthenticated,
+    getAuthHeaders,
+    getCatalogIdsForBulkAction,
+    onBulkCheckApplied,
+    showAuthHint,
+    promptCatalogName,
+    createCatalog,
+    onCatalogCreated,
+    getCurrentNestResult,
+    getCatalogAuthRequiredMessage,
+    getCatalogCreateErrorMessage,
+  });
+
   btnAuthLogin.addEventListener('click', () => {
     void runTelegramLoginFlow();
   });
@@ -66,43 +81,16 @@ export function initToolbarWorkspaceActions(input: {
   });
 
   btnSelectAllFiles.addEventListener('click', () => {
-    const visible = getVisibleFiles();
-    const hasUnchecked = visible.some((file) => !file.checked);
-    for (const file of visible) file.checked = hasUnchecked;
-    if (isAuthenticated()) {
-      const { catalogIds, includeUncategorized } = getCatalogIdsForBulkAction();
-      void apiPostJSON<{ success: boolean }>('/api/library-files-check-all', {
-        checked: hasUnchecked,
-        catalogIds: catalogIds && (catalogIds.length > 0 || includeUncategorized) ? catalogIds : undefined,
-      }, getAuthHeaders()).catch((error) => console.error('Check all failed:', error));
-    }
-    onBulkCheckApplied();
+    toolbarWorkspaceCommands.applyBulkCheckToggle();
   });
 
   btnAddCatalog.addEventListener('click', () => {
-    if (!isAuthenticated()) {
-      showAuthHint(getCatalogAuthRequiredMessage());
-      return;
-    }
-    const name = promptCatalogName();
-    if (!name) return;
-    void createCatalog(name)
-      .then((catalog) => onCatalogCreated(catalog))
-      .catch((error) => alert(getCatalogCreateErrorMessage(error)));
+    toolbarWorkspaceCommands.handleAddCatalog();
   });
 
   btnExportDXF.addEventListener('click', exportFullNestingDXF);
   btnExportCSV.addEventListener('click', () => {
-    const nestingResult = getCurrentNestResult();
-    if (!nestingResult) return;
-    void (async () => {
-      try {
-        const blob = await apiPostBlob('/api/export/csv', { nestingResult, fileName: 'nesting' }, getAuthHeaders());
-        downloadBlob(blob, 'nesting.csv');
-      } catch (error) {
-        alert(`Ошибка экспорта CSV: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })();
+    void toolbarWorkspaceCommands.exportCsv();
   });
 
   btnExportAllSheets.addEventListener('click', exportAllSheetsDXF);
