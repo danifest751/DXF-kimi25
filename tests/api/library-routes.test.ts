@@ -15,6 +15,7 @@ const deleteWorkspaceFileMock = vi.fn();
 const setWorkspaceFilesCheckedMock = vi.fn();
 const downloadWorkspaceFileMock = vi.fn();
 const uploadWorkspaceFileBufferMock = vi.fn();
+const uploadWorkspaceFileBufferWithIdMock = vi.fn();
 const createSignedWorkspaceFileUploadMock = vi.fn();
 const finalizeSignedWorkspaceFileUploadMock = vi.fn();
 
@@ -79,6 +80,7 @@ vi.mock('../../packages/api-service/src/workspace-library.js', () => ({
   updateWorkspaceFile: updateWorkspaceFileMock,
   uploadWorkspaceFile: vi.fn(),
   uploadWorkspaceFileBuffer: uploadWorkspaceFileBufferMock,
+  uploadWorkspaceFileBufferWithId: uploadWorkspaceFileBufferWithIdMock,
 }));
 
 let server: Server;
@@ -274,6 +276,47 @@ describe('workspace library routes', () => {
       quantity: 1,
     });
     expect(response.json).toMatchObject({ success: true, upload: { fileId: 'file-direct-1', token: 'abc' } });
+  });
+
+  it('uploads file through binary direct upload route', async () => {
+    uploadWorkspaceFileBufferWithIdMock.mockResolvedValue({
+      id: 'file-direct-1',
+      workspaceId: 'ws-1',
+      catalogId: null,
+      name: 'part.dxf',
+      storagePath: 'workspace/ws-1/file-direct-1.dxf',
+      sizeBytes: 3,
+      checked: true,
+      quantity: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const response = await fetch(`${baseUrl}/api/library-files-direct-upload/file-direct-1`, {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer token-1',
+        'content-type': 'application/dxf',
+        'x-file-name': 'part.dxf',
+        'x-file-size': '3',
+        'x-catalog-id': '',
+        'x-file-checked': 'true',
+        'x-file-quantity': '1',
+      },
+      body: 'ABC',
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(uploadWorkspaceFileBufferWithIdMock).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'ws-1',
+      fileId: 'file-direct-1',
+      name: 'part.dxf',
+      catalogId: null,
+      checked: true,
+      quantity: 1,
+    }));
+    expect(json).toMatchObject({ success: true, file: { id: 'file-direct-1', name: 'part.dxf' } });
   });
 
   it('finalizes a signed direct upload', async () => {

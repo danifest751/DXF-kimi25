@@ -406,6 +406,53 @@ async function storeWorkspaceFile(input: {
   });
 }
 
+export async function uploadWorkspaceFileBufferWithId(input: {
+  workspaceId: string;
+  fileId: string;
+  name: string;
+  bodyBuffer: Buffer;
+  catalogId?: string | null;
+  checked?: boolean;
+  quantity?: number;
+}): Promise<WorkspaceFileMeta> {
+  if (!supabaseEnabled) throw new Error('Workspace library storage is not configured');
+  if (!input.fileId || input.fileId.length > 200) throw new Error('Invalid fileId');
+
+  const normalized = normalizeWorkspaceFileInput({
+    name: input.name,
+    catalogId: input.catalogId,
+    checked: input.checked,
+    quantity: input.quantity,
+    sizeBytes: input.bodyBuffer.byteLength,
+  });
+  await ensureWorkspaceFileCapacity(input.workspaceId);
+
+  if (input.bodyBuffer.byteLength === 0) throw new Error('File content is empty');
+
+  const storagePath = buildWorkspaceStoragePath(input.workspaceId, input.fileId);
+  const uploadResp = await supabaseStorageRequest(`/object/${encodeURIComponent(DXF_FILES_BUCKET)}/${encodeStoragePath(storagePath)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/dxf',
+      'x-upsert': 'false',
+    },
+    body: new Uint8Array(input.bodyBuffer),
+  });
+  if (!uploadResp?.ok) throw new Error('Failed to upload DXF to storage');
+
+  return insertWorkspaceFileRow({
+    fileId: input.fileId,
+    workspaceId: input.workspaceId,
+    catalogId: normalized.catalogId,
+    name: normalized.name,
+    storagePath,
+    sizeBytes: normalized.sizeBytes ?? input.bodyBuffer.byteLength,
+    checked: normalized.checked,
+    quantity: normalized.quantity,
+    cleanupStorageOnFailure: true,
+  });
+}
+
 export async function createSignedWorkspaceFileUpload(input: {
   workspaceId: string;
   name: string;

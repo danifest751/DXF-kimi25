@@ -1,7 +1,7 @@
 import {
   apiGetJSON,
   apiPostJSON,
-  apiUploadArrayBufferToSignedUrl,
+  apiUploadArrayBuffer,
   apiUploadFormDataJSON,
 } from './api.js';
 import { getAuthHeaders } from './auth.js';
@@ -43,16 +43,20 @@ export async function uploadWorkspaceFileAuthenticated(
 
   try {
     const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
-    await apiUploadArrayBufferToSignedUrl(init.upload.signedUrl, buffer, file.type || 'application/dxf');
-    const finalize = await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-direct-upload-complete', {
-      fileId: init.upload.fileId,
-      name: init.upload.name,
-      sizeBytes: init.upload.sizeBytes,
-      catalogId: init.upload.catalogId,
-      checked: init.upload.checked,
-      quantity: init.upload.quantity,
-    }, getAuthHeaders());
-    return finalize.file;
+    const directUpload = await apiUploadArrayBuffer<{ success: boolean; file: WorkspaceFileMeta }>(
+      `/api/library-files-direct-upload/${encodeURIComponent(init.upload.fileId)}`,
+      buffer,
+      file.type || 'application/dxf',
+      {
+        ...getAuthHeaders(),
+        'x-file-name': init.upload.name,
+        'x-file-size': String(init.upload.sizeBytes),
+        'x-catalog-id': init.upload.catalogId ?? '',
+        'x-file-checked': String(init.upload.checked),
+        'x-file-quantity': String(init.upload.quantity),
+      },
+    );
+    return directUpload.file;
   } catch (error) {
     console.warn('Direct upload failed, falling back to multipart upload:', error);
     const formData = new FormData();

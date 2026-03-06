@@ -34,6 +34,7 @@ import {
   upsertFileMaterial,
   uploadWorkspaceFile,
   uploadWorkspaceFileBuffer,
+  uploadWorkspaceFileBufferWithId,
 } from './workspace-library.js';
 
 const app = express();
@@ -697,6 +698,85 @@ app.post(['/api/library/files/direct-upload-init', '/api/library-files-direct-up
     res.status(500).json({ error: 'Direct upload init failed', details: message });
   }
 });
+
+app.put(
+  ['/api/library/files/direct-upload/:fileId', '/api/library-files-direct-upload/:fileId'],
+  express.raw({ type: '*/*', limit: '200mb' }),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!isWorkspaceLibraryEnabled()) {
+        res.status(503).json({ error: 'Workspace library storage is not configured' });
+        return;
+      }
+
+      const workspaceId = await requireWorkspaceId(req, res);
+      if (!workspaceId) return;
+
+      const fileId = typeof req.params.fileId === 'string' ? req.params.fileId : '';
+      const name = typeof req.header('x-file-name') === 'string' ? req.header('x-file-name')! : '';
+      const sizeBytes = Number(req.header('x-file-size') ?? NaN);
+      const catalogIdHeader = req.header('x-catalog-id');
+      const checkedHeader = req.header('x-file-checked') ?? 'true';
+      const quantityHeader = req.header('x-file-quantity') ?? '1';
+      const catalogId = catalogIdHeader && catalogIdHeader.trim().length > 0 ? catalogIdHeader : null;
+      const checked = parseBooleanStringInput(checkedHeader.trim().toLowerCase());
+      const quantity = parseQuantityStringInput(quantityHeader.trim());
+      const body = req.body;
+      const bodyBuffer = Buffer.isBuffer(body)
+        ? body
+        : body instanceof Uint8Array
+          ? Buffer.from(body)
+          : Buffer.alloc(0);
+
+      if (!fileId) {
+        res.status(400).json({ error: 'fileId is required' });
+        return;
+      }
+      if (!name.trim()) {
+        res.status(400).json({ error: 'x-file-name header is required' });
+        return;
+      }
+      if (!Number.isFinite(sizeBytes) || sizeBytes < 1) {
+        res.status(400).json({ error: 'x-file-size header must be a positive number' });
+        return;
+      }
+      if (!isValidCatalogIdInput(catalogId)) {
+        res.status(400).json({ error: 'x-catalog-id must be a UUID or empty' });
+        return;
+      }
+      if (checked === null) {
+        res.status(400).json({ error: 'x-file-checked must be true or false' });
+        return;
+      }
+      if (quantity === null) {
+        res.status(400).json({ error: `x-file-quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+        return;
+      }
+      if (bodyBuffer.byteLength === 0) {
+        res.status(400).json({ error: 'Missing uploaded file body' });
+        return;
+      }
+      if (bodyBuffer.byteLength !== sizeBytes) {
+        res.status(400).json({ error: 'Uploaded file size does not match x-file-size header' });
+        return;
+      }
+
+      const file = await uploadWorkspaceFileBufferWithId({
+        workspaceId,
+        fileId,
+        name,
+        bodyBuffer,
+        catalogId,
+        checked,
+        quantity,
+      });
+      res.json({ success: true, file });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: 'Binary direct upload failed', details: message });
+    }
+  },
+);
 
 app.post(['/api/library/files/direct-upload-complete', '/api/library-files-direct-upload-complete'], async (req: Request, res: Response): Promise<void> => {
   try {
