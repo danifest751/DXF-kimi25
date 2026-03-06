@@ -800,7 +800,7 @@ export function renderMain(
                   : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
                     <div class="sb-sheet-card">
                       <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, false)}
+                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true)}
                       <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
                       <div class="sb-sheet-actions">
                         <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
