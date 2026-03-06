@@ -17,6 +17,8 @@ import { getVisibleLibraryItems } from './library.js';
 export interface RenderSnapshot {
   libCount: number;
   libIds: string;
+  setSize: number;
+  setIds: string;
   activeTab: string;
   search: string;
   sortBy: string;
@@ -42,6 +44,8 @@ export function snapshotState(
   return {
     libCount: state.library.length,
     libIds: state.library.map((i) => `${i.id}:${i.sourceFileId}`).join(','),
+    setSize: state.set.size,
+    setIds: [...state.set.entries()].map(([id, s]) => `${id}:${s.qty}`).join(','),
     activeTab: state.activeTab,
     search: state.search,
     sortBy: state.sortBy,

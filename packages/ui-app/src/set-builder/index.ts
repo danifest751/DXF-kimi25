@@ -434,8 +434,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       );
       return;
     }
-    if (action === 'add-set') { upsertSetItem(state, id, 1); showToast(t('setBuilder.toast.addedToSet')); return; }
-    if (action === 'remove-set') { removeFromSet(state, id); showToast(t('setBuilder.toast.removedFromSet')); return; }
+    if (action === 'add-set') { upsertSetItem(state, id, 1); showToast(t('setBuilder.toast.addedToSet')); scheduleRender(); return; }
+    if (action === 'remove-set') { removeFromSet(state, id); showToast(t('setBuilder.toast.removedFromSet')); scheduleRender(); return; }
     if (action === 'qty-plus') { upsertSetItem(state, id, 1); scheduleRender(); return; }
     if (action === 'qty-minus') {
       const s = getSetItem(state, id);
@@ -449,6 +449,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'bulk-add') {
       for (const sid of state.selectedLibraryIds) upsertSetItem(state, sid, 1);
       showToast(t('setBuilder.toast.selectedAdded'));
+      scheduleRender();
       return;
     }
     if (action === 'bulk-remove') {
