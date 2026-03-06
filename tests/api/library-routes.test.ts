@@ -222,6 +222,7 @@ describe('workspace library routes', () => {
 
     const formData = new FormData();
     formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
+    formData.append('fileName', encodeURIComponent('part.dxf'));
     formData.append('catalogId', catalogId);
     formData.append('checked', 'true');
     formData.append('quantity', '2');
@@ -294,6 +295,7 @@ describe('workspace library routes', () => {
 
     const formData = new FormData();
     formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
+    formData.append('fileName', encodeURIComponent('part.dxf'));
     formData.append('fileId', 'file-direct-1');
     formData.append('catalogId', '');
     formData.append('checked', 'true');

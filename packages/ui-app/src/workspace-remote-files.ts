@@ -43,6 +43,7 @@ export async function uploadWorkspaceFileAuthenticated(
     const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
     const directUploadFormData = new FormData();
     directUploadFormData.append('file', file, init.upload.name);
+    directUploadFormData.append('fileName', encodeURIComponent(init.upload.name));
     directUploadFormData.append('fileId', init.upload.fileId);
     directUploadFormData.append('catalogId', init.upload.catalogId ?? '');
     directUploadFormData.append('checked', String(init.upload.checked));
@@ -57,6 +58,7 @@ export async function uploadWorkspaceFileAuthenticated(
     console.warn('Direct upload failed, falling back to multipart upload:', error);
     const formData = new FormData();
     formData.append('file', file, file.name);
+    formData.append('fileName', encodeURIComponent(file.name));
     formData.append('catalogId', getPreferredUploadCatalogId() ?? '');
     formData.append('checked', 'true');
     formData.append('quantity', '1');

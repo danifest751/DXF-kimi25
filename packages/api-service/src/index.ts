@@ -106,6 +106,29 @@ function decodeHeaderFileName(value: string): string {
   }
 }
 
+function decodeMultipartFileName(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeUploadedFileName(formValue: unknown, originalName: string | undefined, fallbackName: string): string {
+  if (typeof formValue === 'string' && formValue.trim().length > 0) {
+    return decodeMultipartFileName(formValue).trim();
+  }
+  if (typeof originalName === 'string' && originalName.trim().length > 0) {
+    try {
+      const decoded = Buffer.from(originalName, 'latin1').toString('utf8').trim();
+      if (decoded.length > 0) return decoded;
+    } catch {
+    }
+    return originalName.trim();
+  }
+  return fallbackName;
+}
+
 function ensureTelegramWebhookRegistrationOnStartup(): void {
   if (telegramWebhookRegistrationStarted) return;
   if (!telegramAutoRegisterWebhook) return;
@@ -626,9 +649,10 @@ app.post(['/api/library/files/upload', '/api/library-files-upload'], upload.sing
     const catalogIdRaw = typeof req.body?.catalogId === 'string' ? req.body.catalogId.trim() : '';
     const checkedRaw = typeof req.body?.checked === 'string' ? req.body.checked.trim().toLowerCase() : '';
     const quantityRaw = typeof req.body?.quantity === 'string' ? req.body.quantity.trim() : '';
+    const normalizedFileName = normalizeUploadedFileName(req.body?.fileName, uploaded.originalname, uploaded.fieldname || 'upload.dxf');
     const checked = parseBooleanStringInput(checkedRaw);
     const quantity = parseQuantityStringInput(quantityRaw);
-    if (!uploaded.originalname?.trim()) {
+    if (!normalizedFileName) {
       res.status(400).json({ error: 'Uploaded file name is required' });
       return;
     }
@@ -646,7 +670,7 @@ app.post(['/api/library/files/upload', '/api/library-files-upload'], upload.sing
     }
     const file = await uploadWorkspaceFileBuffer({
       workspaceId,
-      name: uploaded.originalname || uploaded.fieldname || 'upload.dxf',
+      name: normalizedFileName,
       bodyBuffer: uploaded.buffer,
       catalogId: catalogIdRaw.length > 0 ? catalogIdRaw : null,
       checked,
@@ -727,6 +751,7 @@ app.post(['/api/library/files/direct-upload', '/api/library-files-direct-upload'
     const catalogIdRaw = typeof req.body?.catalogId === 'string' ? req.body.catalogId.trim() : '';
     const checkedRaw = typeof req.body?.checked === 'string' ? req.body.checked.trim().toLowerCase() : '';
     const quantityRaw = typeof req.body?.quantity === 'string' ? req.body.quantity.trim() : '';
+    const normalizedFileName = normalizeUploadedFileName(req.body?.fileName, uploaded.originalname, uploaded.fieldname || 'upload.dxf');
     const checked = parseBooleanStringInput(checkedRaw);
     const quantity = parseQuantityStringInput(quantityRaw);
 
@@ -734,7 +759,7 @@ app.post(['/api/library/files/direct-upload', '/api/library-files-direct-upload'
       res.status(400).json({ error: 'fileId is required' });
       return;
     }
-    if (!uploaded.originalname?.trim()) {
+    if (!normalizedFileName) {
       res.status(400).json({ error: 'Uploaded file name is required' });
       return;
     }
@@ -754,7 +779,7 @@ app.post(['/api/library/files/direct-upload', '/api/library-files-direct-upload'
     const file = await uploadWorkspaceFileBufferWithId({
       workspaceId,
       fileId,
-      name: uploaded.originalname || uploaded.fieldname || 'upload.dxf',
+      name: normalizedFileName,
       bodyBuffer: uploaded.buffer,
       catalogId: catalogIdRaw.length > 0 ? catalogIdRaw : null,
       checked,
