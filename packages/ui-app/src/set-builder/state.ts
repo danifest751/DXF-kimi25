@@ -35,6 +35,7 @@ export function createInitialState(): SetBuilderState {
     lastUsedMaterialId: null,
     materialModalOpenForId: null,
     optimizerOpenForId: null,
+    isCacheLoaded: false,
   };
 }
 

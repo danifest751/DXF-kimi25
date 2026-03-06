@@ -167,6 +167,7 @@ export const ru = {
 
   // Set Builder
   'setBuilder.upload': 'Загрузить',
+  'setBuilder.cacheVerifying': 'Синхронизация с сервером…',
   'setBuilder.searchPlaceholder': 'Поиск по имени файла',
   'setBuilder.nestingStrategy': 'Стратегия раскладки',
   'setBuilder.strategyPrecise': 'Прямоугольная (bbox)',

@@ -27,6 +27,7 @@ import type { ModalCanvasState } from './canvas-modal.js';
 import { getGradesByGroup, getThicknessesByGrade, findMaterial, formatWeightKg, calcWeightKg } from './materials.js';
 import { esc } from './utils.js';
 import { analyzeFile, optimizeFile, downloadOptimizedDxf, downloadReportJson, createOptimizerState } from './optimizer/index.js';
+import { loadLibraryCache, saveLibraryCache, clearLibraryCache } from './library-cache.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { renderEntity } from '../../../core-engine/src/render/entity-renderer.js';
 import type { EntityRenderOptions } from '../../../core-engine/src/render/entity-renderer.js';
@@ -59,6 +60,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let lastRenderSnapshot: RenderSnapshot | null = null;
   let fileReadyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingReadyFileIds = new Set<number>();
+  let prevAuthToken = authSessionToken;
 
   function setToastState(msg: string): void {
     toastText = msg;
@@ -870,6 +872,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       fileReadyDebounceTimer = null;
       pendingReadyFileIds.clear();
       syncLoadedFilesIntoLibrary(state);
+      state.isCacheLoaded = false;
+      if (authSessionToken) saveLibraryCache(state, authSessionToken);
       lastRenderSnapshot = null;
       if (renderFrameId !== null) return;
       renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });
@@ -878,10 +882,16 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   window.addEventListener(AUTH_SESSION_EVENT, () => {
     if (authSessionToken) {
+      prevAuthToken = authSessionToken;
+      // Load cache immediately for instant display, then verify with server
+      const cached = loadLibraryCache(state, authSessionToken);
+      if (cached > 0 && state.open) scheduleRender();
       void migrateGuestMaterialsToServer().then(() =>
         loadMaterialsFromServer(state),
       ).then(() => scheduleRender());
     } else {
+      clearLibraryCache(prevAuthToken);
+      prevAuthToken = '';
       loadMaterials(state);
       if (state.open) scheduleRender();
     }
@@ -920,6 +930,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     (v) => { customSheetWidthMm = v; },
     (v) => { customSheetHeightMm = v; },
   );
+  // Load library cache immediately if already authenticated
+  if (authSessionToken) {
+    loadLibraryCache(state, authSessionToken);
+  }
   loadMaterials(state);
   void loadMaterialsFromServer(state).then(() => { if (state.open) scheduleRender(); });
 
@@ -933,7 +947,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     syncWelcomeVisibility: () => scheduleRender(),
     computeStats: computeStatsForFile,
     setActiveFile: (id: number) => { state.activeLibraryId = id; scheduleRender(); },
-    reloadFromServer: async () => { await reloadWorkspaceLibraryFromServer(); scheduleRender(); },
+    reloadFromServer: async () => {
+      await reloadWorkspaceLibraryFromServer();
+      syncLoadedFilesIntoLibrary(state);
+      state.isCacheLoaded = false;
+      saveLibraryCache(state, authSessionToken);
+      scheduleRender();
+    },
   };
   initAuthCallbacks(bridgeCbs);
   initWorkspaceCallbacks(bridgeCbs);

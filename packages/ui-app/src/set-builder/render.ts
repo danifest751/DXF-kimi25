@@ -51,6 +51,7 @@ export interface RenderSnapshot {
   locale: string;
   catalogsKey: string;
   loadedFilesKey: string;
+  isCacheLoaded: boolean;
   optiPhase: string;
   batchPhase: string;
 }
@@ -99,6 +100,7 @@ export function snapshotState(
     locale: getLocale(),
     catalogsKey: workspaceCatalogs.map((c) => c.id).join(','),
     loadedFilesKey: loadedFiles.map((f) => `${f.id}:${f.loading ? 'l' : 'r'}`).join(','),
+    isCacheLoaded: state.isCacheLoaded,
     optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
   };
@@ -750,6 +752,7 @@ export function renderMain(
             ${showResultsInMain ? '' : `
               <div class="sb-list-toolbar-main">
                 <button class="sb-btn" data-a="upload">${t('setBuilder.upload')}</button>
+                ${state.isCacheLoaded ? `<span class="sb-cache-badge" title="${t('setBuilder.cacheVerifying')}"><span class="sb-run-spinner"></span></span>` : ''}
                 <input class="sb-input sb-input--search" data-a="search" id="sb-search" placeholder="${t('setBuilder.searchPlaceholder')}" value="${esc(state.search)}" />
                 <button class="sb-btn sb-btn--ghost" data-a="catalog-add">${t('setBuilder.catalogAdd')}</button>
               </div>

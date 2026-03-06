@@ -95,4 +95,5 @@ export interface SetBuilderState {
   lastUsedMaterialId: string | null;
   materialModalOpenForId: number | null;
   optimizerOpenForId: number | null;
+  isCacheLoaded: boolean;
 }

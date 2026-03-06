@@ -169,6 +169,7 @@ export const en: Record<TranslationKey, string> = {
 
   // Set Builder
   'setBuilder.upload': 'Upload',
+  'setBuilder.cacheVerifying': 'Syncing with server…',
   'setBuilder.searchPlaceholder': 'Search by file name',
   'setBuilder.nestingStrategy': 'Nesting strategy',
   'setBuilder.strategyPrecise': 'Rectangular (bbox)',

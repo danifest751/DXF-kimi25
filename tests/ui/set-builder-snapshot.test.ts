@@ -39,6 +39,7 @@ function makeSnapshot(overrides: Partial<RenderSnapshot> = {}): RenderSnapshot {
     locale: 'ru',
     catalogsKey: '',
     loadedFilesKey: '',
+    isCacheLoaded: false,
     optiPhase: '',
     batchPhase: '',
     ...overrides,
@@ -192,6 +193,10 @@ describe('snapshotsEqual', () => {
 
   it('returns false when loadedFilesKey differs', () => {
     expect(snapshotsEqual(makeSnapshot({ loadedFilesKey: '' }), makeSnapshot({ loadedFilesKey: '1:r,2:l' }))).toBe(false);
+  });
+
+  it('returns false when isCacheLoaded differs', () => {
+    expect(snapshotsEqual(makeSnapshot({ isCacheLoaded: false }), makeSnapshot({ isCacheLoaded: true }))).toBe(false);
   });
 
   it('returns false when optiPhase differs', () => {
