@@ -40,6 +40,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let customSheetHeightMm = 2000;
   let toastText = '';
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let renderFrameId: number | null = null;
   let filesUpdatedFrameId: number | null = null;
   let pendingFilesUpdatedAdded = 0;
   let lastPickedLibraryId: number | null = null;
@@ -60,7 +61,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   function showToast(msg: string): void {
     setToastState(msg);
-    render();
+    scheduleRender();
   }
 
   function drawOptimizerPreviewCanvas(): void {
@@ -180,6 +181,10 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   }
 
   function render(): void {
+    if (renderFrameId !== null) {
+      window.cancelAnimationFrame(renderFrameId);
+      renderFrameId = null;
+    }
     syncLoadedFilesIntoLibrary(state);
     // Резолвим stableKey → libraryId для сета и материалов (безопасно вызывать каждый раз)
     applyPendingSet(state);
@@ -204,9 +209,17 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     drawOptimizerPreviewCanvas();
   }
 
+  function scheduleRender(): void {
+    if (renderFrameId !== null) return;
+    renderFrameId = window.requestAnimationFrame(() => {
+      renderFrameId = null;
+      render();
+    });
+  }
+
   function toggleOpen(next?: boolean): void {
     state.open = typeof next === 'boolean' ? next : !state.open;
-    render();
+    scheduleRender();
   }
 
   function scheduleFilesUpdatedRender(added: number): void {
@@ -278,7 +291,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (target.classList.contains('sb-modal-backdrop')) {
       state.previewLibraryId = null;
       state.previewSheetId = null;
-      render();
+      scheduleRender();
       return;
     }
 
@@ -289,7 +302,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
 
     const button = target.closest<HTMLElement>('[data-a]');
-    if (!button) { if (menuClosed) render(); return; }
+    if (!button) { if (menuClosed) scheduleRender(); return; }
 
     const action = button.dataset.a;
     const id = Number(button.dataset.id ?? '0');
@@ -313,15 +326,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       } else if (shouldCheck) state.selectedLibraryIds.add(currentId);
       else state.selectedLibraryIds.delete(currentId);
       lastPickedLibraryId = currentId;
-      render();
+      scheduleRender();
       return;
     }
 
     if (action === 'close') { toggleOpen(false); return; }
     if (action === 'upload') { fileInput.click(); return; }
     if (action === 'lang-toggle') { setLocale(getLocale() === 'ru' ? 'en' : 'ru'); return; }
-    if (action === 'tg-login') { void runTelegramLoginFlow().then(() => render()); return; }
-    if (action === 'tg-logout') { void logoutWorkspace().then(() => render()); return; }
+    if (action === 'tg-login') { void runTelegramLoginFlow().then(() => scheduleRender()); return; }
+    if (action === 'tg-logout') { void logoutWorkspace().then(() => scheduleRender()); return; }
     if (action === 'catalog-add') { void addCatalog(state, authSessionToken, showToast, render); return; }
     if (action === 'catalog-rename') { void renameCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
     if (action === 'catalog-delete') { void deleteCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
@@ -332,7 +345,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const pid = `custom_${w}x${h}`;
       if (!sheetPresets.find((p) => p.id === pid)) sheetPresets = [...sheetPresets, { id: pid, label: `${w}×${h}`, w, h }];
       state.sheetPresetId = pid;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'preset-rename') {
@@ -341,19 +354,19 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const lbl = window.prompt(t('setBuilder.renamePreset'), preset.label);
       if (!lbl?.trim()) return;
       sheetPresets = sheetPresets.map((p) => p.id === preset.id ? { ...p, label: lbl.trim() } : p);
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'preset-delete') {
       if (!state.sheetPresetId.startsWith('custom_')) return;
       sheetPresets = sheetPresets.filter((p) => p.id !== state.sheetPresetId);
       state.sheetPresetId = sheetPresets[0]?.id ?? '';
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'tab') {
       const tab = button.dataset.tab;
-      if (tab === 'library' || tab === 'results') { state.activeTab = tab; render(); }
+      if (tab === 'library' || tab === 'results') { state.activeTab = tab; scheduleRender(); }
       return;
     }
     if (action === 'sort-col') {
@@ -362,13 +375,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         if (state.sortBy === s) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
         else { state.sortBy = s; state.sortDir = 'asc'; }
       }
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'mode') {
       state.mode = button.dataset.mode === 'commonLine' ? 'commonLine' : 'normal';
       state.nestStrategy = 'maxrects_bbox';
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'strategy' || action === 'rotation' || action === 'rotation-step' ||
@@ -384,13 +397,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'add-set') { upsertSetItem(state, id, 1); showToast(t('setBuilder.toast.addedToSet')); return; }
     if (action === 'remove-set') { removeFromSet(state, id); showToast(t('setBuilder.toast.removedFromSet')); return; }
-    if (action === 'qty-plus') { upsertSetItem(state, id, 1); render(); return; }
+    if (action === 'qty-plus') { upsertSetItem(state, id, 1); scheduleRender(); return; }
     if (action === 'qty-minus') {
       const s = getSetItem(state, id);
       if (!s) return;
       if (s.qty <= 1) removeFromSet(state, id);
       else s.qty -= 1;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'set-enabled') return;
@@ -406,7 +419,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           if (await removeLibraryItem(state, sid, showToast)) n++;
         }
         if (n > 0) showToast(t('setBuilder.toast.selectedRemoved'));
-        render();
+        scheduleRender();
       })();
       return;
     }
@@ -419,17 +432,17 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       showToast(t('setBuilder.toast.qtyUpdated'));
       return;
     }
-    if (action === 'bulk-clear') { state.selectedLibraryIds.clear(); render(); return; }
-    if (action === 'clear-set') { state.set.clear(); render(); return; }
+    if (action === 'bulk-clear') { state.selectedLibraryIds.clear(); scheduleRender(); return; }
+    if (action === 'clear-set') { state.set.clear(); scheduleRender(); return; }
     if (action === 'preview-lib') {
       state.previewLibraryId = id;
       state.previewSheetId = null;
       resetModalCanvasState(modalCanvasState);
-      render();
+      scheduleRender();
       return;
     }
-    if (action === 'preview-sheet') { state.previewSheetId = button.dataset.sheet ?? null; state.previewLibraryId = null; render(); return; }
-    if (action === 'close-preview') { state.previewLibraryId = null; state.previewSheetId = null; render(); return; }
+    if (action === 'preview-sheet') { state.previewSheetId = button.dataset.sheet ?? null; state.previewLibraryId = null; scheduleRender(); return; }
+    if (action === 'close-preview') { state.previewLibraryId = null; state.previewSheetId = null; scheduleRender(); return; }
     if (action === 'copy-hash') {
       const hash = button.dataset.hash ?? '';
       if (hash) void copyHash(hash);
@@ -449,31 +462,31 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'copy-all-hashes') { void copyAllHashes(); return; }
-    if (action === 'toggle-menu') { state.openMenuLibraryId = state.openMenuLibraryId === id ? null : id; render(); return; }
+    if (action === 'toggle-menu') { state.openMenuLibraryId = state.openMenuLibraryId === id ? null : id; scheduleRender(); return; }
     if (action === 'menu-delete') {
       void removeLibraryItem(state, id, showToast).then((removed) => {
         if (!removed) return;
         state.openMenuLibraryId = null;
         showToast(t('setBuilder.toast.itemDeleted'));
-        render();
+        scheduleRender();
       });
       return;
     }
-    if (action === 'menu-move') { state.openMenuLibraryId = null; void moveLibraryItemToCatalog(state, id, showToast).then(() => render()); return; }
+    if (action === 'menu-move') { state.openMenuLibraryId = null; void moveLibraryItemToCatalog(state, id, showToast).then(() => scheduleRender()); return; }
     if (action === 'menu-download') { state.openMenuLibraryId = null; void downloadLibraryItemSource(state, id, showToast); return; }
     if (action === 'stub') {
       showToast(`${t('setBuilder.action')} (${t('setBuilder.stub')})`);
       state.openMenuLibraryId = null;
       return;
     }
-    if (action === 'assign-material') { state.materialModalOpenForId = id; state.openMenuLibraryId = null; render(); return; }
-    if (action === 'close-material-modal') { state.materialModalOpenForId = null; render(); return; }
+    if (action === 'assign-material') { state.materialModalOpenForId = id; state.openMenuLibraryId = null; scheduleRender(); return; }
+    if (action === 'close-material-modal') { state.materialModalOpenForId = null; scheduleRender(); return; }
     if (action === 'material-save') {
       const itemIdRaw = Number(button.dataset.itemId ?? '0');
       const group = button.dataset.group ?? '';
       const grade = button.dataset.grade ?? '';
       const thickness = button.dataset.thickness ?? '';
-      if (!group || !grade || !thickness) { state.materialModalOpenForId = null; render(); return; }
+      if (!group || !grade || !thickness) { state.materialModalOpenForId = null; scheduleRender(); return; }
       const materialId = `${group}|${grade}|${thickness}`;
       const applyAll = (root.querySelector('#mat-apply-all') as HTMLInputElement | null)?.checked ?? false;
       const assignment: MaterialAssignment = { materialId, appliedAt: Date.now() };
@@ -489,7 +502,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       showToast(t('material.saved'));
       return;
     }
-    if (target.classList.contains('sb-modal-backdrop--material')) { state.materialModalOpenForId = null; render(); return; }
+    if (target.classList.contains('sb-modal-backdrop--material')) { state.materialModalOpenForId = null; scheduleRender(); return; }
 
     // ── Optimizer ────────────────────────────────────────────────────────
     if (action === 'open-optimizer') {
@@ -499,7 +512,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (!lf || lf.loading || !lf.doc) { showToast(t('setBuilder.toast.filesSynced')); return; }
       state.optimizerOpenForId = id;
       optiState = createOptimizerState();
-      render();
+      scheduleRender();
       void analyzeFile(
         { flatEntities: [...lf.doc.flatEntities], sourceDoc: lf.doc.source, fileName: lf.name },
         optiState,
@@ -510,21 +523,21 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'opt-close' || target.classList.contains('sb-modal-backdrop--optimizer')) {
       state.optimizerOpenForId = null;
       optiState = null;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'opt-tab') {
       const tab = button.dataset.tab as string;
       if (optiState && ['overview','inventory','optimize'].includes(tab)) {
         optiState.activeTab = tab as typeof optiState.activeTab;
-        render();
+        scheduleRender();
       }
       return;
     }
     if (action === 'opt-preset-laser') {
       if (optiState) {
         optiState.plan.enabled = new Set(['R1','R4','R5','R6']);
-        render();
+        scheduleRender();
       }
       return;
     }
@@ -558,13 +571,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         : state.library;
       batchState = createBatchState(catalogName, createDefaultPlan());
       batchState.entries = buildBatchEntries(items, loadedFiles);
-      render();
+      scheduleRender();
       void analyzeBatchEntries(batchState, loadedFiles, render);
       return;
     }
     if (action === 'batch-close' || target.classList.contains('sb-modal-backdrop--batch')) {
       batchState = null;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'batch-all-catalogs') {
@@ -581,7 +594,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           : state.library;
         batchState.entries = buildBatchEntries(items, loadedFiles);
       }
-      render();
+      scheduleRender();
       void analyzeBatchEntries(batchState, loadedFiles, render);
       return;
     }
@@ -589,14 +602,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (!batchState) return;
       const checked = (button as HTMLInputElement).checked;
       for (const e of batchState.entries) e.enabled = checked;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'batch-toggle-file') {
       if (!batchState) return;
       const fileId = Number(button.dataset.id ?? '0');
       const entry = batchState.entries.find((e) => e.libraryId === fileId);
-      if (entry) { entry.enabled = (button as HTMLInputElement).checked; render(); }
+      if (entry) { entry.enabled = (button as HTMLInputElement).checked; scheduleRender(); }
       return;
     }
     if (action === 'batch-rule') {
@@ -607,7 +620,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       } else {
         batchState.plan.enabled.delete(ruleId as Parameters<typeof batchState.plan.enabled.delete>[0]);
       }
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'batch-run') {
@@ -616,7 +629,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'batch-abort') {
-      if (batchState) { batchState.aborted = true; render(); }
+      if (batchState) { batchState.aborted = true; scheduleRender(); }
       return;
     }
     if (action === 'batch-download-zip') {
@@ -663,7 +676,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     draggedLibraryId = null;
     void moveLibraryItemToCatalogName(state, moveId, targetCatalog).then((moved) => {
       showToast(moved ? t('setBuilder.toast.itemMoved') : t('setBuilder.toast.itemMoveFailed'));
-      render();
+      scheduleRender();
     });
   });
 
@@ -675,7 +688,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   // ─── input ───────────────────────────────────────────────────────────
   root.addEventListener('input', (e) => {
     const el = e.target as HTMLElement;
-    if (el instanceof HTMLInputElement && el.dataset.a === 'search') { state.search = el.value; render(); }
+    if (el instanceof HTMLInputElement && el.dataset.a === 'search') { state.search = el.value; scheduleRender(); }
   });
 
   // ─── change (selects & checkboxes) ───────────────────────────────────
@@ -684,43 +697,43 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) return;
     const action = el.dataset.a;
 
-    if (action === 'search') { state.search = (el as HTMLInputElement).value; render(); return; }
+    if (action === 'search') { state.search = (el as HTMLInputElement).value; scheduleRender(); return; }
     if (action === 'sort-by' && el instanceof HTMLSelectElement) {
       state.sortBy = el.value === 'area' || el.value === 'pierces' || el.value === 'cutLen' ? el.value : 'name';
-      render();
+      scheduleRender();
       return;
     }
-    if (action === 'sort-dir' && el instanceof HTMLSelectElement) { state.sortDir = el.value === 'desc' ? 'desc' : 'asc'; render(); return; }
-    if (action === 'preset' && el instanceof HTMLSelectElement) { state.sheetPresetId = el.value; render(); return; }
+    if (action === 'sort-dir' && el instanceof HTMLSelectElement) { state.sortDir = el.value === 'desc' ? 'desc' : 'asc'; scheduleRender(); return; }
+    if (action === 'preset' && el instanceof HTMLSelectElement) { state.sheetPresetId = el.value; scheduleRender(); return; }
     if (action === 'sheet-custom-w' && el instanceof HTMLInputElement) { customSheetWidthMm = Math.max(1, Number(el.value) || 1); return; }
     if (action === 'sheet-custom-h' && el instanceof HTMLInputElement) { customSheetHeightMm = Math.max(1, Number(el.value) || 1); return; }
-    if (action === 'gap' && el instanceof HTMLInputElement) { state.gapMm = Math.max(0, Number(el.value) || 0); render(); return; }
+    if (action === 'gap' && el instanceof HTMLInputElement) { state.gapMm = Math.max(0, Number(el.value) || 0); scheduleRender(); return; }
     if (action === 'strategy' && el instanceof HTMLSelectElement) return;
-    if (action === 'rotation' && el instanceof HTMLInputElement) { state.rotationEnabled = el.checked; render(); return; }
+    if (action === 'rotation' && el instanceof HTMLInputElement) { state.rotationEnabled = el.checked; scheduleRender(); return; }
     if (action === 'rotation-step' && el instanceof HTMLSelectElement) {
       const step = Number(el.value);
       state.rotationStepDeg = step === 1 || step === 5 ? step : 2;
-      render();
+      scheduleRender();
       return;
     }
-    if (action === 'multi-start' && el instanceof HTMLInputElement) { state.multiStart = el.checked; render(); return; }
+    if (action === 'multi-start' && el instanceof HTMLInputElement) { state.multiStart = el.checked; scheduleRender(); return; }
     if (action === 'seed' && el instanceof HTMLInputElement) {
       state.seed = Number.isFinite(Number(el.value)) ? Math.trunc(Number(el.value)) : 0;
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'batch-epsilon' && el instanceof HTMLInputElement) {
       if (batchState) { batchState.plan.epsilonMm = Math.max(0.001, Number(el.value) || 0.01); }
       return;
     }
-    if (action === 'cl-dist' && el instanceof HTMLInputElement) { state.commonLineMaxMergeDistanceMm = Math.max(0, Number(el.value) || 0); render(); return; }
-    if (action === 'cl-min' && el instanceof HTMLInputElement) { state.commonLineMinSharedLenMm = Math.max(0, Number(el.value) || 0); render(); return; }
+    if (action === 'cl-dist' && el instanceof HTMLInputElement) { state.commonLineMaxMergeDistanceMm = Math.max(0, Number(el.value) || 0); scheduleRender(); return; }
+    if (action === 'cl-min' && el instanceof HTMLInputElement) { state.commonLineMinSharedLenMm = Math.max(0, Number(el.value) || 0); scheduleRender(); return; }
     if (action === 'set-enabled' && el instanceof HTMLInputElement) {
       const sid = Number(el.dataset.id ?? '0');
       const s = getSetItem(state, sid);
       if (!s) return;
       s.enabled = el.checked;
-      render();
+      scheduleRender();
       return;
     }
     if ((action === 'mat-group' || action === 'mat-grade' || action === 'mat-thickness') && el instanceof HTMLSelectElement) {
@@ -768,7 +781,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const ruleId = el.dataset.rule as string;
       if (el.checked) optiState.plan.enabled.add(ruleId as Parameters<typeof optiState.plan.enabled.add>[0]);
       else optiState.plan.enabled.delete(ruleId as Parameters<typeof optiState.plan.enabled.delete>[0]);
-      render();
+      scheduleRender();
       return;
     }
     if (action === 'opt-epsilon' && el instanceof HTMLInputElement && optiState) {
@@ -785,28 +798,26 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   window.addEventListener(AUTH_SESSION_EVENT, () => {
     if (authSessionToken) {
-      // При логине: мигрируем гостевые материалы на сервер, затем перезагружаем с сервера
       void migrateGuestMaterialsToServer().then(() =>
         loadMaterialsFromServer(state),
-      ).then(() => render());
+      ).then(() => scheduleRender());
     } else {
-      // При выходе: перезагружаем материалы из localStorage
       loadMaterials(state);
-      if (state.open) render();
+      if (state.open) scheduleRender();
     }
   });
 
-  onLocaleChange(() => { if (!state.open) return; render(); });
+  onLocaleChange(() => { if (!state.open) return; scheduleRender(); });
 
   window.addEventListener('keydown', (e) => {
     if (!state.open) return;
     if (e.key === 'Escape') {
-      if (state.materialModalOpenForId !== null) { state.materialModalOpenForId = null; render(); return; }
-      if (state.openMenuLibraryId !== null) { state.openMenuLibraryId = null; render(); return; }
+      if (state.materialModalOpenForId !== null) { state.materialModalOpenForId = null; scheduleRender(); return; }
+      if (state.openMenuLibraryId !== null) { state.openMenuLibraryId = null; scheduleRender(); return; }
       if (state.previewLibraryId !== null || state.previewSheetId !== null) {
         state.previewLibraryId = null;
         state.previewSheetId = null;
-        render();
+        scheduleRender();
         return;
       }
       toggleOpen(false);
@@ -819,7 +830,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (!state.open || state.openMenuLibraryId === null) return;
     if (root.contains(e.target as Node)) return;
     state.openMenuLibraryId = null;
-    render();
+    scheduleRender();
   });
 
   // ─── init ────────────────────────────────────────────────────────────
@@ -830,7 +841,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     (v) => { customSheetHeightMm = v; },
   );
   loadMaterials(state);
-  void loadMaterialsFromServer(state).then(() => { if (state.open) render(); });
+  void loadMaterialsFromServer(state).then(() => { if (state.open) scheduleRender(); });
   trigger.addEventListener('click', () => toggleOpen());
   render();
 }

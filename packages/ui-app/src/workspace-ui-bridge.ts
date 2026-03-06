@@ -33,6 +33,12 @@ export function createWorkspaceUiBridgeController(input: {
   let setActiveFile: (id: number) => void = () => {};
   let syncWelcomeVisibility: WorkspaceVoidFn = () => {};
   let computeStats = input.computeStats;
+  let refreshFrameId: number | null = null;
+  let pendingCatalogFilter = false;
+  let pendingFileList = false;
+  let pendingTotals = false;
+  let pendingNestItems = false;
+  let pendingWelcome = false;
 
   function init(callbacks: WorkspaceUiBridgeCallbacks): void {
     renderCatalogFilter = callbacks.renderCatalogFilter;
@@ -44,26 +50,50 @@ export function createWorkspaceUiBridgeController(input: {
     computeStats = callbacks.computeStats;
   }
 
+  function scheduleRefresh(): void {
+    if (refreshFrameId !== null) return;
+    refreshFrameId = window.requestAnimationFrame(() => {
+      refreshFrameId = null;
+      if (pendingCatalogFilter) renderCatalogFilter();
+      if (pendingFileList) renderFileList();
+      if (pendingTotals) recalcTotals();
+      if (pendingNestItems) updateNestItems();
+      if (pendingWelcome) syncWelcomeVisibility();
+      pendingCatalogFilter = false;
+      pendingFileList = false;
+      pendingTotals = false;
+      pendingNestItems = false;
+      pendingWelcome = false;
+    });
+  }
+
   function refreshCatalogSelectionViews(): void {
-    renderCatalogFilter();
-    renderFileList();
-    recalcTotals();
-    updateNestItems();
+    pendingCatalogFilter = true;
+    pendingFileList = true;
+    pendingTotals = true;
+    pendingNestItems = true;
+    scheduleRefresh();
   }
 
   function refreshFileListOnly(): void {
-    renderFileList();
+    pendingFileList = true;
+    scheduleRefresh();
   }
 
   function refreshFileMetrics(): void {
-    renderFileList();
-    recalcTotals();
-    updateNestItems();
+    pendingFileList = true;
+    pendingTotals = true;
+    pendingNestItems = true;
+    scheduleRefresh();
   }
 
   function refreshWorkspaceView(): void {
-    refreshCatalogSelectionViews();
-    syncWelcomeVisibility();
+    pendingCatalogFilter = true;
+    pendingFileList = true;
+    pendingTotals = true;
+    pendingNestItems = true;
+    pendingWelcome = true;
+    scheduleRefresh();
   }
 
   return {
