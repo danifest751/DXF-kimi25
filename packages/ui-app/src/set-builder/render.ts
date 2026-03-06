@@ -60,24 +60,7 @@ export function snapshotState(
 }
 
 export function snapshotsEqual(a: RenderSnapshot, b: RenderSnapshot): boolean {
-  return (
-    a.libCount === b.libCount &&
-    a.libIds === b.libIds &&
-    a.activeTab === b.activeTab &&
-    a.search === b.search &&
-    a.sortBy === b.sortBy &&
-    a.sortDir === b.sortDir &&
-    a.previewLibraryId === b.previewLibraryId &&
-    a.previewSheetId === b.previewSheetId &&
-    a.optimizerOpenForId === b.optimizerOpenForId &&
-    a.materialModalOpenForId === b.materialModalOpenForId &&
-    a.loading === b.loading &&
-    a.resultsId === b.resultsId &&
-    a.openMenuLibraryId === b.openMenuLibraryId &&
-    a.authToken === b.authToken &&
-    a.locale === b.locale &&
-    a.batchPhase === b.batchPhase
-  );
+  return (Object.keys(a) as (keyof RenderSnapshot)[]).every((k) => a[k] === b[k]);
 }
 
 export function getThumbCacheKey(

@@ -1,4 +1,4 @@
-import { fileInput } from '../dom.js';
+import { fileInput } from '../ui-shell.js';
 import { authSessionToken, authWorkspaceId, loadedFiles } from '../state.js';
 import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
 import { AUTH_SESSION_EVENT, logoutWorkspace, runTelegramLoginFlow } from '../auth.js';
@@ -251,8 +251,16 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         continue;
       }
 
+      const sourceExists = loadedFiles.some((f) => f.id === sourceId);
+      if (!sourceExists) {
+        slot.dataset.thumbReady = 'error';
+        continue;
+      }
       const dataUrl = renderDxfThumbDataUrl(sourceId, width, height, angleDeg, dxfThumbCache, padPx);
-      if (!dataUrl) continue;
+      if (!dataUrl) {
+        slot.dataset.thumbReady = 'error';
+        continue;
+      }
       replaceThumbSlot(slot, dataUrl, alt, imgClass);
       processed++;
       if (processed >= 1) break;
@@ -271,7 +279,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       window.cancelAnimationFrame(renderFrameId);
       renderFrameId = null;
     }
-    syncLoadedFilesIntoLibrary(state);
     // Резолвим stableKey → libraryId для сета и материалов (безопасно вызывать каждый раз)
     applyPendingSet(state);
     applyPendingMaterials(state);
@@ -894,6 +901,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   window.addEventListener('dxf-files-updated', (e) => {
     const detail = (e as CustomEvent<{ added: number; batchDone?: boolean }>).detail;
     const added = detail?.added ?? 0;
+    syncLoadedFilesIntoLibrary(state);
     if (detail?.batchDone) {
       if (fileReadyDebounceTimer !== null) { clearTimeout(fileReadyDebounceTimer); fileReadyDebounceTimer = null; }
       pendingReadyFileIds.clear();
@@ -915,6 +923,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     fileReadyDebounceTimer = setTimeout(() => {
       fileReadyDebounceTimer = null;
       pendingReadyFileIds.clear();
+      syncLoadedFilesIntoLibrary(state);
       lastRenderSnapshot = null;
       if (renderFrameId !== null) return;
       renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });

@@ -30,11 +30,7 @@ import {
   UNCATEGORIZED_CATALOG_ID,
   workspaceCatalogs, selectedCatalogIds,
   loadedFiles, bumpNextFileId, setActiveFileId,
-  renderer,
 } from './state.js';
-import {
-  btnAuthLogin, btnAuthLogout, btnAddCatalog, authWorkspace, welcome,
-} from './dom.js';
 import { createAuthUiBridgeController } from './auth-ui-bridge.js';
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 
@@ -106,8 +102,7 @@ export function getAuthHeaders(): Record<string, string> {
     : {};
 }
 
-export function showAuthHint(message: string, timeoutMs = 2200): void {
-  authWorkspace.textContent = message;
+export function showAuthHint(_message: string, timeoutMs = 2200): void {
   window.setTimeout(() => authUiBridge.updateAuthUi(), timeoutMs);
 }
 
@@ -154,8 +149,8 @@ export async function restoreGuestDraft(): Promise<void> {
       selectedCatalogIds,
       loadedFiles,
       clearActiveFile: () => setActiveFileId(-1),
-      clearRendererDocument: () => renderer.clearDocument(),
-      showWelcome: () => welcome.classList.remove('hidden'),
+      clearRendererDocument: () => {},
+      showWelcome: () => {},
     });
     await restoreGuestDraftFilesIntoWorkspace({
       guestFiles,
@@ -226,8 +221,8 @@ export async function logoutWorkspace(): Promise<void> {
     selectedCatalogIds,
     loadedFiles,
     clearActiveFile: () => setActiveFileId(-1),
-    clearRendererDocument: () => renderer.clearDocument(),
-    showWelcome: () => welcome.classList.remove('hidden'),
+    clearRendererDocument: () => {},
+    showWelcome: () => {},
   });
 
   await restoreGuestDraft();
@@ -254,21 +249,6 @@ export async function runTelegramLoginFlow(): Promise<void> {
 // ─── Update Auth UI ───────────────────────────────────────────────────
 // (вызывается из updateAuthUi в main.ts, здесь только DOM-обновление)
 
-export function applyAuthUiState(updateUploadTargetHint: VoidFn): void {
-  const isAuthenticated = authSessionToken.length > 0 && authWorkspaceId.length > 0;
-  if (isAuthenticated) {
-    const shortId = authWorkspaceId.length > 12 ? authWorkspaceId.slice(0, 12) + '…' : authWorkspaceId;
-    authWorkspace.textContent = `WS: ${shortId}`;
-    btnAuthLogin.textContent  = t('auth.changeAccount');
-    btnAuthLogin.title        = t('auth.changeAccount.title');
-    btnAuthLogout.hidden      = false;
-    btnAddCatalog.hidden      = false;
-    return;
-  }
-  authWorkspace.textContent = t('toolbar.guest');
-  btnAuthLogin.textContent  = t('toolbar.login');
-  btnAuthLogin.title        = t('toolbar.login.title');
-  btnAuthLogout.hidden      = true;
-  btnAddCatalog.hidden      = true;
-  updateUploadTargetHint();
+export function applyAuthUiState(_updateUploadTargetHint: VoidFn): void {
+  // Auth UI is handled by set-builder's own render cycle
 }

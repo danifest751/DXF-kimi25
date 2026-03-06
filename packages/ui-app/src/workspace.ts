@@ -10,12 +10,10 @@ import {
   authSessionToken, UNCATEGORIZED_CATALOG_ID,
   workspaceCatalogs, selectedCatalogIds, loadedFiles,
   activeFileId, bumpNextFileId, setActiveFileId,
-  renderer,
 } from './state.js';
 import {
   progressBar, progressFill, progressLabel,
-  statusEntities, statusVersion,
-} from './dom.js';
+} from './ui-shell.js';
 import { getAuthHeaders, saveGuestDraft } from './auth.js';
 import type { WorkspaceFileMeta } from './auth.js';
 import {
@@ -115,7 +113,6 @@ export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
       bumpNextFileId,
       clearActiveWorkspaceView: () => {
         setActiveFileId(-1);
-        renderer.clearDocument();
       },
       setActiveFile: (id) => workspaceUiBridge.setActiveFile(id),
       refreshWorkspaceView: () => workspaceUiBridge.refreshWorkspaceView(),
@@ -144,11 +141,8 @@ const workspaceFileActions = createWorkspaceFileActionsController({
   bumpNextFileId,
   computeStats: (base64, doc) => workspaceUiBridge.computeStats(base64, doc),
   setActiveFileId,
-  clearRendererDocument: () => renderer.clearDocument(),
-  clearStatusBar: () => {
-    statusEntities.textContent = '';
-    statusVersion.textContent = '';
-  },
+  clearRendererDocument: () => {},
+  clearStatusBar: () => {},
   refreshCatalogSelectionViews: () => workspaceUiBridge.refreshCatalogSelectionViews(),
   refreshFileMetrics: () => workspaceUiBridge.refreshFileMetrics(),
   syncWelcomeVisibility: () => workspaceUiBridge.syncWelcomeVisibility(),

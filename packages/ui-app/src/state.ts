@@ -4,15 +4,7 @@
  * Все модули читают/пишут состояние через этот модуль.
  */
 
-import type { LoadedFile, WorkspaceCatalog, ComputeMode } from './types.js';
-import type { NestingResult, NestingOptions } from '../../core-engine/src/nesting/index.js';
-import { DXFRenderer } from '../../core-engine/src/render/renderer.js';
-import { canvas } from './dom.js';
-
-// ─── Renderer ────────────────────────────────────────────────────────
-
-export const renderer = new DXFRenderer();
-renderer.attach(canvas);
+import type { LoadedFile, WorkspaceCatalog } from './types.js';
 
 // ─── Файлы ───────────────────────────────────────────────────────────
 
@@ -46,32 +38,3 @@ export function clearAuthSession(): void {
   authSessionToken = '';
   authWorkspaceId  = '';
 }
-
-// ─── Режимы вычисления ───────────────────────────────────────────────
-
-export let cuttingComputeMode: ComputeMode  = 'api';
-export let nestingComputeMode: ComputeMode  = 'api';
-
-export function setCuttingComputeMode(m: ComputeMode): void { cuttingComputeMode = m; }
-export function setNestingComputeMode(m: ComputeMode): void { nestingComputeMode = m; }
-
-// ─── Nesting ─────────────────────────────────────────────────────────
-
-export let nestingMode        = false;
-export let currentNestResult: NestingResult | null = null;
-export let lastNestingOptions: NestingOptions | null = null;
-export let nestCellRects: { x: number; y: number; w: number; h: number; si: number }[] = [];
-export let nestSheetHashes: string[] = [];
-export let nestHoveredSheet   = -1;
-
-export function setNestingMode(v: boolean): void            { nestingMode = v; }
-export function setCurrentNestResult(r: NestingResult | null): void { currentNestResult = r; }
-export function setLastNestingOptions(o: NestingOptions | null): void { lastNestingOptions = o; }
-export function setNestCellRects(rects: typeof nestCellRects): void { nestCellRects = rects; }
-export function setNestSheetHashes(h: string[]): void       { nestSheetHashes = h; }
-export function setNestHoveredSheet(i: number): void        { nestHoveredSheet = i; }
-
-// ─── UI состояние ────────────────────────────────────────────────────
-
-export let showGrid = false;
-export function setShowGrid(v: boolean): void { showGrid = v; }
