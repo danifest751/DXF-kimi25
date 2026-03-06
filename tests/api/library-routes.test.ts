@@ -278,7 +278,7 @@ describe('workspace library routes', () => {
     expect(response.json).toMatchObject({ success: true, upload: { fileId: 'file-direct-1', token: 'abc' } });
   });
 
-  it('uploads file through binary direct upload route', async () => {
+  it('uploads file through multipart direct upload route', async () => {
     uploadWorkspaceFileBufferWithIdMock.mockResolvedValue({
       id: 'file-direct-1',
       workspaceId: 'ws-1',
@@ -292,19 +292,19 @@ describe('workspace library routes', () => {
       updatedAt: Date.now(),
     });
 
+    const formData = new FormData();
+    formData.append('file', new Blob(['ABC'], { type: 'application/dxf' }), 'part.dxf');
+    formData.append('fileId', 'file-direct-1');
+    formData.append('catalogId', '');
+    formData.append('checked', 'true');
+    formData.append('quantity', '1');
+
     const response = await fetch(`${baseUrl}/api/library-files-direct-upload`, {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         authorization: 'Bearer token-1',
-        'content-type': 'application/dxf',
-        'x-file-id': 'file-direct-1',
-        'x-file-name': 'part.dxf',
-        'x-file-size': '3',
-        'x-catalog-id': '',
-        'x-file-checked': 'true',
-        'x-file-quantity': '1',
       },
-      body: 'ABC',
+      body: formData,
     });
     const json = await response.json();
 

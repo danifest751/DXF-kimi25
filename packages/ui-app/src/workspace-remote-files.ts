@@ -1,7 +1,6 @@
 import {
   apiGetJSON,
   apiPostJSON,
-  apiUploadArrayBuffer,
   apiUploadFormDataJSON,
 } from './api.js';
 import { getAuthHeaders } from './auth.js';
@@ -28,13 +27,8 @@ interface DirectUploadInitResponse {
   readonly upload: DirectUploadTicket;
 }
 
-function encodeHeaderFileName(fileName: string): string {
-  return encodeURIComponent(fileName);
-}
-
 export async function uploadWorkspaceFileAuthenticated(
   file: File,
-  buffer: ArrayBuffer,
   getPreferredUploadCatalogId: () => string | null,
 ): Promise<WorkspaceFileMeta> {
   const payload = {
@@ -47,19 +41,16 @@ export async function uploadWorkspaceFileAuthenticated(
 
   try {
     const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
-    const directUpload = await apiUploadArrayBuffer<{ success: boolean; file: WorkspaceFileMeta }>(
+    const directUploadFormData = new FormData();
+    directUploadFormData.append('file', file, init.upload.name);
+    directUploadFormData.append('fileId', init.upload.fileId);
+    directUploadFormData.append('catalogId', init.upload.catalogId ?? '');
+    directUploadFormData.append('checked', String(init.upload.checked));
+    directUploadFormData.append('quantity', String(init.upload.quantity));
+    const directUpload = await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>(
       '/api/library-files-direct-upload',
-      buffer,
-      file.type || 'application/dxf',
-      {
-        ...getAuthHeaders(),
-        'x-file-id': init.upload.fileId,
-        'x-file-name': encodeHeaderFileName(init.upload.name),
-        'x-file-size': String(init.upload.sizeBytes),
-        'x-catalog-id': init.upload.catalogId ?? '',
-        'x-file-checked': String(init.upload.checked),
-        'x-file-quantity': String(init.upload.quantity),
-      },
+      directUploadFormData,
+      getAuthHeaders(),
     );
     return directUpload.file;
   } catch (error) {

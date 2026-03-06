@@ -77,13 +77,12 @@ export function createWorkspaceFileActionsController(input: {
 
   async function createLoadedWorkspaceEntry(
     file: File,
-    buffer: ArrayBuffer,
     base64: string,
     doc: LoadedFile['doc'],
     stats: LoadedFile['stats'],
   ): Promise<LoadedFile> {
     if (getAuthSessionToken()) {
-      const uploadedFile = await uploadWorkspaceFileAuthenticated(file, buffer, getPreferredUploadCatalogId);
+      const uploadedFile = await uploadWorkspaceFileAuthenticated(file, getPreferredUploadCatalogId);
       return {
         id: bumpNextFileId(),
         remoteId: uploadedFile.id,
@@ -151,7 +150,7 @@ export function createWorkspaceFileActionsController(input: {
       completeWorkspaceLoadProgress();
 
       const stats = await computeStats(base64, result.document);
-      const entry = await createLoadedWorkspaceEntry(file, buffer, base64, result.document, stats);
+      const entry = await createLoadedWorkspaceEntry(file, base64, result.document, stats);
       loadedFiles.push(entry);
       setActiveFileFn(entry.id);
       refreshCatalogSelectionViews();

@@ -707,6 +707,66 @@ app.post(['/api/library/files/direct-upload-init', '/api/library-files-direct-up
   }
 });
 
+app.post(['/api/library/files/direct-upload', '/api/library-files-direct-upload'], upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+
+    const uploaded = req.file;
+    if (!uploaded || !uploaded.buffer || uploaded.buffer.byteLength === 0) {
+      res.status(400).json({ error: 'Missing uploaded file' });
+      return;
+    }
+
+    const fileId = typeof req.body?.fileId === 'string' ? req.body.fileId.trim() : '';
+    const catalogIdRaw = typeof req.body?.catalogId === 'string' ? req.body.catalogId.trim() : '';
+    const checkedRaw = typeof req.body?.checked === 'string' ? req.body.checked.trim().toLowerCase() : '';
+    const quantityRaw = typeof req.body?.quantity === 'string' ? req.body.quantity.trim() : '';
+    const checked = parseBooleanStringInput(checkedRaw);
+    const quantity = parseQuantityStringInput(quantityRaw);
+
+    if (!fileId) {
+      res.status(400).json({ error: 'fileId is required' });
+      return;
+    }
+    if (!uploaded.originalname?.trim()) {
+      res.status(400).json({ error: 'Uploaded file name is required' });
+      return;
+    }
+    if (catalogIdRaw.length > 0 && !isValidCatalogIdInput(catalogIdRaw)) {
+      res.status(400).json({ error: 'catalogId must be a UUID or empty' });
+      return;
+    }
+    if (checked === null) {
+      res.status(400).json({ error: 'checked must be true or false' });
+      return;
+    }
+    if (quantity === null) {
+      res.status(400).json({ error: `quantity must be an integer between 1 and ${MAX_LIBRARY_FILE_QTY}` });
+      return;
+    }
+
+    const file = await uploadWorkspaceFileBufferWithId({
+      workspaceId,
+      fileId,
+      name: uploaded.originalname || uploaded.fieldname || 'upload.dxf',
+      bodyBuffer: uploaded.buffer,
+      catalogId: catalogIdRaw.length > 0 ? catalogIdRaw : null,
+      checked,
+      quantity,
+    });
+    res.json({ success: true, file });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Multipart direct upload file failed', details: message });
+  }
+});
+
 app.put(
   [
     '/api/library/files/direct-upload',
