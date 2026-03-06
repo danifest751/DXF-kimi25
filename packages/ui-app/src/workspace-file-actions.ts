@@ -155,6 +155,8 @@ export function createWorkspaceFileActionsController(input: {
       setActiveFileFn(entry.id);
       refreshCatalogSelectionViews();
       saveGuestDraft();
+      window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 1, batchDone: true } }));
+      window.dispatchEvent(new CustomEvent('dxf-file-ready', { detail: { fileId: entry.id } }));
     } catch (error) {
       failWorkspaceLoadProgress();
       const msg = error instanceof Error ? error.message : String(error);
