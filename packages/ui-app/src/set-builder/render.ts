@@ -95,7 +95,7 @@ export function snapshotState(
     openMenuLibraryId: state.openMenuLibraryId,
     authToken: authSessionToken.slice(0, 8),
     locale: getLocale(),
-    optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}` : '',
+    optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
   };
 }
