@@ -1,5 +1,6 @@
-import { fileInput } from '../ui-shell.js';
+import { fileInput, dropOverlay } from '../ui-shell.js';
 import { authSessionToken, authWorkspaceId, loadedFiles } from '../state.js';
+import { loadSingleFile } from '../workspace.js';
 import { getLocale, onLocaleChange, setLocale, t } from '../i18n/index.js';
 import { AUTH_SESSION_EVENT, logoutWorkspace, runTelegramLoginFlow } from '../auth.js';
 import type { NestingResult } from '../../../core-engine/src/nesting/index.js';
@@ -911,5 +912,35 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   loadMaterials(state);
   void loadMaterialsFromServer(state).then(() => { if (state.open) scheduleRender(); });
   trigger.addEventListener('click', () => toggleOpen());
+
+  // ─── file input & drag-drop ──────────────────────────────────────────
+  fileInput.addEventListener('change', () => {
+    const files = fileInput.files ? Array.from(fileInput.files) : [];
+    fileInput.value = '';
+    for (const f of files) {
+      void loadSingleFile(f, (id) => { state.activeLibraryId = id; });
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    dropOverlay?.classList.add('active');
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    if ((e as DragEvent).relatedTarget) return;
+    dropOverlay?.classList.remove('active');
+  });
+
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropOverlay?.classList.remove('active');
+    const files = e.dataTransfer ? Array.from(e.dataTransfer.files).filter((f) => f.name.toLowerCase().endsWith('.dxf')) : [];
+    for (const f of files) {
+      void loadSingleFile(f, (id) => { state.activeLibraryId = id; });
+    }
+  });
+
   render();
 }
