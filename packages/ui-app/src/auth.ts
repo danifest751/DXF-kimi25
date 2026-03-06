@@ -13,9 +13,13 @@ import {
   base64ToArrayBuffer,
   base64ToBlob,
   loadGuestDraftFiles,
-  type ResolvedGuestDraftFile,
-  saveLegacyGuestDraft,
+  saveLegacyGuestDraftSnapshot,
 } from './auth-guest-draft-helpers.js';
+import {
+  migrateGuestDraftFilesToWorkspace,
+  resetWorkspaceToGuestState,
+  restoreGuestDraftFilesIntoWorkspace,
+} from './auth-guest-workspace.js';
 import { t } from './i18n/index.js';
 import type { LoadedFile } from './types.js';
 import {
@@ -106,97 +110,6 @@ export function showAuthHint(message: string, timeoutMs = 2200): void {
   window.setTimeout(() => authUiBridge.updateAuthUi(), timeoutMs);
 }
 
-function toLegacyGuestDraftFiles(snapshot: Array<{
-  name: string;
-  base64: string;
-  checked: boolean;
-  quantity: number;
-  catalogId: string | null;
-}>): Array<{
-  name: string;
-  base64: string;
-  checked: boolean;
-  quantity: number;
-  catalogId: string | null;
-}> {
-  return snapshot.map((file) => ({
-    name: file.name,
-    base64: file.base64,
-    checked: file.checked,
-    quantity: file.quantity,
-    catalogId: file.catalogId,
-  }));
-}
-
-function saveLegacyGuestDraftSnapshot(snapshot: Array<{
-  name: string;
-  base64: string;
-  checked: boolean;
-  quantity: number;
-  catalogId: string | null;
-}>): void {
-  saveLegacyGuestDraft(GUEST_DRAFT_STORAGE_KEY, toLegacyGuestDraftFiles(snapshot));
-}
-
-function resetWorkspaceToGuestState(): void {
-  workspaceCatalogs.splice(0, workspaceCatalogs.length);
-  selectedCatalogIds.clear();
-  loadedFiles.splice(0, loadedFiles.length);
-  setActiveFileId(-1);
-  renderer.clearDocument();
-  welcome.classList.remove('hidden');
-}
-
-async function restoreGuestDraftFilesIntoWorkspace(guestFiles: ResolvedGuestDraftFile[]): Promise<void> {
-  const MAX_GUEST_FILE_SIZE_B64 = 270_000_000;
-  const MAX_GUEST_FILES = 50;
-  let restored = 0;
-
-  for (const file of guestFiles) {
-    if (restored >= MAX_GUEST_FILES) break;
-    if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
-    restored++;
-    const buffer = base64ToArrayBuffer(file.base64);
-    const result = await parseDXFInWorker(buffer);
-    const stats = await authUiBridge.computeStats(file.base64, result.document);
-    loadedFiles.push({
-      id: bumpNextFileId(),
-      remoteId: '',
-      workspaceId: '',
-      catalogId: null,
-      guestDraftId: file.id,
-      name: file.name,
-      localBase64: file.base64,
-      doc: result.document,
-      stats,
-      checked: Boolean(file.checked),
-      quantity: Math.max(1, Number(file.quantity) || 1),
-    });
-  }
-}
-
-async function migrateGuestDraftFilesToWorkspace(guestFiles: ResolvedGuestDraftFile[]): Promise<void> {
-  const MAX_MIGRATE_FILES = 50;
-  let migrated = 0;
-
-  for (const file of guestFiles) {
-    if (migrated >= MAX_MIGRATE_FILES) break;
-    if (!file.name.toLowerCase().endsWith('.dxf')) continue;
-    if (!file.base64) continue;
-    migrated++;
-    try {
-      const formData = new FormData();
-      formData.append('file', base64ToBlob(file.base64), file.name);
-      formData.append('catalogId', '');
-      formData.append('checked', String(Boolean(file.checked)));
-      formData.append('quantity', String(Math.max(1, Number(file.quantity) || 1)));
-      await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
-    } catch (err) {
-      console.warn('Failed to migrate file:', file.name, err instanceof Error ? err.message : String(err));
-    }
-  }
-}
-
 // ─── Guest draft ─────────────────────────────────────────────────────
 
 export function saveGuestDraft(): void {
@@ -211,7 +124,7 @@ export function saveGuestDraft(): void {
     catalogId: f.catalogId,
   }));
   if (!guestDraftBinaryStorageAvailable()) {
-    saveLegacyGuestDraftSnapshot(snapshot);
+    saveLegacyGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot);
     return;
   }
   void saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot)
@@ -222,7 +135,7 @@ export function saveGuestDraft(): void {
       });
     })
     .catch(() => {
-      saveLegacyGuestDraftSnapshot(snapshot);
+      saveLegacyGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot);
     });
 }
 
@@ -235,8 +148,22 @@ export async function restoreGuestDraft(): Promise<void> {
     const guestFiles = await loadGuestDraftFiles(GUEST_DRAFT_STORAGE_KEY);
     if (guestFiles.length === 0) return;
 
-    resetWorkspaceToGuestState();
-    await restoreGuestDraftFilesIntoWorkspace(guestFiles);
+    resetWorkspaceToGuestState({
+      workspaceCatalogs,
+      selectedCatalogIds,
+      loadedFiles,
+      clearActiveFile: () => setActiveFileId(-1),
+      clearRendererDocument: () => renderer.clearDocument(),
+      showWelcome: () => welcome.classList.remove('hidden'),
+    });
+    await restoreGuestDraftFilesIntoWorkspace({
+      guestFiles,
+      loadedFiles,
+      bumpNextFileId,
+      base64ToArrayBuffer,
+      parseDXF: (buffer) => parseDXFInWorker(buffer),
+      computeStats: (base64, doc) => authUiBridge.computeStats(base64, doc),
+    });
 
     if (loadedFiles.length > 0) {
       selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
@@ -257,7 +184,17 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
     return;
   }
 
-  await migrateGuestDraftFilesToWorkspace(guestFiles);
+  await migrateGuestDraftFilesToWorkspace({
+    guestFiles,
+    uploadGuestDraftFile: async (file) => {
+      const formData = new FormData();
+      formData.append('file', base64ToBlob(file.base64), file.name);
+      formData.append('catalogId', '');
+      formData.append('checked', String(Boolean(file.checked)));
+      formData.append('quantity', String(Math.max(1, Number(file.quantity) || 1)));
+      await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
+    },
+  });
   await clearGuestDraft();
 }
 
@@ -305,7 +242,14 @@ export async function logoutWorkspace(): Promise<void> {
   }
   clearStoredAuthSession();
 
-  resetWorkspaceToGuestState();
+  resetWorkspaceToGuestState({
+    workspaceCatalogs,
+    selectedCatalogIds,
+    loadedFiles,
+    clearActiveFile: () => setActiveFileId(-1),
+    clearRendererDocument: () => renderer.clearDocument(),
+    showWelcome: () => welcome.classList.remove('hidden'),
+  });
 
   await restoreGuestDraft();
   authUiBridge.refreshWorkspaceViews();

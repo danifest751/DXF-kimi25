@@ -14,7 +14,6 @@ import './styles/animations.css';
 import './styles/responsive.css';
 import './styles/set-builder.css';
 
-import { apiPostJSON } from './api.js';
 import type { LoadedFile, UICuttingStats } from './types.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
 
@@ -71,12 +70,9 @@ import {
 } from './nesting-panel.js';
 import * as NP from './nesting-panel.js';
 import { initSetBuilder } from './set-builder/index.js';
-import { initNestingControls } from './nesting-controls.js';
-import { initNestingZoomUi } from './nesting-zoom-ui.js';
-import { initToolbarActions } from './toolbar-actions.js';
-import { initMainModuleCallbacks } from './main-module-callbacks.js';
+import { initMainNestingShell } from './main-nesting-shell.js';
+import { initMainToolbarShell } from './main-toolbar-shell.js';
 import { initMainShellUi } from './main-shell-ui.js';
-import { createMainToolbarBridgeController } from './main-toolbar-bridge.js';
 import { createMainUiHelpersController } from './main-ui-helpers.js';
 import { createMainRuntimeUiController } from './main-runtime-ui.js';
 import { createMainViewerShellController } from './main-viewer-shell.js';
@@ -167,7 +163,7 @@ const mainViewerShell = createMainViewerShellController({
 
 const { mobileUi, viewerActions, viewportScene } = mainViewerShell;
 
-const mainToolbarBridge = createMainToolbarBridgeController({
+initMainToolbarShell({
   authSessionToken,
   getAuthHeaders,
   loadedFiles,
@@ -182,9 +178,6 @@ const mainToolbarBridge = createMainToolbarBridgeController({
   updateNestItems,
   workspaceCatalogs,
   isFileInSelectedCatalogs,
-});
-
-initToolbarActions({
   btnOpen,
   btnWelcomeOpen,
   btnAddFiles,
@@ -212,31 +205,12 @@ initToolbarActions({
   toggleGrid: viewerActions.toggleGrid,
   runTelegramLoginFlow,
   logoutWorkspace,
-  getVisibleFiles: () => mainToolbarBridge.getVisibleFiles(),
-  isAuthenticated: () => mainToolbarBridge.isAuthenticated(),
-  getAuthHeaders,
-  getCatalogIdsForBulkAction: () => mainToolbarBridge.getCatalogIdsForBulkAction(),
-  onBulkCheckApplied: () => mainToolbarBridge.onBulkCheckApplied(),
   showAuthHint,
-  promptCatalogName: () => mainToolbarBridge.promptCatalogName(),
-  createCatalog: (name) => mainToolbarBridge.createCatalog(name),
-  onCatalogCreated: (catalog) => mainToolbarBridge.onCatalogCreated(catalog),
   getCurrentNestResult: () => currentNestResult,
   exportFullNestingDXF,
   exportAllSheetsDXF,
   copyAllHashes,
-  getCatalogAuthRequiredMessage: () => mainToolbarBridge.getCatalogAuthRequiredMessage(),
-  getCatalogCreateErrorMessage: (error) => mainToolbarBridge.getCatalogCreateErrorMessage(error),
-});
-
-// ─── Init callbacks ───────────────────────────────────────────────────
-
-initMainModuleCallbacks({
   updateAuthUi,
-  renderCatalogFilter,
-  renderFileList,
-  recalcTotals,
-  updateNestItems,
   computeStatsFromBuffer,
   setActiveFile,
   reloadWorkspaceLibraryFromServer,
@@ -248,7 +222,11 @@ initMainModuleCallbacks({
 
 // ─── Nesting panel ────────────────────────────────────────────────────
 
-initNestingControls({
+initMainNestingShell({
+  container,
+  nestingScroll,
+  nestZoomCanvas,
+  nestZoomPopup,
   btnNesting,
   nestingPanel,
   nestPreset,
@@ -270,13 +248,6 @@ initNestingControls({
   getNestModeValue,
   setNestModeValue,
   onResizeRenderer: () => renderer.resizeToContainer(),
-});
-
-initNestingZoomUi({
-  container,
-  nestingScroll,
-  nestZoomCanvas,
-  nestZoomPopup,
   isNestingMode: () => nestingMode,
   getCurrentNestResult: () => currentNestResult,
   getNestCellRects: () => nestCellRects,

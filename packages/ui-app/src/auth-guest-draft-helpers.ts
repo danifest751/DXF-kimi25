@@ -46,6 +46,22 @@ export function saveLegacyGuestDraft(storageKey: string, files: GuestDraftFile[]
   localStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
+export function saveLegacyGuestDraftSnapshot(storageKey: string, snapshot: Array<{
+  name: string;
+  base64: string;
+  checked: boolean;
+  quantity: number;
+  catalogId: string | null;
+}>): void {
+  saveLegacyGuestDraft(storageKey, snapshot.map((file) => ({
+    name: file.name,
+    base64: file.base64,
+    checked: file.checked,
+    quantity: file.quantity,
+    catalogId: file.catalogId,
+  })));
+}
+
 export async function loadGuestDraftFiles(storageKey: string): Promise<ResolvedGuestDraftFile[]> {
   const storedFiles = loadGuestDraftPointers(storageKey);
   if (storedFiles.length > 0) {
