@@ -2,6 +2,7 @@ import { t } from '../../i18n/index.js';
 import { esc } from '../utils.js';
 import type { OptimizerState } from './types.js';
 import { OPTIMIZATION_RULES } from './types.js';
+import { iconClose, iconWrench } from '../icons.js';
 
 // ─── Score color ─────────────────────────────────────────────────────────────
 
@@ -12,9 +13,9 @@ function scoreClass(score: number): string {
 }
 
 function severityIcon(severity: string): string {
-  if (severity === 'critical') return '🔴';
-  if (severity === 'warning') return '🟡';
-  return '🔵';
+  if (severity === 'critical') return '<span class="opt-sev-dot opt-sev-dot--crit"></span>';
+  if (severity === 'warning') return '<span class="opt-sev-dot opt-sev-dot--warn"></span>';
+  return '<span class="opt-sev-dot opt-sev-dot--info"></span>';
 }
 
 // ─── Tab: Overview (canvas + stats + issues + run) ───────────────────────────
@@ -265,13 +266,13 @@ export function renderOptimizerModal(
       <div class="sb-modal sb-modal--optimizer" role="dialog" aria-modal="true">
         <div class="sb-modal-head opt-modal-head">
           <div class="opt-modal-title">
-            <span class="opt-modal-icon">🔧</span>
+            <span class="opt-modal-icon">${iconWrench}</span>
             <div>
               <div class="opt-modal-name">${t('optimizer.title')}</div>
               <div class="opt-modal-file">${esc(fileName)}</div>
             </div>
           </div>
-          <button class="sb-icon" data-a="opt-close" title="${t('optimizer.close')}">✕</button>
+          <button class="sb-icon" data-a="opt-close" title="${t('optimizer.close')}">${iconClose}</button>
         </div>
 
         <div class="opt-tabs">

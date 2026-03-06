@@ -2,6 +2,7 @@ import { t } from '../../i18n/index.js';
 import { esc } from '../utils.js';
 import type { BatchOptimizerState, BatchFileEntry } from './batch-types.js';
 import { OPTIMIZATION_RULES } from './types.js';
+import { iconClose, iconCheck, iconDash, iconLightning } from '../icons.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ function statusIcon(entry: BatchFileEntry): string {
     case 'analyzing': return '<span class="batch-status batch-status--spin"><span class="sb-run-spinner"></span></span>';
     case 'queued':    return '<span class="batch-status batch-status--pending">…</span>';
     case 'running':   return '<span class="batch-status batch-status--spin"><span class="sb-run-spinner"></span></span>';
-    case 'done':      return '<span class="batch-status batch-status--done">✓</span>';
-    case 'skipped':   return '<span class="batch-status batch-status--skip">—</span>';
-    case 'error':     return `<span class="batch-status batch-status--error" title="${esc(entry.error ?? '')}">✕</span>`;
+    case 'done':      return `<span class="batch-status batch-status--done">${iconCheck}</span>`;
+    case 'skipped':   return `<span class="batch-status batch-status--skip">${iconDash}</span>`;
+    case 'error':     return `<span class="batch-status batch-status--error" title="${esc(entry.error ?? '')}">${iconClose}</span>`;
   }
 }
 
@@ -78,13 +79,13 @@ export function renderBatchModal(bState: BatchOptimizerState): string {
 
         <div class="sb-modal-head batch-modal-head">
           <div class="batch-modal-title">
-            <span class="batch-modal-icon">⚡</span>
+            <span class="batch-modal-icon">${iconLightning}</span>
             <div>
               <div class="batch-modal-name">${t('batch.title')}</div>
               <div class="batch-modal-catalog">${esc(catalogTitle)}</div>
             </div>
           </div>
-          <button class="sb-icon" data-a="batch-close" title="${t('optimizer.close')}">✕</button>
+          <button class="sb-icon" data-a="batch-close" title="${t('optimizer.close')}">${iconClose}</button>
         </div>
 
         <div class="batch-body">
@@ -152,7 +153,7 @@ export function renderBatchModal(bState: BatchOptimizerState): string {
 
           ${isDone ? `
             <div class="batch-summary">
-              <span class="batch-summary-done">✓ ${doneCount} ${t('batch.doneCount')}</span>
+              <span class="batch-summary-done">${iconCheck} ${doneCount} ${t('batch.doneCount')}</span>
               ${savedTotal > 0 ? `<span class="batch-saved-total">−${savedTotal} ${t('batch.savedEntities')}</span>` : ''}
             </div>
           ` : ''}

@@ -11,6 +11,7 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil } from './icons.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
@@ -310,7 +311,7 @@ export function buildLibraryRow(
   const matTooltip = assignment
     ? `${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}`
     : esc(t('material.assign'));
-  const matIcon = assignment ? '⬡' : '⬡';
+  const matIcon = assignment ? iconHexagonFilled : iconHexagon;
   const matIconClass = assignment ? 'sb-icon sb-mat-icon sb-mat-icon--set' : 'sb-icon sb-mat-icon';
   return `
     <div class="sb-lib-row sb-lib-row--table" data-a="lib-row" data-id="${item.id}" ${draggable}>
@@ -323,7 +324,7 @@ export function buildLibraryRow(
         ${assignment ? `<span class="sb-badge sb-badge--material" title="${esc(matLabel)}">${esc(matLabel)}${matWeight ? ` · ${esc(matWeight)}` : ''}</span>` : ''}
       </div>
       <div class="sb-stepper" data-a="stepper" data-id="${item.id}">
-        <button class="sb-icon sb-opt-icon" data-a="open-optimizer" data-id="${item.id}" title="${t('optimizer.openOptimizer')}">🔧</button>
+        <button class="sb-icon sb-opt-icon" data-a="open-optimizer" data-id="${item.id}" title="${t('optimizer.openOptimizer')}">${iconWrench}</button>
         <button class="${matIconClass}" data-a="assign-material" data-id="${item.id}" title="${matTooltip}">${matIcon}</button>
         <button data-a="qty-minus" data-id="${item.id}">-</button>
         <span>${inSet?.qty ?? 0}</span>
@@ -334,8 +335,8 @@ export function buildLibraryRow(
       <div class="sb-col">${fmtLen(item.cutLen)}</div>
       <div class="sb-actions">
         <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
-        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
-        <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">⋯</button>
+        <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">${iconEye}</button>
+        <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">${iconDots}</button>
         <div class="sb-menu ${menuOpen ? 'open' : ''}">
           <button data-a="menu-delete" data-id="${item.id}">${t('setBuilder.menu.delete')}</button>
           <button data-a="menu-move" data-id="${item.id}">${t('setBuilder.menu.moveToCatalog')}</button>
@@ -381,7 +382,7 @@ export function renderMaterialModal(
             <span class="sb-modal-name">${t('material.title')}</span>
             <span class="sb-modal-catalog">${esc(item.name)}</span>
           </div>
-          <button class="sb-icon" data-a="close-material-modal" title="${t('material.cancel')}">✕</button>
+          <button class="sb-icon" data-a="close-material-modal" title="${t('material.cancel')}">${iconClose}</button>
         </div>
         <div class="sb-modal-material-body">
           <div class="sb-mat-selects">
@@ -443,12 +444,12 @@ export function renderPreviewModal(
         <div class="sb-modal sb-modal--dxf">
           <div class="sb-modal-head">
             <div class="sb-modal-title">
-              <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${prevItem?.id ?? ''}" ${!prevItem ? 'disabled' : ''} title="${prevItem ? esc(prevItem.name) : ''}">‹</button>
+              <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${prevItem?.id ?? ''}" ${!prevItem ? 'disabled' : ''} title="${prevItem ? esc(prevItem.name) : ''}">${iconChevronLeft}</button>
               <div class="sb-modal-title-text">
                 <span class="sb-modal-name">${esc(item.name)}</span>
                 <span class="sb-modal-catalog">${esc(item.catalog)}</span>
               </div>
-              <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${nextItem?.id ?? ''}" ${!nextItem ? 'disabled' : ''} title="${nextItem ? esc(nextItem.name) : ''}">›</button>
+              <button class="sb-icon sb-modal-nav" data-a="preview-lib" data-id="${nextItem?.id ?? ''}" ${!nextItem ? 'disabled' : ''} title="${nextItem ? esc(nextItem.name) : ''}">${iconChevronRight}</button>
             </div>
             <div class="sb-modal-head-right">
               ${hasPierces ? `
@@ -458,7 +459,7 @@ export function renderPreviewModal(
                 <span>${t('setBuilder.pierces')}</span>
               </label>` : ''}
               <span class="sb-badge ${statusClass}">${statusLabel(item)}</span>
-              <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">✕</button>
+              <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">${iconClose}</button>
             </div>
           </div>
           <div class="sb-modal-dxf-body">
@@ -554,16 +555,16 @@ export function renderPreviewModal(
       <div class="sb-modal sb-modal--sheet">
         <div class="sb-modal-head">
           <div class="sb-modal-title">
-            <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${prevSheet?.id ?? ''}" ${!prevSheet ? 'disabled' : ''} title="${prevSheet?.id.toUpperCase() ?? ''}">‹</button>
+            <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${prevSheet?.id ?? ''}" ${!prevSheet ? 'disabled' : ''} title="${prevSheet?.id.toUpperCase() ?? ''}">${iconChevronLeft}</button>
             <div class="sb-modal-title-text">
               <span class="sb-modal-name">${t('setBuilder.sheet')} ${sheetIdx + 1}</span>
               <span class="sb-modal-catalog">${sheet.sheetWidth} × ${sheet.sheetHeight} ${t('unit.mm')}</span>
             </div>
-            <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${nextSheet?.id ?? ''}" ${!nextSheet ? 'disabled' : ''} title="${nextSheet?.id.toUpperCase() ?? ''}">›</button>
+            <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${nextSheet?.id ?? ''}" ${!nextSheet ? 'disabled' : ''} title="${nextSheet?.id.toUpperCase() ?? ''}">${iconChevronRight}</button>
           </div>
           <div class="sb-modal-head-right">
             <span class="sb-modal-counter">${sheetIdx + 1} / ${sheets.length}</span>
-            <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">✕</button>
+            <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">${iconClose}</button>
           </div>
         </div>
         <div class="sb-modal-sheet-body">
@@ -845,8 +846,8 @@ export function renderMain(
                       <span>${set.qty}</span>
                       <button data-a="qty-plus" data-id="${item.id}">+</button>
                     </div>
-                    <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">👁</button>
-                    <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">🗑</button>
+                    <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">${iconEye}</button>
+                    <button class="sb-icon" data-a="remove-set" data-id="${item.id}" title="${t('setBuilder.remove')}">${iconTrash}</button>
                   </div>
                 </div>
               `;
@@ -859,8 +860,8 @@ export function renderMain(
                 <select class="sb-select sb-select--preset" data-a="preset">
                   ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
                 </select>
-                <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">✎</button>
-                ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">✕</button>` : ''}
+                <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">${iconPencil}</button>
+                ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">${iconClose}</button>` : ''}
               </div>
               <div class="sb-custom-sheet">
                 <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
