@@ -14,6 +14,39 @@ import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
+export function getThumbCacheKey(
+  sourceFileId: number,
+  width: number,
+  height: number,
+  angleDeg: number,
+  padPx = 0,
+): string {
+  return `${sourceFileId}:${width}x${height}:${angleDeg}:${padPx}`;
+}
+
+function buildThumbImageMarkup(dataUrl: string, alt: string, imgClass: string): string {
+  return `<img class="${imgClass}" src="${dataUrl}" alt="${esc(alt)}" loading="lazy" />`;
+}
+
+function buildLazyThumbSlotMarkup(input: {
+  sourceFileId: number;
+  width: number;
+  height: number;
+  angleDeg: number;
+  padPx: number;
+  alt: string;
+  imgClass: string;
+  fallbackMarkup: string;
+  dxfThumbCache: Map<string, string>;
+}): string {
+  const cacheKey = getThumbCacheKey(input.sourceFileId, input.width, input.height, input.angleDeg, input.padPx);
+  const cached = input.dxfThumbCache.get(cacheKey);
+  const content = cached
+    ? buildThumbImageMarkup(cached, input.alt, input.imgClass)
+    : input.fallbackMarkup;
+  return `<span data-thumb-slot="true" data-thumb-ready="${cached ? 'true' : 'false'}" data-thumb-key="${esc(cacheKey)}" data-source-id="${input.sourceFileId}" data-thumb-width="${input.width}" data-thumb-height="${input.height}" data-thumb-angle="${input.angleDeg}" data-thumb-pad="${input.padPx}" data-thumb-alt="${esc(input.alt)}" data-thumb-img-class="${input.imgClass}">${content}</span>`;
+}
+
 export function renderDxfThumbDataUrl(
   sourceFileId: number,
   width: number,
@@ -22,7 +55,7 @@ export function renderDxfThumbDataUrl(
   dxfThumbCache: Map<string, string>,
   padPx = 0,
 ): string | null {
-  const cacheKey = `${sourceFileId}:${width}x${height}:${angleDeg}:${padPx}`;
+  const cacheKey = getThumbCacheKey(sourceFileId, width, height, angleDeg, padPx);
   const cached = dxfThumbCache.get(cacheKey);
   if (cached) return cached;
 
@@ -89,10 +122,17 @@ export function buildThumbMarkup(
   if (item.sourceFileId !== undefined) {
     const width = large ? 760 : 112;
     const height = large ? 460 : 72;
-    const dataUrl = renderDxfThumbDataUrl(item.sourceFileId, width, height, 0, dxfThumbCache);
-    if (dataUrl) {
-      return `<img class="sb-thumb-real" src="${dataUrl}" alt="${esc(item.name)}" loading="lazy" />`;
-    }
+    return buildLazyThumbSlotMarkup({
+      sourceFileId: item.sourceFileId,
+      width,
+      height,
+      angleDeg: 0,
+      padPx: 0,
+      alt: item.name,
+      imgClass: 'sb-thumb-real',
+      fallbackMarkup: thumbSvg(item, large),
+      dxfThumbCache,
+    });
   }
   return thumbSvg(item, large);
 }
@@ -106,6 +146,7 @@ const SHEET_PART_COLORS = [
 export function buildSheetPlacementsMarkup(
   sheet: SheetResult,
   dxfThumbCache: Map<string, string>,
+  includeThumbs = false,
 ): string {
   const noGap = sheet.gap === 0;
   const safeW = Math.max(1, sheet.sheetWidth);
@@ -132,10 +173,22 @@ export function buildSheetPlacementsMarkup(
       const tRatio = p.w > 0 && p.h > 0 ? p.w / p.h : 1;
       const tW = tRatio >= 1 ? thumbSize : Math.round(thumbSize * tRatio);
       const tH = tRatio >= 1 ? Math.round(thumbSize / tRatio) : thumbSize;
-      const thumb = renderDxfThumbDataUrl(p.itemId, Math.max(4, tW), Math.max(4, tH), angle, dxfThumbCache, 1);
+      const thumbMarkup = includeThumbs
+        ? buildLazyThumbSlotMarkup({
+            sourceFileId: p.itemId,
+            width: Math.max(4, tW),
+            height: Math.max(4, tH),
+            angleDeg: angle,
+            padPx: 1,
+            alt: p.name,
+            imgClass: 'sb-sheet-part-img',
+            fallbackMarkup: '<span class="sb-sheet-part-fallback">DXF</span>',
+            dxfThumbCache,
+          })
+        : '<span class="sb-sheet-part-fallback">DXF</span>';
       return `
         <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;--part-color:${color};" title="${esc(p.name)}">
-          ${thumb ? `<img class="sb-sheet-part-img" src="${thumb}" alt="${esc(p.name)}" loading="lazy" />` : '<span class="sb-sheet-part-fallback">DXF</span>'}
+          ${thumbMarkup}
           <span class="sb-sheet-part-name">${esc(p.name)}</span>
         </div>
       `;
@@ -418,7 +471,7 @@ export function renderPreviewModal(
           </div>
         </div>
         <div class="sb-modal-sheet-body">
-          <div class="sb-modal-sheet-preview">${buildSheetPlacementsMarkup(sheet, dxfThumbCache)}</div>
+          <div class="sb-modal-sheet-preview">${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true)}</div>
           <div class="sb-modal-sheet-side">
             <div class="sb-modal-util-block">
               <div class="sb-modal-util-label">${t('setBuilder.utilization')}</div>
@@ -650,7 +703,7 @@ export function renderMain(
                   : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
                     <div class="sb-sheet-card">
                       <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache)}
+                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, false)}
                       <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
                       <div class="sb-sheet-actions">
                         <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
