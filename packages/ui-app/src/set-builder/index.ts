@@ -593,7 +593,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         { flatEntities: [...lf.doc.flatEntities], sourceDoc: lf.doc.source, fileName: lf.name },
         optiState,
         render,
-      );
+      ).then(() => {
+        if (optiState?.result) {
+          const saved = optiState.result.beforeEntities - optiState.result.afterEntities;
+          showToast(saved > 0
+            ? t('optimizer.doneSaved').replace('{n}', String(saved))
+            : t('optimizer.doneNoChange'));
+        }
+      });
       return;
     }
     if (action === 'opt-export-dxf') {

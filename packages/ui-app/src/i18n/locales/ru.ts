@@ -360,6 +360,8 @@ export const ru = {
   'optimizer.exportDxf': 'Экспорт DXF',
   'optimizer.exportReport': 'Отчёт JSON',
   'optimizer.openOptimizer': 'DXF Optimizer',
+  'optimizer.doneSaved': 'Готово: удалено {n} сущн.',
+  'optimizer.doneNoChange': 'Готово: изменений нет',
   'optimizer.rule.R1.name': 'R1: Нулевые сущности',
   'optimizer.rule.R1.desc': 'Удалить LINE len=0, ARC/CIRCLE r=0, POLYLINE с 1 точкой',
   'optimizer.rule.R4.name': 'R4: Дубликаты',

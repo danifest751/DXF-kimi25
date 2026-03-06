@@ -362,6 +362,8 @@ export const en: Record<TranslationKey, string> = {
   'optimizer.exportDxf': 'Export DXF',
   'optimizer.exportReport': 'Report JSON',
   'optimizer.openOptimizer': 'DXF Optimizer',
+  'optimizer.doneSaved': 'Done: removed {n} ent.',
+  'optimizer.doneNoChange': 'Done: no changes',
   'optimizer.rule.R1.name': 'R1: Zero-Length Entities',
   'optimizer.rule.R1.desc': 'Remove LINE len=0, ARC/CIRCLE r=0, POLYLINE with 1 point',
   'optimizer.rule.R4.name': 'R4: Duplicates',

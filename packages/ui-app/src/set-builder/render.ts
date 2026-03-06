@@ -51,7 +51,7 @@ export function snapshotState(
 ): RenderSnapshot {
   return {
     libCount: state.library.length,
-    libIds: state.library.map((i) => `${i.id}:${i.sourceFileId}`).join(','),
+    libIds: state.library.map((i) => `${i.id}:${i.sourceFileId}:${i.catalog}`).join(','),
     setSize: state.set.size,
     setIds: [...state.set.entries()].map(([id, s]) => `${id}:${s.qty}`).join(','),
     activeTab: state.activeTab,
