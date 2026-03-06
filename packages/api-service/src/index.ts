@@ -708,7 +708,12 @@ app.post(['/api/library/files/direct-upload-init', '/api/library-files-direct-up
 });
 
 app.put(
-  ['/api/library/files/direct-upload/:fileId', '/api/library-files-direct-upload/:fileId'],
+  [
+    '/api/library/files/direct-upload',
+    '/api/library-files-direct-upload',
+    '/api/library/files/direct-upload/:fileId',
+    '/api/library-files-direct-upload/:fileId',
+  ],
   express.raw({ type: '*/*', limit: '200mb' }),
   async (req: Request, res: Response): Promise<void> => {
     try {
@@ -720,7 +725,10 @@ app.put(
       const workspaceId = await requireWorkspaceId(req, res);
       if (!workspaceId) return;
 
-      const fileId = typeof req.params.fileId === 'string' ? req.params.fileId : '';
+      const fileIdHeader = typeof req.header('x-file-id') === 'string' ? req.header('x-file-id')! : '';
+      const fileId = typeof req.params.fileId === 'string' && req.params.fileId.length > 0
+        ? req.params.fileId
+        : fileIdHeader;
       const nameHeader = typeof req.header('x-file-name') === 'string' ? req.header('x-file-name')! : '';
       const name = decodeHeaderFileName(nameHeader);
       const sizeBytes = Number(req.header('x-file-size') ?? NaN);

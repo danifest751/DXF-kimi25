@@ -292,11 +292,12 @@ describe('workspace library routes', () => {
       updatedAt: Date.now(),
     });
 
-    const response = await fetch(`${baseUrl}/api/library-files-direct-upload/file-direct-1`, {
+    const response = await fetch(`${baseUrl}/api/library-files-direct-upload`, {
       method: 'PUT',
       headers: {
         authorization: 'Bearer token-1',
         'content-type': 'application/dxf',
+        'x-file-id': 'file-direct-1',
         'x-file-name': 'part.dxf',
         'x-file-size': '3',
         'x-catalog-id': '',

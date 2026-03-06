@@ -48,11 +48,12 @@ export async function uploadWorkspaceFileAuthenticated(
   try {
     const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
     const directUpload = await apiUploadArrayBuffer<{ success: boolean; file: WorkspaceFileMeta }>(
-      `/api/library-files-direct-upload/${encodeURIComponent(init.upload.fileId)}`,
+      '/api/library-files-direct-upload',
       buffer,
       file.type || 'application/dxf',
       {
         ...getAuthHeaders(),
+        'x-file-id': init.upload.fileId,
         'x-file-name': encodeHeaderFileName(init.upload.name),
         'x-file-size': String(init.upload.sizeBytes),
         'x-catalog-id': init.upload.catalogId ?? '',
