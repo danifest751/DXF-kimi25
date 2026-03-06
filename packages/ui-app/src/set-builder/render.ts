@@ -92,9 +92,9 @@ export function renderDxfThumbDataUrl(
   const cy = bb!.min.y + bbH / 2;
   const pixelSize = 1 / scale;
   const opts: EntityRenderOptions = {
-    arcSegments: 64,
-    splineSegments: 64,
-    ellipseSegments: 64,
+    arcSegments: 16,
+    splineSegments: 16,
+    ellipseSegments: 16,
     pixelSize,
     viewExtent: Math.max(bbW, bbH) * 2,
   };
@@ -109,7 +109,7 @@ export function renderDxfThumbDataUrl(
   }
   ctx.restore();
 
-  const dataUrl = canvas.toDataURL('image/png');
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
   dxfThumbCache.set(cacheKey, dataUrl);
   return dataUrl;
 }

@@ -53,6 +53,7 @@ export async function reloadWorkspaceTree(input: {
     refreshFileListOnly,
     loadRemoteWorkspaceFile,
   });
+  window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 0, batchDone: true } }));
 }
 
 function applyWorkspaceTreeState(input: {
@@ -169,7 +170,7 @@ async function hydrateWorkspaceTreeFiles(input: {
                 setActiveFile(placeholder.id);
               }
               refreshFileMetrics();
-              window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 0 } }));
+              window.dispatchEvent(new CustomEvent('dxf-file-ready', { detail: { fileId: placeholder.id } }));
             }
           })
           .catch((err) => {

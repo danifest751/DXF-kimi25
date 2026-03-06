@@ -55,6 +55,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let batchState: BatchOptimizerState | null = null;
   let thumbQueueToken = 0;
   let thumbQueueTimer: ReturnType<typeof setTimeout> | null = null;
+  let fileReadyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingReadyFileIds = new Set<number>();
 
   function setToastState(msg: string): void {
     toastText = msg;
@@ -297,8 +299,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (filesUpdatedFrameId !== null) return;
     filesUpdatedFrameId = window.requestAnimationFrame(() => {
       filesUpdatedFrameId = null;
-      dxfThumbCache.clear();
       if (pendingFilesUpdatedAdded > 0) {
+        dxfThumbCache.clear();
         setToastState(t('setBuilder.toast.filesSynced'));
       }
       pendingFilesUpdatedAdded = 0;
@@ -862,7 +864,32 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   // ─── global events ───────────────────────────────────────────────────
   window.addEventListener('dxf-files-updated', (e) => {
-    scheduleFilesUpdatedRender((e as CustomEvent<{ added: number }>).detail?.added ?? 0);
+    const detail = (e as CustomEvent<{ added: number; batchDone?: boolean }>).detail;
+    const added = detail?.added ?? 0;
+    if (detail?.batchDone) {
+      if (fileReadyDebounceTimer !== null) { clearTimeout(fileReadyDebounceTimer); fileReadyDebounceTimer = null; }
+      pendingReadyFileIds.clear();
+      scheduleFilesUpdatedRender(added);
+    } else {
+      scheduleFilesUpdatedRender(added);
+    }
+  });
+
+  window.addEventListener('dxf-file-ready', (e) => {
+    if (!state.open) return;
+    const fileId = (e as CustomEvent<{ fileId: number }>).detail?.fileId;
+    if (fileId) {
+      const keys = [...dxfThumbCache.keys()].filter((k) => k.startsWith(`${fileId}:`));
+      for (const k of keys) dxfThumbCache.delete(k);
+      pendingReadyFileIds.add(fileId);
+    }
+    if (fileReadyDebounceTimer !== null) clearTimeout(fileReadyDebounceTimer);
+    fileReadyDebounceTimer = setTimeout(() => {
+      fileReadyDebounceTimer = null;
+      pendingReadyFileIds.clear();
+      if (renderFrameId !== null) return;
+      renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });
+    }, 150);
   });
 
   window.addEventListener(AUTH_SESSION_EVENT, () => {
