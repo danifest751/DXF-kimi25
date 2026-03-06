@@ -23,12 +23,18 @@ export interface RenderSnapshot {
   search: string;
   sortBy: string;
   sortDir: string;
+  selectedCount: number;
+  catalogFilter: string;
+  mode: string;
+  sheetPresetId: string;
+  previewShowPierces: boolean;
   previewLibraryId: number | null;
   previewSheetId: string | null;
   optimizerOpenForId: number | null;
   materialModalOpenForId: number | null;
   loading: boolean;
   resultsId: string;
+  resultsSheets: number;
   openMenuLibraryId: number | null;
   authToken: string;
   locale: string;
@@ -52,12 +58,18 @@ export function snapshotState(
     search: state.search,
     sortBy: state.sortBy,
     sortDir: state.sortDir,
+    selectedCount: state.selectedLibraryIds.size,
+    catalogFilter: state.catalogFilter,
+    mode: state.mode,
+    sheetPresetId: state.sheetPresetId,
+    previewShowPierces: state.previewShowPierces,
     previewLibraryId: state.previewLibraryId,
     previewSheetId: state.previewSheetId,
     optimizerOpenForId: state.optimizerOpenForId,
     materialModalOpenForId: state.materialModalOpenForId,
     loading: state.loading,
     resultsId: lastEngineResult ? String(lastEngineResult.totalPlaced) + ':' + lastEngineResult.sheets.length : '',
+    resultsSheets: state.results?.sheets.length ?? 0,
     openMenuLibraryId: state.openMenuLibraryId,
     authToken: authSessionToken.slice(0, 8),
     locale: getLocale(),
