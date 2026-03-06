@@ -4,7 +4,7 @@
  * Загрузка/удаление файлов, reload библиотеки с сервера.
  */
 
-import { apiGetJSON, apiPatchJSON, apiPostJSON, apiUploadArrayBufferToSignedUrl, apiUploadFormDataJSON, arrayBufferToBase64 } from './api.js';
+import { apiGetJSON, apiPatchJSON, apiPostJSON, arrayBufferToBase64 } from './api.js';
 import { tx } from './i18n/index.js';
 import type { LoadedFile, UICuttingStats, WorkspaceCatalog } from './types.js';
 import {
@@ -19,23 +19,24 @@ import {
 } from './dom.js';
 import { getAuthHeaders, saveGuestDraft } from './auth.js';
 import type { WorkspaceFileMeta } from './auth.js';
-import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
+import {
+  loadRemoteWorkspaceFile as loadRemoteWorkspaceFileImpl,
+  uploadWorkspaceFileAuthenticated as uploadWorkspaceFileAuthenticatedImpl,
+} from './workspace-remote-files.js';
+import { createWorkspaceUiBridgeController } from './workspace-ui-bridge.js';
 import { computeCuttingStats } from '../../core-engine/src/cutting/index.js';
+import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 
 // ─── Callbacks ───────────────────────────────────────────────────────
 
 type VoidFn = () => void;
 
-let _renderCatalogFilter: VoidFn = () => {};
-let _renderFileList: VoidFn = () => {};
-let _recalcTotals: VoidFn = () => {};
-let _updateNestItems: VoidFn = () => {};
-let _setActiveFile: (id: number) => void = () => {};
-let _syncWelcomeVisibility: VoidFn = () => {};
-let _computeStats: (base64: string, doc: LoadedFile['doc']) => Promise<UICuttingStats> = async (_, doc) => {
+const workspaceUiBridge = createWorkspaceUiBridgeController({
+ computeStats: async (_, doc) => {
   const s = computeCuttingStats(doc);
   return { totalPierces: s.totalPierces, totalCutLength: s.totalCutLength, cuttingEntityCount: s.cuttingEntityCount, chains: s.chains };
-};
+ },
+});
 
 export function initWorkspaceCallbacks(cbs: {
   renderCatalogFilter: VoidFn;
@@ -46,13 +47,7 @@ export function initWorkspaceCallbacks(cbs: {
   syncWelcomeVisibility: VoidFn;
   computeStats: (base64: string, doc: LoadedFile['doc']) => Promise<UICuttingStats>;
 }): void {
-  _renderCatalogFilter    = cbs.renderCatalogFilter;
-  _renderFileList         = cbs.renderFileList;
-  _recalcTotals           = cbs.recalcTotals;
-  _updateNestItems        = cbs.updateNestItems;
-  _setActiveFile          = cbs.setActiveFile;
-  _syncWelcomeVisibility  = cbs.syncWelcomeVisibility;
-  _computeStats           = cbs.computeStats;
+  workspaceUiBridge.init(cbs);
 }
 
 // ─── Interfaces ──────────────────────────────────────────────────────
@@ -61,57 +56,6 @@ export interface LibraryTreeResponse {
   readonly success: boolean;
   readonly catalogs: WorkspaceCatalog[];
   readonly files: WorkspaceFileMeta[];
-}
-
-interface DirectUploadTicket {
-  readonly fileId: string;
-  readonly workspaceId: string;
-  readonly catalogId: string | null;
-  readonly name: string;
-  readonly storagePath: string;
-  readonly sizeBytes: number;
-  readonly checked: boolean;
-  readonly quantity: number;
-  readonly signedUrl: string;
-  readonly token: string;
-}
-
-interface DirectUploadInitResponse {
-  readonly success: boolean;
-  readonly upload: DirectUploadTicket;
-}
-
-async function uploadWorkspaceFileAuthenticated(file: File, buffer: ArrayBuffer): Promise<WorkspaceFileMeta> {
-  const payload = {
-    name: file.name,
-    sizeBytes: file.size,
-    catalogId: getPreferredUploadCatalogId(),
-    checked: true,
-    quantity: 1,
-  };
-
-  try {
-    const init = await apiPostJSON<DirectUploadInitResponse>('/api/library-files-direct-upload-init', payload, getAuthHeaders());
-    await apiUploadArrayBufferToSignedUrl(init.upload.signedUrl, buffer, file.type || 'application/dxf');
-    const finalize = await apiPostJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-direct-upload-complete', {
-      fileId: init.upload.fileId,
-      name: init.upload.name,
-      sizeBytes: init.upload.sizeBytes,
-      catalogId: init.upload.catalogId,
-      checked: init.upload.checked,
-      quantity: init.upload.quantity,
-    }, getAuthHeaders());
-    return finalize.file;
-  } catch (error) {
-    console.warn('Direct upload failed, falling back to multipart upload:', error);
-    const formData = new FormData();
-    formData.append('file', file, file.name);
-    formData.append('catalogId', getPreferredUploadCatalogId() ?? '');
-    formData.append('checked', 'true');
-    formData.append('quantity', '1');
-    const uploadResp = await apiUploadFormDataJSON<{ success: boolean; file: WorkspaceFileMeta }>('/api/library-files-upload', formData, getAuthHeaders());
-    return uploadResp.file;
-  }
 }
 
 // ─── Catalog helpers ─────────────────────────────────────────────────
@@ -146,145 +90,123 @@ export function isFileInSelectedCatalogs(file: LoadedFile): boolean {
 }
 
 export function syncWelcomeVisibility(): void {
-  _syncWelcomeVisibility();
+  workspaceUiBridge.syncWelcomeVisibility();
 }
 
 export function refreshCatalogSelectionViews(): void {
-  _renderCatalogFilter();
-  _renderFileList();
-  _recalcTotals();
-  _updateNestItems();
+  workspaceUiBridge.refreshCatalogSelectionViews();
 }
 
 // ─── Remote file loading ─────────────────────────────────────────────
 
 export async function loadRemoteWorkspaceFile(meta: WorkspaceFileMeta): Promise<LoadedFile> {
-  const dl = await apiGetJSON<{ success: boolean; name: string; base64: string; sizeBytes: number }>(
-    `/api/library-files-download?fileId=${encodeURIComponent(meta.id)}`,
-    getAuthHeaders(),
-  );
-  // base64 → ArrayBuffer без побайтового цикла
-  const binStr = atob(dl.base64);
-  const bytes = Uint8Array.from(binStr, (c) => c.charCodeAt(0));
-  const buffer = bytes.buffer;
-  const parsed = await parseDXFInWorker(buffer);
-  const stats = await _computeStats(dl.base64, parsed.document);
-  return {
-    id: bumpNextFileId(),
-    remoteId: meta.id,
-    workspaceId: meta.workspaceId,
-    catalogId: meta.catalogId,
-    name: meta.name,
-    doc: parsed.document,
-    stats,
-    checked: meta.checked,
-    quantity: meta.quantity,
-    sizeBytes: dl.sizeBytes,
+  return loadRemoteWorkspaceFileImpl(meta, (base64, doc) => workspaceUiBridge.computeStats(base64, doc));
+}
+
+function applyWorkspaceTreeState(tree: LibraryTreeResponse): void {
+  workspaceCatalogs.splice(0, workspaceCatalogs.length, ...tree.catalogs);
+  loadedFiles.splice(0, loadedFiles.length);
+
+  selectedCatalogIds.clear();
+  for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
+  if (tree.files.some((file) => file.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+}
+
+function createLoadingPlaceholders(tree: LibraryTreeResponse): void {
+  const EMPTY_STATS: import('./types.js').UICuttingStats = {
+    totalPierces: 0, totalCutLength: 0, cuttingEntityCount: 0, chains: [],
   };
+
+  for (const meta of tree.files) {
+    const placeholder: import('./types.js').LoadedFile = {
+      id: bumpNextFileId(),
+      remoteId: meta.id,
+      workspaceId: meta.workspaceId,
+      catalogId: meta.catalogId,
+      name: meta.name,
+      doc: null as unknown as import('../../core-engine/src/normalize/index.js').NormalizedDocument,
+      stats: EMPTY_STATS,
+      checked: meta.checked,
+      quantity: meta.quantity,
+      loading: true,
+    };
+    loadedFiles.push(placeholder);
+  }
+}
+
+function syncInitialWorkspaceTreeView(): void {
+  if (loadedFiles.length > 0) {
+    workspaceUiBridge.setActiveFile(loadedFiles[0]!.id);
+  } else {
+    setActiveFileId(-1);
+    renderer.clearDocument();
+  }
+  workspaceUiBridge.refreshWorkspaceView();
+}
+
+async function hydrateWorkspaceTreeFiles(tree: LibraryTreeResponse): Promise<void> {
+  const CONCURRENCY = 4;
+  let nextIdx = 0;
+  let active = 0;
+
+  await new Promise<void>((resolve) => {
+    function startNext(): void {
+      while (active < CONCURRENCY && nextIdx < tree.files.length) {
+        const meta = tree.files[nextIdx]!;
+        const placeholder = loadedFiles.find((file) => file.remoteId === meta.id);
+        nextIdx++;
+        active++;
+
+        loadRemoteWorkspaceFile(meta)
+          .then((loaded) => {
+            if (placeholder) {
+              placeholder.doc = loaded.doc;
+              placeholder.stats = loaded.stats;
+              placeholder.loading = false;
+              placeholder.loadError = undefined;
+              placeholder.sizeBytes = loaded.sizeBytes;
+              if (placeholder.id === loadedFiles[0]?.id) {
+                workspaceUiBridge.setActiveFile(placeholder.id);
+              }
+              workspaceUiBridge.refreshFileMetrics();
+              window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 0 } }));
+            }
+          })
+          .catch((err) => {
+            console.warn(`Failed to load file "${meta.name}":`, err);
+            if (placeholder) {
+              placeholder.loading = false;
+              placeholder.loadError = err instanceof Error ? err.message : String(err);
+              workspaceUiBridge.refreshFileListOnly();
+            }
+          })
+          .finally(() => {
+            active--;
+            startNext();
+            if (active === 0) resolve();
+          });
+      }
+      if (active === 0) resolve();
+    }
+
+    startNext();
+  });
 }
 
 export async function reloadWorkspaceLibraryFromServer(): Promise<void> {
   if (!authSessionToken) return;
   try {
     const tree = await apiGetJSON<LibraryTreeResponse>('/api/library-tree', getAuthHeaders());
-    workspaceCatalogs.splice(0, workspaceCatalogs.length, ...tree.catalogs);
-    loadedFiles.splice(0, loadedFiles.length);
-
-    selectedCatalogIds.clear();
-    for (const catalog of workspaceCatalogs) selectedCatalogIds.add(catalog.id);
-    if (tree.files.some((f) => f.catalogId === null)) selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
-
-    // ── Шаг 1: сразу показываем все файлы в списке с loading=true ────────
-    const EMPTY_STATS: import('./types.js').UICuttingStats = {
-      totalPierces: 0, totalCutLength: 0, cuttingEntityCount: 0, chains: [],
-    };
-
-    for (const meta of tree.files) {
-      const placeholder: import('./types.js').LoadedFile = {
-        id: bumpNextFileId(),
-        remoteId: meta.id,
-        workspaceId: meta.workspaceId,
-        catalogId: meta.catalogId,
-        name: meta.name,
-        doc: null as unknown as import('../../core-engine/src/normalize/index.js').NormalizedDocument,
-        stats: EMPTY_STATS,
-        checked: meta.checked,
-        quantity: meta.quantity,
-        loading: true,
-      };
-      loadedFiles.push(placeholder);
-    }
-
-    if (loadedFiles.length > 0) {
-      _setActiveFile(loadedFiles[0]!.id);
-    } else {
-      setActiveFileId(-1);
-      renderer.clearDocument();
-    }
-    _renderCatalogFilter();
-    _renderFileList();
-    _recalcTotals();
-    _updateNestItems();
-    _syncWelcomeVisibility();
-
-    // ── Шаг 2: парсим файлы фоново, параллельность CONCURRENCY ───────────
-    const CONCURRENCY = 4;
-    let nextIdx = 0;
-    let active = 0;
-
-    await new Promise<void>((resolve) => {
-      function startNext(): void {
-        while (active < CONCURRENCY && nextIdx < tree.files.length) {
-          const meta = tree.files[nextIdx]!;
-          const placeholder = loadedFiles.find((f) => f.remoteId === meta.id);
-          nextIdx++;
-          active++;
-
-          loadRemoteWorkspaceFile(meta)
-            .then((loaded) => {
-              if (placeholder) {
-                placeholder.doc        = loaded.doc;
-                placeholder.stats      = loaded.stats;
-                placeholder.loading    = false;
-                placeholder.loadError  = undefined;
-                placeholder.sizeBytes  = loaded.sizeBytes;
-                // Если это активный файл — рендерим
-                if (placeholder.id === loadedFiles[0]?.id) {
-                  _setActiveFile(placeholder.id);
-                }
-                _renderFileList();
-                _recalcTotals();
-                _updateNestItems();
-                window.dispatchEvent(new CustomEvent('dxf-files-updated', { detail: { added: 0 } }));
-              }
-            })
-            .catch((err) => {
-              console.warn(`Failed to load file "${meta.name}":`, err);
-              if (placeholder) {
-                placeholder.loading   = false;
-                placeholder.loadError = err instanceof Error ? err.message : String(err);
-                _renderFileList();
-              }
-            })
-            .finally(() => {
-              active--;
-              startNext();
-              if (active === 0) resolve();
-            });
-        }
-        if (active === 0) resolve();
-      }
-      startNext();
-    });
+    applyWorkspaceTreeState(tree);
+    createLoadingPlaceholders(tree);
+    syncInitialWorkspaceTreeView();
+    await hydrateWorkspaceTreeFiles(tree);
 
   } catch (err) {
     console.error('reloadWorkspaceLibraryFromServer failed:', err);
   }
 
-  _renderCatalogFilter();
-  _renderFileList();
-  _recalcTotals();
-  _updateNestItems();
+  workspaceUiBridge.refreshCatalogSelectionViews();
 }
 
 // ─── File upload / remove ─────────────────────────────────────────────
@@ -310,11 +232,11 @@ export async function loadSingleFile(
     progressFill.style.width = '100%';
     setTimeout(() => progressBar.classList.add('hidden'), 400);
 
-    const stats = await _computeStats(base64, result.document);
+    const stats = await workspaceUiBridge.computeStats(base64, result.document);
 
     let entry: LoadedFile;
     if (authSessionToken) {
-      const uploadedFile = await uploadWorkspaceFileAuthenticated(file, buffer);
+      const uploadedFile = await uploadWorkspaceFileAuthenticatedImpl(file, buffer, getPreferredUploadCatalogId);
 
       entry = {
         id: bumpNextFileId(),
@@ -345,10 +267,7 @@ export async function loadSingleFile(
     }
     loadedFiles.push(entry);
     setActiveFileFn(entry.id);
-    _renderCatalogFilter();
-    _renderFileList();
-    _recalcTotals();
-    _updateNestItems();
+    workspaceUiBridge.refreshCatalogSelectionViews();
     saveGuestDraft();
   } catch (err) {
     progressBar.classList.add('hidden');
@@ -380,14 +299,11 @@ export async function removeFile(
     renderer.clearDocument();
     statusEntities.textContent = '';
     statusVersion.textContent = '';
-    _syncWelcomeVisibility();
+    workspaceUiBridge.syncWelcomeVisibility();
   } else if (activeFileId === id) {
     setActiveFileFn(loadedFiles[Math.min(idx, loadedFiles.length - 1)]!.id);
   }
-  _renderCatalogFilter();
-  _renderFileList();
-  _recalcTotals();
-  _updateNestItems();
+  workspaceUiBridge.refreshCatalogSelectionViews();
 }
 
 export async function toggleFileChecked(id: number): Promise<void> {
@@ -404,8 +320,6 @@ export async function toggleFileChecked(id: number): Promise<void> {
       console.error('Toggle file checked failed:', error);
     }
   }
-  _renderFileList();
-  _recalcTotals();
-  _updateNestItems();
+  workspaceUiBridge.refreshFileMetrics();
   saveGuestDraft();
 }

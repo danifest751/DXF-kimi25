@@ -49,16 +49,14 @@ import {
   dropOverlay, welcome,
 } from './dom.js';
 import {
-  initAuthCallbacks, restoreAuthSession, runTelegramLoginFlow,
+  restoreAuthSession, runTelegramLoginFlow,
   logoutWorkspace, applyAuthUiState, showAuthHint, getAuthHeaders, saveGuestDraft,
 } from './auth.js';
 import {
-  initWorkspaceCallbacks,
-  reloadWorkspaceLibraryFromServer, loadSingleFile, removeFile, toggleFileChecked,
+  reloadWorkspaceLibraryFromServer, loadSingleFile, toggleFileChecked,
   isFileInSelectedCatalogs,
 } from './workspace.js';
 import {
-  initSidebarCallbacks,
   renderCatalogFilter, renderFileList, recalcTotals, updateUploadTargetHint, updateBulkControlsUi,
 } from './sidebar.js';
 import {
@@ -81,6 +79,11 @@ import { createViewportSceneController } from './viewport-scene.js';
 import { initNestingControls } from './nesting-controls.js';
 import { initNestingZoomUi } from './nesting-zoom-ui.js';
 import { initToolbarActions } from './toolbar-actions.js';
+import { initMainModuleCallbacks } from './main-module-callbacks.js';
+import { createMainToolbarBridgeController } from './main-toolbar-bridge.js';
+import { createMainUiHelpersController } from './main-ui-helpers.js';
+import { createMainRuntimeUiController } from './main-runtime-ui.js';
+import { createViewerActionsController } from './viewer-actions.js';
 import { t, applyLocale, setLocale, getLocale, onLocaleChange } from './i18n/index.js';
 
 // ─── i18n init ───────────────────────────────────────────────────────
@@ -96,72 +99,41 @@ onLocaleChange(() => {
   updateBulkControlsUi();
 });
 
-// ─── Mode badge ───────────────────────────────────────────────────────
+const mainRuntimeUi = createMainRuntimeUiController({
+  btnNesting,
+  nestingPanel,
+  getCuttingComputeMode: () => cuttingComputeMode,
+  getNestingComputeMode: () => nestingComputeMode,
+  getNestingMode: () => nestingMode,
+  setCuttingComputeMode,
+  computeCuttingStats,
+});
 
-const modeBadge = document.createElement('div');
-modeBadge.style.cssText = 'position:fixed;right:12px;bottom:12px;padding:6px 10px;border-radius:8px;font:500 11px/1.2 system-ui,sans-serif;color:#e5e7eb;background:rgba(17,24,39,0.85);border:1px solid rgba(229,231,235,0.2);backdrop-filter:blur(4px);z-index:9999';
-// Показываем badge только в dev режиме
-if (import.meta.env.DEV) document.body.appendChild(modeBadge);
+const updateModeBadge = (): void => mainRuntimeUi.updateModeBadge();
+const updateNestingButtonState = (): void => mainRuntimeUi.updateNestingButtonState();
+const computeStatsFromBuffer = (base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> => mainRuntimeUi.computeStatsFromBuffer(base64, doc);
 
-function updateModeBadge(): void {
-  modeBadge.textContent = `Mode: cutting ${cuttingComputeMode.toUpperCase()} | nesting ${nestingComputeMode.toUpperCase()}`;
-}
 updateModeBadge();
-
-// ─── Nesting button state ─────────────────────────────────────────────
-
-function updateNestingButtonState(): void {
-  const panelOpen = !nestingPanel.classList.contains('hidden') || nestingPanel.classList.contains('mobile-open');
-  btnNesting.classList.toggle('active', panelOpen || nestingMode);
-}
-
-// ─── Computing stats ──────────────────────────────────────────────────
-
-async function computeStatsFromBuffer(base64: string, doc: LoadedFile['doc']): Promise<UICuttingStats> {
-  try {
-    const res = await apiPostJSON<{ success: boolean; data: UICuttingStats }>('/api/cutting-stats', { base64 });
-    setCuttingComputeMode('api');
-    updateModeBadge();
-    return res.data;
-  } catch {
-    const s = computeCuttingStats(doc);
-    setCuttingComputeMode('local');
-    updateModeBadge();
-    return { totalPierces: s.totalPierces, totalCutLength: s.totalCutLength, cuttingEntityCount: s.cuttingEntityCount, chains: s.chains };
-  }
-}
 
 // ─── Auth UI ──────────────────────────────────────────────────────────
 
-function updateAuthUi(): void {
-  applyAuthUiState(updateUploadTargetHint);
-}
+const mainUiHelpers = createMainUiHelpersController({
+  welcome,
+  renderer,
+  statusZoom,
+  statusEntities,
+  statusVersion,
+  loadedFiles,
+  renderFileList,
+  setActiveFileId,
+  updateUploadTargetHint,
+  applyAuthUiState,
+});
 
-// ─── setActiveFile ────────────────────────────────────────────────────
-
-function setActiveFile(id: number): void {
-  setActiveFileId(id);
-  const entry = loadedFiles.find(f => f.id === id);
-  if (!entry) return;
-  welcome.classList.toggle('hidden', loadedFiles.length > 0);
-  if (entry.loading || entry.doc == null) {
-    renderer.clearDocument();
-    statusEntities.textContent = '…';
-    statusVersion.textContent  = '';
-    renderFileList();
-    return;
-  }
-  renderer.setDocument(entry.doc);
-  renderer.setPiercePoints(entry.stats.chains.map(c => c.piercePoint));
-  updateStatusBar();
-  statusEntities.textContent = `${entry.doc.entityCount} obj`;
-  statusVersion.textContent  = entry.doc.source.metadata.version;
-  renderFileList();
-}
-
-function syncWelcomeVisibility(): void {
-  welcome.classList.toggle('hidden', loadedFiles.length > 0);
-}
+const updateAuthUi = (): void => mainUiHelpers.updateAuthUi();
+const setActiveFile = (id: number): void => mainUiHelpers.setActiveFile(id);
+const syncWelcomeVisibility = (): void => mainUiHelpers.syncWelcomeVisibility();
+const updateStatusBar = (): void => mainUiHelpers.updateStatusBar();
 
 const viewportScene = createViewportSceneController({
   container,
@@ -203,6 +175,15 @@ createCanvasInteractionController({
   setZoomPanning,
 });
 
+const viewerActions = createViewerActionsController({
+  fileIngest,
+  inspectorPanel,
+  renderer,
+  updateStatusBar,
+  getShowGrid: () => showGrid,
+  setShowGrid,
+});
+
 const mobileUi = createMobileUiController({
   mobileBackdrop,
   sidebarFiles,
@@ -211,21 +192,29 @@ const mobileUi = createMobileUiController({
   shortcutsOverlay,
   shortcutsClose,
   updateNestingButtonState,
-  onOpenFileDialog: () => fileIngest.openFileDialog(),
-  onZoomToFit: () => {
-    renderer.zoomToFit();
-    updateStatusBar();
-  },
-  onToggleGrid: () => {
-    setShowGrid(!showGrid);
-    renderer.requestRedraw();
-  },
+  onOpenFileDialog: viewerActions.openFileDialog,
+  onZoomToFit: viewerActions.zoomToFit,
+  onToggleGrid: viewerActions.toggleGrid,
   onExitNesting: exitNestingMode,
-  onClearSelection: () => {
-    renderer.clearSelection();
-    inspectorPanel.clearInspector();
-  },
+  onClearSelection: viewerActions.clearSelection,
   getNestingMode: () => nestingMode,
+});
+
+const mainToolbarBridge = createMainToolbarBridgeController({
+  authSessionToken,
+  getAuthHeaders,
+  loadedFiles,
+  renderCatalogFilter,
+  renderFileList,
+  recalcTotals,
+  saveGuestDraft,
+  selectedCatalogIds,
+  showCatalogAddAuthRequiredMessage: () => t('catalog.add.authRequired'),
+  formatCatalogCreateErrorMessage: (error) => t('catalog.add.error', { msg: error instanceof Error ? error.message : String(error) }),
+  promptCatalogName: () => prompt(t('catalog.add.prompt'))?.trim() ?? '',
+  updateNestItems,
+  workspaceCatalogs,
+  isFileInSelectedCatalogs,
 });
 
 initToolbarActions({
@@ -252,84 +241,41 @@ initToolbarActions({
   renderer,
   mobileUi,
   updateStatusBar,
-  openFileDialog: () => fileIngest.openFileDialog(),
-  toggleGrid: () => {
-    setShowGrid(!showGrid);
-    renderer.requestRedraw();
-  },
+  openFileDialog: viewerActions.openFileDialog,
+  toggleGrid: viewerActions.toggleGrid,
   runTelegramLoginFlow,
   logoutWorkspace,
-  getVisibleFiles: () => loadedFiles.filter((file) => isFileInSelectedCatalogs(file)),
-  isAuthenticated: () => authSessionToken.length > 0,
+  getVisibleFiles: () => mainToolbarBridge.getVisibleFiles(),
+  isAuthenticated: () => mainToolbarBridge.isAuthenticated(),
   getAuthHeaders,
-  getCatalogIdsForBulkAction: () => ({
-    catalogIds: [...selectedCatalogIds].filter((id) => id !== '__uncategorized__'),
-    includeUncategorized: selectedCatalogIds.has('__uncategorized__'),
-  }),
-  onBulkCheckApplied: () => {
-    renderFileList();
-    recalcTotals();
-    updateNestItems();
-    saveGuestDraft();
-  },
+  getCatalogIdsForBulkAction: () => mainToolbarBridge.getCatalogIdsForBulkAction(),
+  onBulkCheckApplied: () => mainToolbarBridge.onBulkCheckApplied(),
   showAuthHint,
-  promptCatalogName: () => prompt(t('catalog.add.prompt'))?.trim() ?? '',
-  createCatalog: async (name) => {
-    const response = await apiPostJSON<{ success: boolean; catalog: import('./types.js').WorkspaceCatalog }>('/api/library-catalogs', {
-      name,
-    }, getAuthHeaders());
-    return response.catalog;
-  },
-  onCatalogCreated: (catalog) => {
-    workspaceCatalogs.push(catalog);
-    selectedCatalogIds.add(catalog.id);
-    renderCatalogFilter();
-    renderFileList();
-  },
+  promptCatalogName: () => mainToolbarBridge.promptCatalogName(),
+  createCatalog: (name) => mainToolbarBridge.createCatalog(name),
+  onCatalogCreated: (catalog) => mainToolbarBridge.onCatalogCreated(catalog),
   getCurrentNestResult: () => currentNestResult,
   exportFullNestingDXF,
   exportAllSheetsDXF,
   copyAllHashes,
-  getCatalogAuthRequiredMessage: () => t('catalog.add.authRequired'),
-  getCatalogCreateErrorMessage: (error) => t('catalog.add.error', { msg: error instanceof Error ? error.message : String(error) }),
+  getCatalogAuthRequiredMessage: () => mainToolbarBridge.getCatalogAuthRequiredMessage(),
+  getCatalogCreateErrorMessage: (error) => mainToolbarBridge.getCatalogCreateErrorMessage(error),
 });
 
 // ─── Init callbacks ───────────────────────────────────────────────────
 
-initAuthCallbacks({
+initMainModuleCallbacks({
   updateAuthUi,
   renderCatalogFilter,
   renderFileList,
   recalcTotals,
   updateNestItems,
-  computeStats: computeStatsFromBuffer,
+  computeStatsFromBuffer,
   setActiveFile,
-  reloadFromServer: reloadWorkspaceLibraryFromServer,
-});
-
-initWorkspaceCallbacks({
-  renderCatalogFilter,
-  renderFileList,
-  recalcTotals,
-  updateNestItems,
-  setActiveFile,
+  reloadWorkspaceLibraryFromServer,
   syncWelcomeVisibility,
-  computeStats: computeStatsFromBuffer,
+  toggleFileChecked,
 });
-
-initSidebarCallbacks({
-  toggleFileChecked: (id) => toggleFileChecked(id),
-  removeFile: (id) => removeFile(id, setActiveFile),
-  setActiveFile,
-  recalcTotals,
-  updateNestItems,
-});
-
-// ─── Status bar ───────────────────────────────────────────────────────
-
-function updateStatusBar(): void {
-  statusZoom.textContent = `${(renderer.camera.zoom * 100).toFixed(0)}%`;
-}
 
 // ─── Resize ───────────────────────────────────────────────────────────
 

@@ -7,25 +7,30 @@ import { apiGetJSON, apiPostJSON, apiUploadFormDataJSON } from './api.js';
 import {
   clearGuestDraftSnapshot,
   guestDraftBinaryStorageAvailable,
-  loadGuestDraftContent,
-  loadGuestDraftPointers,
   saveGuestDraftSnapshot,
 } from './guest-draft-storage.js';
+import {
+  base64ToArrayBuffer,
+  base64ToBlob,
+  loadGuestDraftFiles,
+  type ResolvedGuestDraftFile,
+  saveLegacyGuestDraft,
+} from './auth-guest-draft-helpers.js';
 import { t } from './i18n/index.js';
-import type { LoadedFile, WorkspaceCatalog } from './types.js';
+import type { LoadedFile } from './types.js';
 import {
   authSessionToken, authWorkspaceId,
   setAuthSession, clearAuthSession,
   AUTH_TOKEN_STORAGE_KEY, GUEST_DRAFT_STORAGE_KEY,
   UNCATEGORIZED_CATALOG_ID,
   workspaceCatalogs, selectedCatalogIds,
-  loadedFiles, activeFileId,
-  nextFileId, bumpNextFileId, setActiveFileId,
+  loadedFiles, bumpNextFileId, setActiveFileId,
   renderer,
 } from './state.js';
 import {
   btnAuthLogin, btnAuthLogout, btnAddCatalog, authWorkspace, welcome,
 } from './dom.js';
+import { createAuthUiBridgeController } from './auth-ui-bridge.js';
 import { parseDXFInWorker } from '../../core-engine/src/workers/index.js';
 
 export const AUTH_SESSION_EVENT = 'dxf-auth-session-changed';
@@ -51,27 +56,6 @@ export interface AuthMeResponse {
   readonly expiresAt: string;
 }
 
-export interface GuestDraftFile {
-  readonly name: string;
-  readonly base64: string;
-  readonly checked: boolean;
-  readonly quantity: number;
-  readonly catalogId: string | null;
-}
-
-export interface GuestDraftPayload {
-  readonly version: 1;
-  readonly files: GuestDraftFile[];
-}
-
-interface GuestDraftStoredFile {
-  readonly id: string;
-  readonly name: string;
-  readonly checked: boolean;
-  readonly quantity: number;
-  readonly catalogId: string | null;
-}
-
 export interface WorkspaceFileMeta {
   readonly id: string;
   readonly workspaceId: string;
@@ -85,25 +69,16 @@ export interface WorkspaceFileMeta {
   readonly updatedAt: number;
 }
 
-interface ResolvedGuestDraftFile extends GuestDraftStoredFile {
-  readonly base64: string;
-}
-
 // ─── Callbacks (заполняются из main.ts после инициализации) ──────────
 
 type VoidFn = () => void;
 type AsyncVoidFn = () => Promise<void>;
 
-let _updateAuthUi: VoidFn = () => {};
-let _renderCatalogFilter: VoidFn = () => {};
-let _renderFileList: VoidFn = () => {};
-let _recalcTotals: VoidFn = () => {};
-let _updateNestItems: VoidFn = () => {};
-let _computeStats: (base64: string, doc: LoadedFile['doc']) => Promise<LoadedFile['stats']> = async () => ({
-  totalPierces: 0, totalCutLength: 0, cuttingEntityCount: 0, chains: [],
+const authUiBridge = createAuthUiBridgeController({
+  computeStats: async () => ({
+    totalPierces: 0, totalCutLength: 0, cuttingEntityCount: 0, chains: [],
+  }),
 });
-let _setActiveFile: (id: number) => void = () => {};
-let _reloadFromServer: AsyncVoidFn = async () => {};
 
 export function initAuthCallbacks(cbs: {
   updateAuthUi: VoidFn;
@@ -115,14 +90,7 @@ export function initAuthCallbacks(cbs: {
   setActiveFile: (id: number) => void;
   reloadFromServer: AsyncVoidFn;
 }): void {
-  _updateAuthUi        = cbs.updateAuthUi;
-  _renderCatalogFilter = cbs.renderCatalogFilter;
-  _renderFileList      = cbs.renderFileList;
-  _recalcTotals        = cbs.recalcTotals;
-  _updateNestItems     = cbs.updateNestItems;
-  _computeStats        = cbs.computeStats;
-  _setActiveFile       = cbs.setActiveFile;
-  _reloadFromServer    = cbs.reloadFromServer;
+  authUiBridge.init(cbs);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -135,162 +103,82 @@ export function getAuthHeaders(): Record<string, string> {
 
 export function showAuthHint(message: string, timeoutMs = 2200): void {
   authWorkspace.textContent = message;
-  window.setTimeout(() => _updateAuthUi(), timeoutMs);
+  window.setTimeout(() => authUiBridge.updateAuthUi(), timeoutMs);
 }
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+function toLegacyGuestDraftFiles(snapshot: Array<{
+  name: string;
+  base64: string;
+  checked: boolean;
+  quantity: number;
+  catalogId: string | null;
+}>): Array<{
+  name: string;
+  base64: string;
+  checked: boolean;
+  quantity: number;
+  catalogId: string | null;
+}> {
+  return snapshot.map((file) => ({
+    name: file.name,
+    base64: file.base64,
+    checked: file.checked,
+    quantity: file.quantity,
+    catalogId: file.catalogId,
+  }));
 }
 
-function base64ToBlob(base64: string, type = 'application/dxf'): Blob {
-  return new Blob([base64ToArrayBuffer(base64)], { type });
+function saveLegacyGuestDraftSnapshot(snapshot: Array<{
+  name: string;
+  base64: string;
+  checked: boolean;
+  quantity: number;
+  catalogId: string | null;
+}>): void {
+  saveLegacyGuestDraft(GUEST_DRAFT_STORAGE_KEY, toLegacyGuestDraftFiles(snapshot));
 }
 
-// ─── Guest draft ─────────────────────────────────────────────────────
-
-function saveLegacyGuestDraft(files: GuestDraftFile[]): void {
-  const payload: GuestDraftPayload = { version: 1, files };
-  localStorage.setItem(GUEST_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+function resetWorkspaceToGuestState(): void {
+  workspaceCatalogs.splice(0, workspaceCatalogs.length);
+  selectedCatalogIds.clear();
+  loadedFiles.splice(0, loadedFiles.length);
+  setActiveFileId(-1);
+  renderer.clearDocument();
+  welcome.classList.remove('hidden');
 }
 
-async function loadGuestDraftFiles(): Promise<ResolvedGuestDraftFile[]> {
-  const storedFiles = loadGuestDraftPointers(GUEST_DRAFT_STORAGE_KEY);
-  if (storedFiles.length > 0) {
-    const resolved: ResolvedGuestDraftFile[] = [];
-    for (const file of storedFiles) {
-      const base64 = await loadGuestDraftContent(file.id);
-      if (!base64) continue;
-      resolved.push({ ...file, base64 });
-    }
-    return resolved;
-  }
+async function restoreGuestDraftFilesIntoWorkspace(guestFiles: ResolvedGuestDraftFile[]): Promise<void> {
+  const MAX_GUEST_FILE_SIZE_B64 = 270_000_000;
+  const MAX_GUEST_FILES = 50;
+  let restored = 0;
 
-  const raw = localStorage.getItem(GUEST_DRAFT_STORAGE_KEY) ?? '';
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as GuestDraftPayload;
-    if (parsed.version !== 1 || !Array.isArray(parsed.files)) return [];
-    const legacyFiles = parsed.files.filter((file) => typeof file?.base64 === 'string' && file.base64.length > 0);
-    if (!guestDraftBinaryStorageAvailable()) {
-      return legacyFiles.map((file, index) => ({ id: `legacy_${index}`, ...file }));
-    }
-    const migrated = await saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, legacyFiles.map((file) => ({
+  for (const file of guestFiles) {
+    if (restored >= MAX_GUEST_FILES) break;
+    if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
+    restored++;
+    const buffer = base64ToArrayBuffer(file.base64);
+    const result = await parseDXFInWorker(buffer);
+    const stats = await authUiBridge.computeStats(file.base64, result.document);
+    loadedFiles.push({
+      id: bumpNextFileId(),
+      remoteId: '',
+      workspaceId: '',
+      catalogId: null,
+      guestDraftId: file.id,
       name: file.name,
-      base64: file.base64,
+      localBase64: file.base64,
+      doc: result.document,
+      stats,
       checked: Boolean(file.checked),
       quantity: Math.max(1, Number(file.quantity) || 1),
-      catalogId: file.catalogId,
-    })));
-    return migrated.map((file, index) => ({ ...file, base64: legacyFiles[index]!.base64 }));
-  } catch {
-    return [];
-  }
-}
-
-export function saveGuestDraft(): void {
-  if (authSessionToken) return;
-  const guestFiles = loadedFiles.filter((f) => typeof f.localBase64 === 'string' && f.localBase64.length > 0);
-  const snapshot = guestFiles.map((f) => ({
-    id: f.guestDraftId,
-    name: f.name,
-    base64: f.localBase64!,
-    checked: f.checked,
-    quantity: f.quantity,
-    catalogId: f.catalogId,
-  }));
-  if (!guestDraftBinaryStorageAvailable()) {
-    saveLegacyGuestDraft(snapshot.map((file) => ({
-      name: file.name,
-      base64: file.base64,
-      checked: file.checked,
-      quantity: file.quantity,
-      catalogId: file.catalogId,
-    })));
-    return;
-  }
-  void saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot)
-    .then((storedFiles) => {
-      storedFiles.forEach((file, index) => {
-        const target = guestFiles[index];
-        if (target) target.guestDraftId = file.id;
-      });
-    })
-    .catch(() => {
-      saveLegacyGuestDraft(snapshot.map((file) => ({
-        name: file.name,
-        base64: file.base64,
-        checked: file.checked,
-        quantity: file.quantity,
-        catalogId: file.catalogId,
-      })));
     });
-}
-
-export async function clearGuestDraft(): Promise<void> {
-  await clearGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY);
-}
-
-export async function restoreGuestDraft(): Promise<void> {
-  try {
-    const guestFiles = await loadGuestDraftFiles();
-    if (guestFiles.length === 0) return;
-
-    workspaceCatalogs.splice(0, workspaceCatalogs.length);
-    selectedCatalogIds.clear();
-    loadedFiles.splice(0, loadedFiles.length);
-
-    const MAX_GUEST_FILE_SIZE_B64 = 270_000_000; // ~200 MB
-    const MAX_GUEST_FILES = 50;
-    let restored = 0;
-    for (const file of guestFiles) {
-      if (restored >= MAX_GUEST_FILES) break;
-      if (!file.base64 || file.base64.length > MAX_GUEST_FILE_SIZE_B64) continue;
-      restored++;
-      const buffer = base64ToArrayBuffer(file.base64);
-      const result = await parseDXFInWorker(buffer);
-      const stats = await _computeStats(file.base64, result.document);
-      loadedFiles.push({
-        id: bumpNextFileId(),
-        remoteId: '',
-        workspaceId: '',
-        catalogId: null,
-        guestDraftId: file.id,
-        name: file.name,
-        localBase64: file.base64,
-        doc: result.document,
-        stats,
-        checked: Boolean(file.checked),
-        quantity: Math.max(1, Number(file.quantity) || 1),
-      });
-    }
-
-    if (loadedFiles.length > 0) {
-      selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
-      _setActiveFile(loadedFiles[0]!.id);
-    }
-
-    _renderCatalogFilter();
-    _renderFileList();
-    _recalcTotals();
-    _updateNestItems();
-  } catch (error) {
-    console.error('Restore guest draft failed:', error);
   }
 }
 
-export async function migrateGuestDraftToWorkspace(): Promise<void> {
-  if (!authSessionToken) return;
-  const guestFiles = await loadGuestDraftFiles();
-  if (guestFiles.length === 0) {
-    await clearGuestDraft();
-    return;
-  }
-
+async function migrateGuestDraftFilesToWorkspace(guestFiles: ResolvedGuestDraftFile[]): Promise<void> {
   const MAX_MIGRATE_FILES = 50;
   let migrated = 0;
+
   for (const file of guestFiles) {
     if (migrated >= MAX_MIGRATE_FILES) break;
     if (!file.name.toLowerCase().endsWith('.dxf')) continue;
@@ -307,6 +195,69 @@ export async function migrateGuestDraftToWorkspace(): Promise<void> {
       console.warn('Failed to migrate file:', file.name, err instanceof Error ? err.message : String(err));
     }
   }
+}
+
+// ─── Guest draft ─────────────────────────────────────────────────────
+
+export function saveGuestDraft(): void {
+  if (authSessionToken) return;
+  const guestFiles = loadedFiles.filter((f) => typeof f.localBase64 === 'string' && f.localBase64.length > 0);
+  const snapshot = guestFiles.map((f) => ({
+    id: f.guestDraftId,
+    name: f.name,
+    base64: f.localBase64!,
+    checked: f.checked,
+    quantity: f.quantity,
+    catalogId: f.catalogId,
+  }));
+  if (!guestDraftBinaryStorageAvailable()) {
+    saveLegacyGuestDraftSnapshot(snapshot);
+    return;
+  }
+  void saveGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY, snapshot)
+    .then((storedFiles) => {
+      storedFiles.forEach((file, index) => {
+        const target = guestFiles[index];
+        if (target) target.guestDraftId = file.id;
+      });
+    })
+    .catch(() => {
+      saveLegacyGuestDraftSnapshot(snapshot);
+    });
+}
+
+export async function clearGuestDraft(): Promise<void> {
+  await clearGuestDraftSnapshot(GUEST_DRAFT_STORAGE_KEY);
+}
+
+export async function restoreGuestDraft(): Promise<void> {
+  try {
+    const guestFiles = await loadGuestDraftFiles(GUEST_DRAFT_STORAGE_KEY);
+    if (guestFiles.length === 0) return;
+
+    resetWorkspaceToGuestState();
+    await restoreGuestDraftFilesIntoWorkspace(guestFiles);
+
+    if (loadedFiles.length > 0) {
+      selectedCatalogIds.add(UNCATEGORIZED_CATALOG_ID);
+      authUiBridge.setActiveFile(loadedFiles[0]!.id);
+    }
+
+    authUiBridge.refreshWorkspaceViews();
+  } catch (error) {
+    console.error('Restore guest draft failed:', error);
+  }
+}
+
+export async function migrateGuestDraftToWorkspace(): Promise<void> {
+  if (!authSessionToken) return;
+  const guestFiles = await loadGuestDraftFiles(GUEST_DRAFT_STORAGE_KEY);
+  if (guestFiles.length === 0) {
+    await clearGuestDraft();
+    return;
+  }
+
+  await migrateGuestDraftFilesToWorkspace(guestFiles);
   await clearGuestDraft();
 }
 
@@ -329,21 +280,13 @@ export async function logoutWorkspace(): Promise<void> {
   }
   clearAuthSession();
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  _updateAuthUi();
+  authUiBridge.updateAuthUi();
   emitAuthSessionChanged();
 
-  workspaceCatalogs.splice(0, workspaceCatalogs.length);
-  selectedCatalogIds.clear();
-  loadedFiles.splice(0, loadedFiles.length);
-  setActiveFileId(-1);
-  renderer.clearDocument();
-  welcome.classList.remove('hidden');
+  resetWorkspaceToGuestState();
 
   await restoreGuestDraft();
-  _renderCatalogFilter();
-  _renderFileList();
-  _recalcTotals();
-  _updateNestItems();
+  authUiBridge.refreshWorkspaceViews();
 }
 
 export async function restoreAuthSession(): Promise<void> {
@@ -355,14 +298,14 @@ export async function restoreAuthSession(): Promise<void> {
     if (!me.authenticated) throw new Error('Session rejected');
     setAuthSession(COOKIE_SESSION_TOKEN, me.workspaceId);
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    _updateAuthUi();
+    authUiBridge.updateAuthUi();
     emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();
-    await _reloadFromServer();
+    await authUiBridge.reloadFromServer();
   } catch {
     clearAuthSession();
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    _updateAuthUi();
+    authUiBridge.updateAuthUi();
     emitAuthSessionChanged();
     await restoreGuestDraft();
   }
@@ -375,10 +318,10 @@ export async function runTelegramLoginFlow(): Promise<void> {
     const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-telegram-exchange-code', { code });
     setAuthSession(COOKIE_SESSION_TOKEN, response.workspaceId);
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    _updateAuthUi();
+    authUiBridge.updateAuthUi();
     emitAuthSessionChanged();
     await migrateGuestDraftToWorkspace();
-    await _reloadFromServer();
+    await authUiBridge.reloadFromServer();
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     showAuthHint(t('auth.codeInvalid'));
