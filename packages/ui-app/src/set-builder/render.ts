@@ -49,6 +49,8 @@ export interface RenderSnapshot {
   openMenuLibraryId: number | null;
   authToken: string;
   locale: string;
+  catalogsKey: string;
+  loadedFilesKey: string;
   optiPhase: string;
   batchPhase: string;
 }
@@ -95,6 +97,8 @@ export function snapshotState(
     openMenuLibraryId: state.openMenuLibraryId,
     authToken: authSessionToken.slice(0, 8),
     locale: getLocale(),
+    catalogsKey: workspaceCatalogs.map((c) => c.id).join(','),
+    loadedFilesKey: loadedFiles.map((f) => `${f.id}:${f.loading ? 'l' : 'r'}`).join(','),
     optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
   };
