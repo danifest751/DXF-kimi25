@@ -557,7 +557,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'opt-export-dxf') {
-      if (optiState?.result) downloadOptimizedDxf(optiState.result);
+      if (optiState?.result) void downloadOptimizedDxf(optiState.result);
       return;
     }
     if (action === 'opt-export-report') {

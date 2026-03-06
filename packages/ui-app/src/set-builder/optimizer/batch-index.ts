@@ -231,10 +231,18 @@ export async function downloadBatchZip(bState: BatchOptimizerState): Promise<voi
   if (doneEntries.length === 0) return;
 
   const enc = new TextEncoder();
-  const files = doneEntries.map((entry) => ({
-    name: entry.name.replace(/\.dxf$/i, '') + '_optimized.dxf',
-    data: enc.encode(serializeEntitiesToDxf(entry.optimizedEntities!)),
-  }));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const files: { name: string; data: Uint8Array }[] = [];
+  for (let i = 0; i < doneEntries.length; i++) {
+    const entry = doneEntries[i]!;
+    files.push({
+      name: entry.name.replace(/\.dxf$/i, '') + '_optimized.dxf',
+      data: enc.encode(serializeEntitiesToDxf(entry.optimizedEntities!)),
+    });
+    if ((i + 1) % 2 === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
 
   const zipBytes = buildZip(files);
   const blob = new Blob([zipBytes], { type: 'application/zip' });

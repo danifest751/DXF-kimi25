@@ -77,8 +77,9 @@ export async function optimizeFile(
   }
 }
 
-export function downloadOptimizedDxf(result: OptimizationResult): void {
+export async function downloadOptimizedDxf(result: OptimizationResult): Promise<void> {
   const baseName = result.fileName.replace(/\.dxf$/i, '');
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   const dxf = serializeEntitiesToDxf(result.optimizedEntities);
   const blob = new Blob([dxf], { type: 'application/dxf' });
   const url = URL.createObjectURL(blob);
