@@ -40,7 +40,8 @@ export async function optimizeFile(
   oState.phase = 'optimizing';
   render();
 
-  await new Promise<void>((r) => setTimeout(r, 0));
+  // Two rAF ticks: first lets render() flush to DOM, second lets browser paint
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
   try {
     const beforeEntities = input.flatEntities.length;
