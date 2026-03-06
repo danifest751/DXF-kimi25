@@ -23,7 +23,7 @@ export function createInitialState(): SetBuilderState {
     sortBy: 'name',
     sortDir: 'asc',
     activeTab: 'library',
-    open: false,
+    open: true,
     loading: false,
     nestingPhase: 'idle',
     previewLibraryId: null,

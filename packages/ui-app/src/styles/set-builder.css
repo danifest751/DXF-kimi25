@@ -8,6 +8,19 @@
 
 .set-builder.hidden { display: none; }
 
+#app.set-builder-primary-active > .toolbar,
+#app.set-builder-primary-active > .statusbar {
+  display: none;
+}
+
+#app.set-builder-primary-active > .main {
+  position: relative;
+}
+
+#app.set-builder-primary-active > .main > :not(#set-builder-root) {
+  display: none !important;
+}
+
 .sb-shell {
   height: 100%;
   display: flex;

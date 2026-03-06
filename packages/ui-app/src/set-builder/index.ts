@@ -33,6 +33,7 @@ import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import { renderBatchModal } from './optimizer/batch-render.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
+  const appRoot = document.getElementById('app') as HTMLDivElement | null;
   const state = createInitialState();
   state.library = [];
   let sheetPresets: SheetPreset[] = [...SHEET_PRESETS];
@@ -191,6 +192,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     applyPendingMaterials(state);
     root.classList.toggle('hidden', !state.open);
     root.setAttribute('aria-hidden', state.open ? 'false' : 'true');
+    appRoot?.classList.toggle('set-builder-primary-active', state.open);
     trigger.classList.toggle('active', state.open);
     if (!state.open) {
       persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
