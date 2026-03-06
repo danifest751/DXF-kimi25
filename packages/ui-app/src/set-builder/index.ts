@@ -61,6 +61,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let fileReadyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingReadyFileIds = new Set<number>();
   let prevAuthToken = authSessionToken;
+  let menuAnchorRect: { top: number; right: number } | null = null;
 
   function setToastState(msg: string): void {
     toastText = msg;
@@ -243,6 +244,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       thumbQueue.schedule();
     } else {
       patchToast(root, toastText);
+    }
+    // Position open dropdown menu using fixed coords captured at click time
+    if (state.openMenuLibraryId !== null && menuAnchorRect) {
+      const menu = root.querySelector<HTMLElement>('.sb-menu.open');
+      if (menu) {
+        menu.style.top = `${menuAnchorRect.top}px`;
+        menu.style.right = `${menuAnchorRect.right}px`;
+      }
     }
     persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
     applyModalPierceCanvas(root, modalCanvasState, state);
@@ -507,7 +516,18 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'copy-all-hashes') { void copyAllHashes(); return; }
-    if (action === 'toggle-menu') { state.openMenuLibraryId = state.openMenuLibraryId === id ? null : id; scheduleRender(); return; }
+    if (action === 'toggle-menu') {
+      if (state.openMenuLibraryId === id) {
+        state.openMenuLibraryId = null;
+        menuAnchorRect = null;
+      } else {
+        const rect = button.getBoundingClientRect();
+        state.openMenuLibraryId = id;
+        menuAnchorRect = { top: rect.bottom + 2, right: window.innerWidth - rect.right };
+      }
+      scheduleRender();
+      return;
+    }
     if (action === 'menu-delete') {
       void removeLibraryItem(state, id, showToast).then((removed) => {
         if (!removed) return;
