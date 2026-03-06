@@ -40,6 +40,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let customSheetHeightMm = 2000;
   let toastText = '';
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let filesUpdatedFrameId: number | null = null;
+  let pendingFilesUpdatedAdded = 0;
   let lastPickedLibraryId: number | null = null;
   let draggedLibraryId: number | null = null;
   let dragOverCatalogEl: HTMLElement | null = null;
@@ -50,10 +52,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let optiState: OptimizerState | null = null;
   let batchState: BatchOptimizerState | null = null;
 
-  function showToast(msg: string): void {
+  function setToastState(msg: string): void {
     toastText = msg;
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toastText = ''; render(); }, 1800);
+  }
+
+  function showToast(msg: string): void {
+    setToastState(msg);
     render();
   }
 
@@ -201,6 +207,21 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   function toggleOpen(next?: boolean): void {
     state.open = typeof next === 'boolean' ? next : !state.open;
     render();
+  }
+
+  function scheduleFilesUpdatedRender(added: number): void {
+    if (!state.open) return;
+    pendingFilesUpdatedAdded += added;
+    if (filesUpdatedFrameId !== null) return;
+    filesUpdatedFrameId = window.requestAnimationFrame(() => {
+      filesUpdatedFrameId = null;
+      dxfThumbCache.clear();
+      if (pendingFilesUpdatedAdded > 0) {
+        setToastState(t('setBuilder.toast.filesSynced'));
+      }
+      pendingFilesUpdatedAdded = 0;
+      render();
+    });
   }
 
   async function copyHash(hash: string): Promise<void> {
@@ -759,10 +780,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   // ─── global events ───────────────────────────────────────────────────
   window.addEventListener('dxf-files-updated', (e) => {
-    if (!state.open) return;
-    dxfThumbCache.clear();
-    render();
-    if ((e as CustomEvent<{ added: number }>).detail?.added > 0) showToast(t('setBuilder.toast.filesSynced'));
+    scheduleFilesUpdatedRender((e as CustomEvent<{ added: number }>).detail?.added ?? 0);
   });
 
   window.addEventListener(AUTH_SESSION_EVENT, () => {
