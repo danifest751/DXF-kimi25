@@ -10,6 +10,19 @@ import { canRunNesting, getSetRows } from './state.js';
 import type { SheetPreset } from './context.js';
 import { SHEET_PRESETS } from './mock-data.js';
 
+function yieldFrame(): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+async function serializeNestingAsync(
+  nestingResult: NestingResult,
+  itemDocs: Map<number, ItemDocData>,
+): Promise<string> {
+  await yieldFrame();
+  const dxfStr = exportNestingToDXF({ nestingResult, itemDocs });
+  return dxfStr;
+}
+
 export function getActiveSheetPreset(
   state: SetBuilderState,
   presets: ReadonlyArray<SheetPreset>,
@@ -143,14 +156,14 @@ export function buildSingleSheetResult(
   };
 }
 
-export function exportSheetByIndex(
+export async function exportSheetByIndex(
   lastEngineResult: NestingResult,
   lastItemDocs: Map<number, ItemDocData>,
   sheetIndex: number,
-): boolean {
+): Promise<boolean> {
   const singleResult = buildSingleSheetResult(lastEngineResult, sheetIndex);
   if (!singleResult) return false;
-  const dxfStr = exportNestingToDXF({ nestingResult: singleResult, itemDocs: lastItemDocs });
+  const dxfStr = await serializeNestingAsync(singleResult, lastItemDocs);
   const blob = new Blob([dxfStr], { type: 'application/dxf' });
   downloadBlob(blob, `set_builder_sheet_${sheetIndex + 1}.dxf`);
   return true;

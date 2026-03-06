@@ -549,13 +549,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'export-sheet') {
       const idx = Number(button.dataset.index ?? '-1');
       if (!Number.isFinite(idx) || idx < 0 || !lastEngineResult) { showToast(t('setBuilder.toast.noResultToExport')); return; }
-      if (exportSheetByIndex(lastEngineResult, lastItemDocs, idx)) showToast(t('setBuilder.toast.sheetExported'));
+      void exportSheetByIndex(lastEngineResult, lastItemDocs, idx).then((ok) => { if (ok) showToast(t('setBuilder.toast.sheetExported')); });
       return;
     }
     if (action === 'export-all') {
       if (!lastEngineResult || lastEngineResult.sheets.length === 0) { showToast(t('setBuilder.toast.noResultToExport')); return; }
-      for (let i = 0; i < lastEngineResult.sheets.length; i++) exportSheetByIndex(lastEngineResult, lastItemDocs, i);
-      showToast(t('setBuilder.toast.allSheetsExported'));
+      void (async () => {
+        for (let i = 0; i < lastEngineResult!.sheets.length; i++) await exportSheetByIndex(lastEngineResult!, lastItemDocs, i);
+        showToast(t('setBuilder.toast.allSheetsExported'));
+      })();
       return;
     }
     if (action === 'copy-all-hashes') { void copyAllHashes(); return; }

@@ -135,7 +135,7 @@ export async function serializeEntitiesToDxfAsync(
 
 export async function serializeEntitiesToDxfBytesAsync(
   entities: FlattenedEntity[],
-  chunkSize = 100,
+  chunkSize = 50,
 ): Promise<Uint8Array> {
   const parts: Uint8Array[] = [encodeText([
     '0\nSECTION',
