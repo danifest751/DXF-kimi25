@@ -95,7 +95,7 @@ interface PendingNestingContext {
   readonly lastNesting: NestingResult | null;
   readonly variants: readonly SavedNestingVariant[];
   readonly activeVariantIndex: number | null;
-  readonly awaitingInput: 'none' | 'quantity' | 'custom_sheet';
+  readonly awaitingInput: 'none' | 'quantity' | 'custom_sheet' | 'add_file';
 }
 
 const PREVIEW_WIDTH = 1280;
@@ -983,6 +983,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       }
 
       if (action === 'hint_add_file') {
+        setNestingContext(chatId, { ...context, awaitingInput: 'add_file' });
         await telegramSendMessage(token, chatId, s.hintAddFile);
         return;
       }
@@ -1205,7 +1206,10 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       const result = analyzeDXF(dxfBuffer);
       const defaultSheet = SHEET_PRESETS[1]?.size ?? SHEET_PRESETS[0]!.size;
       const current = chatNestingContext.get(chatId);
-      const context: PendingNestingContext = current === undefined
+      // Append to existing session only when user explicitly clicked "Add file" button.
+      // Otherwise always start fresh (new DXF = new session, preserving sheet/gap/mode).
+      const isAddingFile = current !== undefined && current.awaitingInput === 'add_file';
+      const context: PendingNestingContext = (current === undefined || !isAddingFile)
         ? {
             locale: userLocale,
             fileNames: [fileName],
@@ -1213,10 +1217,10 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
             items: result.nestingItems.map((entry) => entry.item),
             itemDocs: new Map(result.nestingItems.map((entry) => [entry.item.id, entry.itemDoc] as const)),
             nextItemId: result.nestingItems.length + 1,
-            quantity: 1,
-            sheet: { ...defaultSheet },
-            gap: 5,
-            mode: 'precise',
+            quantity: current?.quantity ?? 1,
+            sheet: current?.sheet ?? { ...defaultSheet },
+            gap: current?.gap ?? 5,
+            mode: current?.mode ?? 'precise',
             previewJpeg: result.previewJpeg,
             lastNesting: null,
             variants: [],
@@ -1304,7 +1308,14 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       return;
     }
 
-    if (message.text === '/start' || message.text === '/help' || message.text === '/menu') {
+    if (message.text === '/start') {
+      chatNestingContext.delete(chatId);
+      chatNestingContextLastUsed.delete(chatId);
+      await telegramSendMessage(token, chatId, ts.startNoContext);
+      return;
+    }
+
+    if (message.text === '/help' || message.text === '/menu') {
       if (pending !== undefined) {
         await sendDashboard(token, chatId, pending);
       } else {
