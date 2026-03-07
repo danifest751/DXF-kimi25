@@ -567,28 +567,13 @@ export interface SplitPart {
  * @returns Массив деталей, упорядоченных слева-направо, сверху-вниз
  */
 export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, gap = 0): SplitPart[] {
-  interface Cluster {
-    chainIndices: number[];
-    flatEntityIndices: Set<number>;
-    minX: number; minY: number; maxX: number; maxY: number;
-  }
 
-  const clusters: Cluster[] = [];
+  // ── Step 1: compute per-chain bbox ───────────────────────────────
+  type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
-  function bboxesOverlap(
-    a: { minX: number; minY: number; maxX: number; maxY: number },
-    b: { minX: number; minY: number; maxX: number; maxY: number },
-  ): boolean {
-    return a.minX - gap <= b.maxX && a.maxX + gap >= b.minX && a.minY - gap <= b.maxY && a.maxY + gap >= b.minY;
-  }
-
-  for (let ci = 0; ci < stats.chains.length; ci++) {
-    const chain = stats.chains[ci]!;
-
-    // Compute bbox of this chain from its entity indices
+  const chainBBoxes: (BBox | null)[] = stats.chains.map((chain) => {
     let minX = Infinity; let minY = Infinity;
     let maxX = -Infinity; let maxY = -Infinity;
-
     for (const eidx of chain.entityIndices) {
       const fe = doc.flatEntities[eidx];
       if (!fe) continue;
@@ -603,43 +588,70 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
       for (const x of xs) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
       for (const y of ys) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
     }
+    return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+  });
 
-    if (!Number.isFinite(minX)) continue;
+  function bboxesOverlap(a: BBox, b: BBox): boolean {
+    return a.minX - gap <= b.maxX && a.maxX + gap >= b.minX &&
+           a.minY - gap <= b.maxY && a.maxY + gap >= b.minY;
+  }
 
-    const chainBBox = { minX, minY, maxX, maxY };
+  // ── Step 2: Union-Find over all chain pairs whose bbox overlap ────
+  // This correctly handles transitive connections (L/U/C shapes) in one pass.
+  const n = stats.chains.length;
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
 
-    // Find overlapping cluster(s) and merge
-    const overlappingIdx: number[] = [];
-    for (let k = 0; k < clusters.length; k++) {
-      if (bboxesOverlap(clusters[k]!, chainBBox)) overlappingIdx.push(k);
+  function find(x: number): number {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]!]!; x = parent[x]!; }
+    return x;
+  }
+  function union(a: number, b: number): void {
+    const ra = find(a); const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const bi = chainBBoxes[i];
+    if (!bi) continue;
+    for (let j = i + 1; j < n; j++) {
+      const bj = chainBBoxes[j];
+      if (!bj) continue;
+      if (bboxesOverlap(bi, bj)) union(i, j);
     }
+  }
 
-    if (overlappingIdx.length === 0) {
-      // New cluster
-      const feSet = new Set<number>(chain.entityIndices);
-      clusters.push({ chainIndices: [ci], flatEntityIndices: feSet, minX, minY, maxX, maxY });
-    } else {
-      // Merge all overlapping clusters + this chain into the first one
-      const base = clusters[overlappingIdx[0]!]!;
-      base.chainIndices.push(ci);
-      for (const eidx of chain.entityIndices) base.flatEntityIndices.add(eidx);
-      base.minX = Math.min(base.minX, minX);
-      base.minY = Math.min(base.minY, minY);
-      base.maxX = Math.max(base.maxX, maxX);
-      base.maxY = Math.max(base.maxY, maxY);
+  // ── Step 3: group chains by Union-Find root ───────────────────────
+  const groupMap = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    if (!chainBBoxes[i]) continue;
+    const root = find(i);
+    let arr = groupMap.get(root);
+    if (!arr) { arr = []; groupMap.set(root, arr); }
+    arr.push(i);
+  }
 
-      // Merge remaining overlapping clusters into base (reverse to avoid index shift)
-      for (let k = overlappingIdx.length - 1; k >= 1; k--) {
-        const other = clusters[overlappingIdx[k]!]!;
-        base.chainIndices.push(...other.chainIndices);
-        for (const fe of other.flatEntityIndices) base.flatEntityIndices.add(fe);
-        base.minX = Math.min(base.minX, other.minX);
-        base.minY = Math.min(base.minY, other.minY);
-        base.maxX = Math.max(base.maxX, other.maxX);
-        base.maxY = Math.max(base.maxY, other.maxY);
-        clusters.splice(overlappingIdx[k]!, 1);
-      }
+  // ── Step 4: build cluster bbox + entity set per group ─────────────
+  interface Cluster {
+    chainIndices: number[];
+    flatEntityIndices: Set<number>;
+    minX: number; minY: number; maxX: number; maxY: number;
+  }
+
+  const clusters: Cluster[] = [];
+  for (const chainIndices of groupMap.values()) {
+    let minX = Infinity; let minY = Infinity;
+    let maxX = -Infinity; let maxY = -Infinity;
+    const flatEntityIndices = new Set<number>();
+    for (const ci of chainIndices) {
+      const bb = chainBBoxes[ci]!;
+      if (bb.minX < minX) minX = bb.minX;
+      if (bb.minY < minY) minY = bb.minY;
+      if (bb.maxX > maxX) maxX = bb.maxX;
+      if (bb.maxY > maxY) maxY = bb.maxY;
+      for (const eidx of stats.chains[ci]!.entityIndices) flatEntityIndices.add(eidx);
     }
+    clusters.push({ chainIndices, flatEntityIndices, minX, minY, maxX, maxY });
   }
 
   // Sort clusters: top-to-bottom, left-to-right
