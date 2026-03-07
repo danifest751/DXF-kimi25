@@ -443,10 +443,8 @@ function extractNestingItems(normalized: NormalizedDocument, stats: ReturnType<t
     });
   }
 
-  if (items.length > 0) {
-    return items;
-  }
-
+  // Always treat the whole file as one part using total bbox
+  void items;
   const total = normalized.totalBBox;
   if (total === null) return [];
 
