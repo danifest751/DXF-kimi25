@@ -149,10 +149,17 @@ async function telegramSendMessageWithKeyboard(
   keyboardRows: readonly (readonly InlineBtn[])[],
   parseMode: 'HTML' | '' = '',
 ): Promise<void> {
+  const cleanedRows = keyboardRows.map((row) =>
+    row.map((btn) => {
+      if ('web_app' in btn && btn.web_app) return { text: btn.text, web_app: btn.web_app };
+      const { style: _style, web_app: _wa, ...rest } = btn as { text: string; callback_data: string; style?: string; web_app?: never };
+      return rest;
+    }),
+  );
   const params: Record<string, string> = {
     chat_id: String(chatId),
     text,
-    reply_markup: JSON.stringify({ inline_keyboard: keyboardRows }),
+    reply_markup: JSON.stringify({ inline_keyboard: cleanedRows }),
   };
   if (parseMode) params.parse_mode = parseMode;
   await telegramGet(token, 'sendMessage', params);

@@ -91,31 +91,43 @@
   [data-a="close"],
   [data-a="lang-toggle"] { display: none !important; }
 
-  /* ── Главный грид: одна колонка, заполняет всё ── */
+  /* ── Главный грид: одна колонка, растягивается на всю высоту ── */
   .sb-main {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    padding: 0;
+    display: block !important;
     overflow: hidden;
+    padding: 0;
+    position: relative;
   }
 
-  /* ── Панели: скрыты по умолчанию, показываются по активному табу ── */
+  /* ── Панели: position absolute, полный размер, скрыты по умолчанию ── */
   .sb-left,
   .sb-right {
-    display: none;
-    min-height: 0;
-    height: 100%;
+    position: absolute !important;
+    inset: 0;
+    display: flex !important;
+    flex-direction: column;
     overflow-y: auto;
     padding: 8px;
     box-sizing: border-box;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
   }
 
   /* Файлы/Результаты — показываем когда активна "library" или "results" */
   .sb-main[data-active-tab="library"] .sb-left,
-  .sb-main[data-active-tab="results"] .sb-left { display: flex; }
+  .sb-main[data-active-tab="results"] .sb-left {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+  }
 
   /* Раскладка — показываем когда активна "nesting" */
-  .sb-main[data-active-tab="nesting"] .sb-right { display: flex; flex-direction: column; }
+  .sb-main[data-active-tab="nesting"] .sb-right {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+  }
 
   /* ── Нижняя навигация ── */
   .sb-mobile-nav {
