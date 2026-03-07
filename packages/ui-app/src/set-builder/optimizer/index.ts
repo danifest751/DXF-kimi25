@@ -17,8 +17,8 @@ export async function analyzeFile(
   oState.result = null;
   render();
 
-  // Async yield to let UI update before heavy computation
-  await new Promise<void>((r) => setTimeout(r, 0));
+  // Two rAF ticks: first lets render() flush to DOM, second lets browser paint the spinner
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
   try {
     oState.diagnostics = runDiagnostics(input.flatEntities);
