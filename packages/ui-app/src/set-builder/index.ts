@@ -34,6 +34,7 @@ import type { EntityRenderOptions } from '../../../core-engine/src/render/entity
 import { DXFEntityType } from '../../../core-engine/src/types/index.js';
 import { buildBatchEntries, analyzeBatchEntries, runBatchOptimization, downloadBatchZip, createBatchState, createDefaultPlan } from './optimizer/batch-index.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
+import { openSplitModal } from './split-modal.js';
 import { renderBatchModal } from './optimizer/batch-render.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
@@ -405,6 +406,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         else state.collapsedCatalogs.add(cat);
         scheduleRender();
       }
+      return;
+    }
+    if (action === 'split-file') {
+      const libId = Number(button.dataset.id);
+      const item = state.library.find((it) => it.id === libId);
+      if (item?.sourceFileId !== undefined) openSplitModal(state, item.sourceFileId, scheduleRender);
       return;
     }
 

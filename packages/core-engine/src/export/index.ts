@@ -536,6 +536,158 @@ export function exportNestingToCSV(options: ExportNestingCSVOptions): string {
   return lines.join('\n');
 }
 
+// ─── Split DXF по деталям ───────────────────────────────────────────
+
+/** Одна извлечённая деталь */
+export interface SplitPart {
+  /** Имя детали ("Part 1", "Part 2", …) */
+  readonly name: string;
+  /** ASCII DXF строка, смещённая к (0,0) */
+  readonly dxfString: string;
+  /** Bounding box в исходных координатах */
+  readonly bbox: { minX: number; minY: number; maxX: number; maxY: number };
+  /** Число цепочек/контуров */
+  readonly chainCount: number;
+  /** Ширина детали, мм */
+  readonly w: number;
+  /** Высота детали, мм */
+  readonly h: number;
+}
+
+/**
+ * Разбивает нормализованный DXF-документ на отдельные детали.
+ *
+ * Алгоритм:
+ * 1. Для каждой цепочки вычисляем bbox (по flatEntities цепочки).
+ * 2. Кластеризуем цепочки по пересечению bbox: пересекающиеся бокс → одна деталь.
+ * 3. Для каждого кластера строим DXF-файл со смещением к (0,0).
+ *
+ * @param doc - Нормализованный документ (уже с boundingBox на сущностях)
+ * @param stats - Статистика резки (содержит chains)
+ * @returns Массив деталей, упорядоченных слева-направо, сверху-вниз
+ */
+export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats): SplitPart[] {
+  interface Cluster {
+    chainIndices: number[];
+    flatEntityIndices: Set<number>;
+    minX: number; minY: number; maxX: number; maxY: number;
+  }
+
+  const clusters: Cluster[] = [];
+
+  function bboxesOverlap(
+    a: { minX: number; minY: number; maxX: number; maxY: number },
+    b: { minX: number; minY: number; maxX: number; maxY: number },
+  ): boolean {
+    return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+  }
+
+  for (let ci = 0; ci < stats.chains.length; ci++) {
+    const chain = stats.chains[ci]!;
+
+    // Compute bbox of this chain from its entity indices
+    let minX = Infinity; let minY = Infinity;
+    let maxX = -Infinity; let maxY = -Infinity;
+
+    for (const eidx of chain.entityIndices) {
+      const fe = doc.flatEntities[eidx];
+      if (!fe) continue;
+      const bb = fe.entity.boundingBox;
+      if (!bb) continue;
+      const p1 = mat4TransformPoint(fe.transform, bb.min);
+      const p2 = mat4TransformPoint(fe.transform, bb.max);
+      const p3 = mat4TransformPoint(fe.transform, { x: bb.max.x, y: bb.min.y, z: bb.min.z });
+      const p4 = mat4TransformPoint(fe.transform, { x: bb.min.x, y: bb.max.y, z: bb.min.z });
+      const xs = [p1.x, p2.x, p3.x, p4.x];
+      const ys = [p1.y, p2.y, p3.y, p4.y];
+      for (const x of xs) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
+      for (const y of ys) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
+    }
+
+    if (!Number.isFinite(minX)) continue;
+
+    const chainBBox = { minX, minY, maxX, maxY };
+
+    // Find overlapping cluster(s) and merge
+    const overlappingIdx: number[] = [];
+    for (let k = 0; k < clusters.length; k++) {
+      if (bboxesOverlap(clusters[k]!, chainBBox)) overlappingIdx.push(k);
+    }
+
+    if (overlappingIdx.length === 0) {
+      // New cluster
+      const feSet = new Set<number>(chain.entityIndices);
+      clusters.push({ chainIndices: [ci], flatEntityIndices: feSet, minX, minY, maxX, maxY });
+    } else {
+      // Merge all overlapping clusters + this chain into the first one
+      const base = clusters[overlappingIdx[0]!]!;
+      base.chainIndices.push(ci);
+      for (const eidx of chain.entityIndices) base.flatEntityIndices.add(eidx);
+      base.minX = Math.min(base.minX, minX);
+      base.minY = Math.min(base.minY, minY);
+      base.maxX = Math.max(base.maxX, maxX);
+      base.maxY = Math.max(base.maxY, maxY);
+
+      // Merge remaining overlapping clusters into base (reverse to avoid index shift)
+      for (let k = overlappingIdx.length - 1; k >= 1; k--) {
+        const other = clusters[overlappingIdx[k]!]!;
+        base.chainIndices.push(...other.chainIndices);
+        for (const fe of other.flatEntityIndices) base.flatEntityIndices.add(fe);
+        base.minX = Math.min(base.minX, other.minX);
+        base.minY = Math.min(base.minY, other.minY);
+        base.maxX = Math.max(base.maxX, other.maxX);
+        base.maxY = Math.max(base.maxY, other.maxY);
+        clusters.splice(overlappingIdx[k]!, 1);
+      }
+    }
+  }
+
+  // Sort clusters: top-to-bottom, left-to-right
+  clusters.sort((a, b) => {
+    const rowDiff = a.minY - b.minY;
+    return Math.abs(rowDiff) > 10 ? rowDiff : a.minX - b.minX;
+  });
+
+  const parts: SplitPart[] = [];
+  let handleBase = 1000;
+
+  for (let pi = 0; pi < clusters.length; pi++) {
+    const cluster = clusters[pi]!;
+    const { minX, minY, maxX, maxY } = cluster;
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+
+    // Build entities for this part, shifted to (0,0)
+    const entities: DXFEntity[] = [];
+    const srcCx = minX + w / 2;
+    const srcCy = minY + h / 2;
+    const destCx = w / 2;
+    const destCy = h / 2;
+
+    for (const eidx of cluster.flatEntityIndices) {
+      const fe = doc.flatEntities[eidx];
+      if (!fe) continue;
+      const transformed = transformEntity(fe, srcCx, srcCy, 1, 0, destCx, destCy, fe.effectiveLayer, handleBase);
+      for (const e of transformed) entities.push(e);
+      handleBase += Math.max(1, transformed.length);
+    }
+
+    const dxfDoc = createDXFDocument(entities);
+    const dxfString = dxfDocToAscii(dxfDoc);
+
+    parts.push({
+      name: `Part ${pi + 1}`,
+      dxfString,
+      bbox: { minX, minY, maxX, maxY },
+      chainCount: cluster.chainIndices.length,
+      w: Math.round(w),
+      h: Math.round(h),
+    });
+  }
+
+  return parts;
+}
+
 // ─── Главный экспорт ────────────────────────────────────────────────
 
 /** Типы экспорта */

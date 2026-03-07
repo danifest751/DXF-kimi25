@@ -11,7 +11,8 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit } from './icons.js';
+import { computeSplitParts } from './split-modal.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
@@ -349,6 +350,12 @@ export function buildLibraryRow(
       <div class="sb-actions">
         <button class="sb-btn" data-a="${inSet ? 'remove-set' : 'add-set'}" data-id="${item.id}">${inSet ? t('setBuilder.remove') : t('setBuilder.addToSet')}</button>
         <button class="sb-icon" data-a="preview-lib" data-id="${item.id}" title="${t('setBuilder.openPreview')}">${iconEye}</button>
+        ${item.sourceFileId !== undefined ? (() => {
+          const parts = computeSplitParts(item.sourceFileId);
+          const multiPart = parts !== null && parts.length > 1;
+          const title = multiPart ? t('split.splitFile') : t('split.cropToBbox');
+          return `<button class="sb-icon" data-a="split-file" data-id="${item.id}" title="${esc(title)}">${iconSplit}</button>`;
+        })() : ''}
         <button class="sb-icon" data-a="toggle-menu" data-id="${item.id}" title="${t('setBuilder.menu')}">${iconDots}</button>
         <div class="sb-menu ${menuOpen ? 'open' : ''}">
           <button data-a="menu-delete" data-id="${item.id}">${t('setBuilder.menu.delete')}</button>
