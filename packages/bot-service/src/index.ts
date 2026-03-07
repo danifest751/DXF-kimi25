@@ -152,8 +152,7 @@ async function telegramSendMessageWithKeyboard(
   const cleanedRows = keyboardRows.map((row) =>
     row.map((btn) => {
       if ('web_app' in btn && btn.web_app) return { text: btn.text, web_app: btn.web_app };
-      const { web_app: _wa, ...rest } = btn as { text: string; callback_data: string; style?: string; web_app?: never };
-      return rest;
+      return { text: btn.text, callback_data: (btn as { callback_data: string }).callback_data };
     }),
   );
   const params: Record<string, string> = {
@@ -661,8 +660,8 @@ function getModeLabel(mode: PendingNestingContext['mode'], s: ReturnType<typeof 
 }
 
 type InlineBtn =
-  | { text: string; callback_data: string; style?: 'primary' | 'destructive'; web_app?: never }
-  | { text: string; web_app: { url: string }; callback_data?: never; style?: never };
+  | { text: string; callback_data: string; web_app?: never }
+  | { text: string; web_app: { url: string }; callback_data?: never };
 type BtnRow = readonly InlineBtn[];
 type BtnGrid = readonly BtnRow[];
 
@@ -702,7 +701,7 @@ function buildHomeButtons(ctx: PendingNestingContext): BtnGrid {
   const hasResult = ctx.variants.length > 0;
   const rows: InlineBtn[][] = [
     [
-      { text: s.btnNesting, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting`, style: 'primary' },
+      { text: s.btnNesting, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
       { text: s.btnSettings, callback_data: `${ACTION_CALLBACK_PREFIX}settings` },
     ],
     [
@@ -715,12 +714,12 @@ function buildHomeButtons(ctx: PendingNestingContext): BtnGrid {
   }
   if (hasResult) {
     rows.push([
-      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf`, style: 'primary' },
+      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
       { text: s.btnCSV, callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
       { text: s.btnVariants(ctx.variants.length), callback_data: `${ACTION_CALLBACK_PREFIX}variants` },
     ]);
   }
-  rows.push([{ text: s.btnReset, callback_data: `${ACTION_CALLBACK_PREFIX}reset_confirm`, style: 'destructive' }]);
+  rows.push([{ text: s.btnReset, callback_data: `${ACTION_CALLBACK_PREFIX}reset_confirm` }]);
   return rows;
 }
 
@@ -758,7 +757,7 @@ function buildSettingsButtons(ctx: PendingNestingContext): BtnGrid {
       { text: s.btnModeLabel(s.modeCommon, m === 'common'), callback_data: `${ACTION_CALLBACK_PREFIX}mode_common` },
     ],
     [
-      { text: s.btnRun, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting`, style: 'primary' },
+      { text: s.btnRun, callback_data: `${ACTION_CALLBACK_PREFIX}run_nesting` },
       { text: s.btnBack, callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
     ],
   ];
@@ -788,7 +787,7 @@ function buildResultButtons(ctx: PendingNestingContext): BtnGrid {
   const s = getBotStrings(ctx.locale);
   return [
     [
-      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf`, style: 'primary' },
+      { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf` },
       { text: s.btnCSV, callback_data: `${ACTION_CALLBACK_PREFIX}export_csv` },
     ],
     [
@@ -1127,7 +1126,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
           token, chatId,
           s.resetConfirm(context.fileNames.length, context.variants.length),
           [[
-            { text: s.resetYes, callback_data: `${ACTION_CALLBACK_PREFIX}reset_yes`, style: 'destructive' },
+            { text: s.resetYes, callback_data: `${ACTION_CALLBACK_PREFIX}reset_yes` },
             { text: s.resetCancel, callback_data: `${ACTION_CALLBACK_PREFIX}menu` },
           ]],
         );
