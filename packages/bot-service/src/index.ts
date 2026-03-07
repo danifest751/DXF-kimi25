@@ -544,10 +544,11 @@ async function telegramSendMessage(token: string, chatId: number, text: string):
   });
 }
 
-async function telegramSendPhoto(token: string, chatId: number, photo: Buffer, caption: string): Promise<void> {
+async function telegramSendPhoto(token: string, chatId: number, photo: Buffer, caption: string, parseMode: 'HTML' | '' = ''): Promise<void> {
   const form = new FormData();
   form.append('chat_id', String(chatId));
   form.append('caption', caption);
+  if (parseMode) form.append('parse_mode', parseMode);
   form.append('photo', new Blob([new Uint8Array(photo)], { type: 'image/jpeg' }), 'preview.jpg');
 
   const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
@@ -1089,7 +1090,7 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
         ]);
         const variantName = `V${context.variants.length + 1}`;
 
-        await telegramSendPhoto(token, chatId, renderNestingPreview(nesting), composeResultCaption(context, variantName, nesting));
+        await telegramSendPhoto(token, chatId, renderNestingPreview(nesting), composeResultCaption(context, variantName, nesting), 'HTML');
 
         const variants = [...context.variants, { name: variantName, nesting, itemDocs: new Map(context.itemDocs) }];
         const next: PendingNestingContext = {
