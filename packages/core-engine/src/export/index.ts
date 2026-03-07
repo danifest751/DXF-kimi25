@@ -566,7 +566,7 @@ export interface SplitPart {
  * @param stats - Статистика резки (содержит chains)
  * @returns Массив деталей, упорядоченных слева-направо, сверху-вниз
  */
-export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats): SplitPart[] {
+export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, gap = 0): SplitPart[] {
   interface Cluster {
     chainIndices: number[];
     flatEntityIndices: Set<number>;
@@ -579,7 +579,7 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats):
     a: { minX: number; minY: number; maxX: number; maxY: number },
     b: { minX: number; minY: number; maxX: number; maxY: number },
   ): boolean {
-    return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+    return a.minX - gap <= b.maxX && a.maxX + gap >= b.minX && a.minY - gap <= b.maxY && a.maxY + gap >= b.minY;
   }
 
   for (let ci = 0; ci < stats.chains.length; ci++) {

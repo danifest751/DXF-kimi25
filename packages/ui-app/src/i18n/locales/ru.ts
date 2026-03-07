@@ -251,6 +251,7 @@ export const ru = {
   'split.downloadFiles': 'Скачать файлы',
   'split.downloadCropped': 'Скачать',
   'split.cancel': 'Отмена',
+  'split.gapLabel': 'Зазор (мм):',
   'setBuilder.removeFromSet': 'Удалить из набора',
   'setBuilder.addToSet': 'Добавить в набор',
   'setBuilder.utilization': 'Заполнение',

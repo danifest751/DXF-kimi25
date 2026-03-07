@@ -51,12 +51,12 @@ function safeBaseName(name: string): string {
 }
 
 /** Returns SplitPart[] for a given sourceFileId, or null if not computable */
-export function computeSplitParts(sourceFileId: number): SplitPart[] | null {
+export function computeSplitParts(sourceFileId: number, gap = 0): SplitPart[] | null {
   const lf = loadedFiles.find((f) => f.id === sourceFileId);
   if (!lf || !lf.doc) return null;
   try {
     const stats = computeCuttingStats(lf.doc);
-    return splitDXFIntoParts(lf.doc, stats);
+    return splitDXFIntoParts(lf.doc, stats, gap);
   } catch {
     return null;
   }
@@ -213,6 +213,7 @@ let _currentParts: SplitPart[] = [];
 let _currentBaseName = '';
 let _scheduleRender: (() => void) | null = null;
 let _state: SetBuilderState | null = null;
+let _currentGap = 0;
 
 function getOrCreateModalRoot(): HTMLDivElement {
   if (!_modalRoot) {
@@ -224,7 +225,7 @@ function getOrCreateModalRoot(): HTMLDivElement {
   return _modalRoot;
 }
 
-function buildModalHTML(parts: SplitPart[], baseName: string): string {
+function buildModalHTML(parts: SplitPart[], baseName: string, gap: number): string {
   const isSingle = parts.length === 1;
   const title = isSingle
     ? t('split.titleSingle')
@@ -249,6 +250,13 @@ function buildModalHTML(parts: SplitPart[], baseName: string): string {
       <button class="sb-btn sb-btn--primary" data-split-action="import">${t('split.openInCatalog')}</button>
       <button class="sb-btn" data-split-action="zip">${t('split.downloadZip')}</button>`;
 
+  const gapSlider = `
+    <div class="sb-split-gap-row">
+      <label class="sb-split-gap-label" for="sb-split-gap">${t('split.gapLabel')}</label>
+      <input class="sb-split-gap-slider" id="sb-split-gap" type="range" min="0" max="100" step="1" value="${Math.round(gap)}"/>
+      <span class="sb-split-gap-val" id="sb-split-gap-val">${Math.round(gap)}</span>
+    </div>`;
+
   return `
     <div class="sb-split-panel">
       <div class="sb-split-header">
@@ -256,6 +264,7 @@ function buildModalHTML(parts: SplitPart[], baseName: string): string {
         <span class="sb-split-basename">${baseName}</span>
         <button class="sb-icon sb-split-close" data-split-action="close">✕</button>
       </div>
+      ${gapSlider}
       <canvas class="sb-split-canvas" width="520" height="320"></canvas>
       <div class="sb-split-table-wrap">
         <table class="sb-split-table">
@@ -270,6 +279,40 @@ function buildModalHTML(parts: SplitPart[], baseName: string): string {
       </div>
     </div>
   `;
+}
+
+function rebuildModalContent(root: HTMLDivElement, gap: number): void {
+  const parts = computeSplitParts(_currentSourceId, gap);
+  if (!parts) return;
+  _currentParts = parts;
+  _currentGap = gap;
+
+  // Update title
+  const isSingle = parts.length === 1;
+  const titleEl = root.querySelector('.sb-split-title');
+  if (titleEl) titleEl.textContent = isSingle ? t('split.titleSingle') : t('split.title', { count: String(parts.length) });
+
+  // Update table body
+  const tbody = root.querySelector('.sb-split-table tbody');
+  if (tbody) {
+    tbody.innerHTML = parts.map((p, i) => {
+      const color = colorForIndex(i);
+      return `<tr><td><span class="sb-split-swatch" style="background:${color}"></span>${i + 1}</td><td>${p.name}</td><td>${p.w}×${p.h}</td><td>${p.chainCount}</td></tr>`;
+    }).join('');
+  }
+
+  // Redraw canvas
+  const canvas = root.querySelector<HTMLCanvasElement>('.sb-split-canvas');
+  if (canvas) drawSplitPreview(canvas, _currentSourceId, parts);
+
+  // Update multi-buttons visibility
+  const importBtn = root.querySelector<HTMLElement>('[data-split-action="import"]');
+  const zipBtn = root.querySelector<HTMLElement>('[data-split-action="zip"]');
+  if (importBtn) importBtn.style.display = isSingle ? 'none' : '';
+  if (zipBtn) zipBtn.style.display = isSingle ? 'none' : '';
+
+  const filesBtn = root.querySelector<HTMLElement>('[data-split-action="files"]');
+  if (filesBtn) filesBtn.textContent = isSingle ? t('split.downloadCropped') : t('split.downloadFiles');
 }
 
 function attachModalListeners(root: HTMLDivElement, state: SetBuilderState, scheduleRender: () => void): void {
@@ -292,6 +335,18 @@ function attachModalListeners(root: HTMLDivElement, state: SetBuilderState, sche
       return;
     }
   });
+
+  // Gap slider
+  const slider = root.querySelector<HTMLInputElement>('#sb-split-gap');
+  const valEl = root.querySelector<HTMLElement>('#sb-split-gap-val');
+  if (slider) {
+    slider.addEventListener('input', () => {
+      const v = Number(slider.value);
+      if (valEl) valEl.textContent = String(v);
+      rebuildModalContent(root, v);
+    });
+  }
+
   // Close on overlay click
   root.addEventListener('click', (e) => {
     if (e.target === root) closeSplitModal();
@@ -316,7 +371,7 @@ export function openSplitModal(
   _scheduleRender = scheduleRender;
 
   const root = getOrCreateModalRoot();
-  root.innerHTML = buildModalHTML(parts, _currentBaseName);
+  root.innerHTML = buildModalHTML(parts, _currentBaseName, _currentGap);
   root.style.display = 'flex';
 
   attachModalListeners(root, state, scheduleRender);
@@ -335,4 +390,5 @@ export function closeSplitModal(): void {
   }
   _currentParts = [];
   _currentSourceId = -1;
+  _currentGap = 0;
 }

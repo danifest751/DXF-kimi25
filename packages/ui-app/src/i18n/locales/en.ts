@@ -253,6 +253,7 @@ export const en: Record<TranslationKey, string> = {
   'split.downloadFiles': 'Download files',
   'split.downloadCropped': 'Download',
   'split.cancel': 'Cancel',
+  'split.gapLabel': 'Gap (mm):',
   'setBuilder.removeFromSet': 'Remove from Set',
   'setBuilder.addToSet': 'Add to Set',
   'setBuilder.utilization': 'Utilization',
