@@ -398,6 +398,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'catalog-add') { void addCatalog(state, authSessionToken, showToast, render); return; }
     if (action === 'catalog-rename') { void renameCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
     if (action === 'catalog-delete') { void deleteCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
+    if (action === 'catalog-collapse') {
+      const cat = button.dataset.catalog ?? '';
+      if (cat) {
+        if (state.collapsedCatalogs.has(cat)) state.collapsedCatalogs.delete(cat);
+        else state.collapsedCatalogs.add(cat);
+        scheduleRender();
+      }
+      return;
+    }
 
     if (action === 'sheet-custom-add') {
       const w = Math.max(1, Math.round(customSheetWidthMm));

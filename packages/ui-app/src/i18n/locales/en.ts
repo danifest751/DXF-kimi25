@@ -241,6 +241,8 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.catalogAdd': 'Add Catalog',
   'setBuilder.catalogRename': 'Rename Catalog',
   'setBuilder.catalogDelete': 'Delete Catalog',
+  'setBuilder.catalogCollapse': 'Collapse Catalog',
+  'setBuilder.catalogExpand': 'Expand Catalog',
   'setBuilder.removeFromSet': 'Remove from Set',
   'setBuilder.addToSet': 'Add to Set',
   'setBuilder.utilization': 'Utilization',

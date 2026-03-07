@@ -23,6 +23,11 @@ export const iconChevronRight = svg(
   `<polyline points="6,3 11,8 6,13"/>`,
 );
 
+/** ∨ Chevron down */
+export const iconChevronDown = svg(
+  `<polyline points="3,6 8,11 13,6"/>`,
+);
+
 /** 👁 Eye / preview */
 export const iconEye = svg(
   `<path d="M1 8C2.5 4.5 5 3 8 3s5.5 1.5 7 5c-1.5 3.5-4 5-7 5S2.5 11.5 1 8z"/>

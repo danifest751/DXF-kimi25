@@ -97,4 +97,5 @@ export interface SetBuilderState {
   materialModalOpenForId: number | null;
   optimizerOpenForId: number | null;
   isCacheLoaded: boolean;
+  collapsedCatalogs: Set<string>;
 }

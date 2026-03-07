@@ -239,6 +239,8 @@ export const ru = {
   'setBuilder.catalogAdd': 'Добавить каталог',
   'setBuilder.catalogRename': 'Переименовать каталог',
   'setBuilder.catalogDelete': 'Удалить каталог',
+  'setBuilder.catalogCollapse': 'Свернуть каталог',
+  'setBuilder.catalogExpand': 'Развернуть каталог',
   'setBuilder.removeFromSet': 'Удалить из набора',
   'setBuilder.addToSet': 'Добавить в набор',
   'setBuilder.utilization': 'Заполнение',

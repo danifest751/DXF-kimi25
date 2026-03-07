@@ -36,6 +36,7 @@ export function createInitialState(): SetBuilderState {
     materialModalOpenForId: null,
     optimizerOpenForId: null,
     isCacheLoaded: false,
+    collapsedCatalogs: new Set(),
   };
 }
 

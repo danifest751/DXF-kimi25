@@ -11,7 +11,7 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning } from './icons.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
@@ -55,6 +55,7 @@ export interface RenderSnapshot {
   isCacheLoaded: boolean;
   optiPhase: string;
   batchPhase: string;
+  collapsedCatalogsKey: string;
 }
 
 export function snapshotState(
@@ -104,6 +105,7 @@ export function snapshotState(
     isCacheLoaded: state.isCacheLoaded,
     optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
+    collapsedCatalogsKey: [...state.collapsedCatalogs].sort().join(','),
   };
 }
 
@@ -674,10 +676,12 @@ export function renderMain(
       .map((catalogName) => {
         const items = groups.get(catalogName) ?? [];
         const canManageCatalog = catalogName !== unnamedCatalogName && workspaceCatalogs.some((c) => c.name === catalogName);
+        const isCollapsed = state.collapsedCatalogs.has(catalogName);
         return `
-          <section class="sb-catalog-group">
+          <section class="sb-catalog-group${isCollapsed ? ' sb-catalog-group--collapsed' : ''}">
             <div class="sb-catalog-group-head" data-a="catalog-drop" data-catalog="${esc(catalogName)}">
               <div class="sb-catalog-group-meta">
+                <button class="sb-icon sb-catalog-chevron" data-a="catalog-collapse" data-catalog="${esc(catalogName)}" title="${isCollapsed ? t('setBuilder.catalogExpand') : t('setBuilder.catalogCollapse')}">${iconChevronDown}</button>
                 <span class="sb-catalog-folder-icon">${iconFolder}</span><span class="sb-catalog-group-name">${esc(catalogName)}</span>
                 <span class="sb-catalog-group-count">${items.length}</span>
               </div>
