@@ -9,7 +9,8 @@ import cors from 'cors';
 import multer from 'multer';
 import { handleTelegramWebhookUpdate, processBotMessage, setTelegramWebhook, type TelegramUpdate } from '../../bot-service/src/index.js';
 import { registerDxfRoutes, MAX_DXF_BASE64_LEN } from './routes-dxf.js';
-import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit, revokeAuthSessionByToken } from './telegram-auth.js';
+import { exchangeTelegramLoginCode, getAuthSessionByToken, checkCodeExchangeRateLimit, revokeAuthSessionByToken, createSessionForTelegramUser } from './telegram-auth.js';
+import crypto from 'node:crypto';
 import { supabaseEnabled, supabaseRequest } from './supabase-client.js';
 import {
   createSignedWorkspaceFileUpload,
@@ -329,6 +330,83 @@ async function requireWorkspaceId(req: Request, res: Response): Promise<string |
 // Health check
 app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ─── Telegram Mini App auth ───────────────────────────────────────────
+// Validates initData from window.Telegram.WebApp.initData and returns a session.
+// Algorithm: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+function validateTelegramInitData(initData: string, botToken: string): { userId: number; username?: string } | null {
+  try {
+    const params = new URLSearchParams(initData);
+    const receivedHash = params.get('hash');
+    if (!receivedHash) return null;
+    params.delete('hash');
+
+    // Build data-check-string: sorted key=value pairs joined by \n
+    const dataCheckString = [...params.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+    const expectedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+
+    if (expectedHash !== receivedHash) return null;
+
+    // Check auth_date freshness (max 24h)
+    const authDate = Number(params.get('auth_date') ?? '0');
+    if (!Number.isFinite(authDate) || Date.now() / 1000 - authDate > 86400) return null;
+
+    const userStr = params.get('user');
+    if (!userStr) return null;
+    const user = JSON.parse(userStr) as { id?: number; username?: string };
+    if (!user.id || !Number.isFinite(user.id)) return null;
+
+    return { userId: user.id, username: user.username };
+  } catch {
+    return null;
+  }
+}
+
+app.post(['/api/auth/tma-init', '/api/auth-tma-init'], async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ip = getClientIp(req);
+    if (!await checkRateLimit(`tma-init:${ip}`, 20, 60_000)) {
+      res.status(429).json({ error: 'Too many requests. Try again later.' });
+      return;
+    }
+
+    const initData = typeof req.body?.initData === 'string' ? req.body.initData.trim() : '';
+    if (!initData) {
+      res.status(400).json({ error: 'Missing initData' });
+      return;
+    }
+
+    const botToken = telegramBotToken;
+    if (!botToken) {
+      res.status(503).json({ error: 'Telegram bot not configured' });
+      return;
+    }
+
+    const tgUser = validateTelegramInitData(initData, botToken);
+    if (!tgUser) {
+      res.status(401).json({ error: 'Invalid or expired initData' });
+      return;
+    }
+
+    const session = await createSessionForTelegramUser(tgUser.userId);
+    setAuthCookie(res, session.sessionToken, session.expiresAt);
+
+    res.json({
+      success: true,
+      sessionToken: session.sessionToken,
+      workspaceId: session.workspaceId,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'TMA auth failed', details: message });
+  }
 });
 
 app.post(['/api/auth/telegram/exchange-code', '/api/auth-telegram-exchange-code'], async (req: Request, res: Response): Promise<void> => {

@@ -233,6 +233,25 @@ export async function restoreAuthSession(): Promise<void> {
   await authSessionFlow.restoreAuthSession();
 }
 
+export async function runTMAAutoLogin(): Promise<boolean> {
+  try {
+    const tg = (window as unknown as { Telegram?: { WebApp?: { initData?: string; ready?: () => void; expand?: () => void } } }).Telegram?.WebApp;
+    const initData = tg?.initData ?? '';
+    if (!initData) return false;
+
+    const response = await apiPostJSON<AuthExchangeResponse>('/api/auth-tma-init', { initData });
+    await authSessionFlow.finalizeAuthenticatedSession(response.workspaceId);
+
+    tg?.ready?.();
+    tg?.expand?.();
+    return true;
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    console.error('[TMA] auto-login failed:', details);
+    return false;
+  }
+}
+
 export async function runTelegramLoginFlow(): Promise<void> {
   const code = prompt(t('auth.login.prompt'))?.trim().toUpperCase() ?? '';
   if (!code) return;

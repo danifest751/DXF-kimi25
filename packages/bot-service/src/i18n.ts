@@ -108,6 +108,7 @@ const strings = {
 
 
     // Buttons
+    btnOpenApp: '🌐 Открыть приложение',
     btnNesting: '▶️ Раскладка',
     btnSettings: '⚙️ Настройки',
     btnPreview: '🖼 Превью',
@@ -217,6 +218,7 @@ const strings = {
     nestingModeContourWarning: '⚠️ Slow with >30 parts',
 
 
+    btnOpenApp: '🌐 Open App',
     btnNesting: '▶️ Nesting',
     btnSettings: '⚙️ Settings',
     btnPreview: '🖼 Preview',
@@ -301,6 +303,7 @@ export interface BotStrings {
   readonly btnModeContour: string;
   readonly nestingModeContour: string;
   readonly nestingModeContourWarning: string;
+  readonly btnOpenApp: string;
   readonly btnNesting: string;
   readonly btnSettings: string;
   readonly btnPreview: string;

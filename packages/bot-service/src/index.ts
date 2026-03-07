@@ -653,7 +653,9 @@ function getModeLabel(mode: PendingNestingContext['mode'], s: ReturnType<typeof 
   return mode === 'fast' ? s.modeFast : mode === 'precise' ? s.modePrecise : s.modeCommon;
 }
 
-type InlineBtn = { text: string; callback_data: string; style?: 'primary' | 'destructive' };
+type InlineBtn =
+  | { text: string; callback_data: string; style?: 'primary' | 'destructive'; web_app?: never }
+  | { text: string; web_app: { url: string }; callback_data?: never; style?: never };
 type BtnRow = readonly InlineBtn[];
 type BtnGrid = readonly BtnRow[];
 
@@ -686,6 +688,8 @@ function composeHomeText(ctx: PendingNestingContext): string {
   return lines.join('\n');
 }
 
+const MINI_APP_URL = process.env.MINI_APP_URL?.trim() ?? '';
+
 function buildHomeButtons(ctx: PendingNestingContext): BtnGrid {
   const s = getBotStrings(ctx.locale);
   const hasResult = ctx.variants.length > 0;
@@ -699,6 +703,9 @@ function buildHomeButtons(ctx: PendingNestingContext): BtnGrid {
       { text: s.btnAddFile, callback_data: `${ACTION_CALLBACK_PREFIX}hint_add_file` },
     ],
   ];
+  if (MINI_APP_URL) {
+    rows.push([{ text: s.btnOpenApp, web_app: { url: MINI_APP_URL } }]);
+  }
   if (hasResult) {
     rows.push([
       { text: s.btnDXF, callback_data: `${ACTION_CALLBACK_PREFIX}export_dxf`, style: 'primary' },

@@ -443,6 +443,16 @@ export async function getAuthSessionByToken(tokenInput: string): Promise<{ userI
   };
 }
 
+export async function createSessionForTelegramUser(telegramUserIdInput: number | string): Promise<{ sessionToken: string; workspaceId: string; expiresAt: number }> {
+  pruneLocalMaps();
+  const user = await getOrCreateUserByTelegramId(String(telegramUserIdInput));
+  const sessionToken = createSessionToken();
+  const tokenHash = hashToken(sessionToken);
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  await saveSession({ tokenHash, userId: user.id, workspaceId: user.workspaceId, createdAt: Date.now(), expiresAt });
+  return { sessionToken, workspaceId: user.workspaceId, expiresAt };
+}
+
 export async function revokeAuthSessionByToken(tokenInput: string): Promise<void> {
   pruneLocalMaps();
   const token = tokenInput.trim();

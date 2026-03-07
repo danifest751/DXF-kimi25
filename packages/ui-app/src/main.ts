@@ -8,11 +8,15 @@ import './styles/base.css';
 import './styles/set-builder.css';
 import './styles/animations.css';
 
-import { restoreAuthSession } from './auth.js';
+import { restoreAuthSession, runTMAAutoLogin } from './auth.js';
 import { initSetBuilder } from './set-builder/index.js';
 import { setBuilderRoot, btnSetBuilder } from './ui-shell.js';
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 
 initSetBuilder(setBuilderRoot, btnSetBuilder);
-void restoreAuthSession();
+
+// If opened as Telegram Mini App — auto-login via initData, else restore stored session
+void runTMAAutoLogin().then((isTMA) => {
+  if (!isTMA) void restoreAuthSession();
+});
