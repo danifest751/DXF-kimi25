@@ -16,7 +16,7 @@ import type { LoadedFile } from '../types.js';
 import type { SetBuilderState } from './types.js';
 import { syncLoadedFilesIntoLibrary } from './library.js';
 import { buildZip } from '../zip-utils.js';
-import { t } from '../i18n/index.js';
+import { t, tx } from '../i18n/index.js';
 
 const PART_COLORS = [
   '#818cf8', '#4ade80', '#fbbf24', '#22d3ee', '#f87171',
@@ -229,7 +229,7 @@ function buildModalHTML(parts: SplitPart[], baseName: string, gap: number): stri
   const isSingle = parts.length === 1;
   const title = isSingle
     ? t('split.titleSingle')
-    : t('split.title', { count: String(parts.length) });
+    : tx('split.title', { count: String(parts.length) });
 
   const rows = parts
     .map((p, i) => {
@@ -290,7 +290,7 @@ function rebuildModalContent(root: HTMLDivElement, gap: number): void {
   // Update title
   const isSingle = parts.length === 1;
   const titleEl = root.querySelector('.sb-split-title');
-  if (titleEl) titleEl.textContent = isSingle ? t('split.titleSingle') : t('split.title', { count: String(parts.length) });
+  if (titleEl) titleEl.textContent = isSingle ? t('split.titleSingle') : tx('split.title', { count: String(parts.length) });
 
   // Update table body
   const tbody = root.querySelector('.sb-split-table tbody');

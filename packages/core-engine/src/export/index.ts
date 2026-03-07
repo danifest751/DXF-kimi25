@@ -557,21 +557,38 @@ export interface SplitPart {
 /**
  * Разбивает нормализованный DXF-документ на отдельные детали.
  *
- * Алгоритм:
- * 1. Для каждой цепочки вычисляем bbox (по flatEntities цепочки).
- * 2. Кластеризуем цепочки по пересечению bbox: пересекающиеся бокс → одна деталь.
- * 3. Для каждого кластера строим DXF-файл со смещением к (0,0).
+ * Алгоритм (v3 — pierce-point proximity):
+ * 1. Для каждой цепочки вычисляем bbox и pierce-point.
+ * 2. Замкнутые цепочки — кандидаты на отдельную деталь (внешний контур или отверстие).
+ * 3. Незамкнутые цепочки (разрезы, пазы, вспомогательные линии) присоединяются к
+ *    ближайшей замкнутой по расстоянию pierce-point.
+ * 4. Замкнутые цепочки группируются: если pierce-point одной лежит внутри bbox другой —
+ *    меньшая вложена (отверстие). Иначе — разные детали.
+ *    При gap > 0 дополнительно объединяем замкнутые чьи bbox ближе gap мм.
+ * 5. DXF строится для каждого кластера со смещением к (0,0).
  *
- * @param doc - Нормализованный документ (уже с boundingBox на сущностях)
- * @param stats - Статистика резки (содержит chains)
- * @returns Массив деталей, упорядоченных слева-направо, сверху-вниз
+ * @param doc   - Нормализованный документ
+ * @param stats - Статистика резки (chains)
+ * @param gap   - Дополнительный зазор (мм): объединять замкнутые детали чьи bbox
+ *                ближе этого значения (0 = только containment)
  */
 export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, gap = 0): SplitPart[] {
 
-  // ── Step 1: compute per-chain bbox ───────────────────────────────
   type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
-  const chainBBoxes: (BBox | null)[] = stats.chains.map((chain) => {
+  // ── Step 1: per-chain bbox + pierce-point ─────────────────────────
+  interface ChainData {
+    ci: number;
+    bbox: BBox;
+    pierceX: number;
+    pierceY: number;
+    isClosed: boolean;
+  }
+
+  const chainData: ChainData[] = [];
+
+  for (let ci = 0; ci < stats.chains.length; ci++) {
+    const chain = stats.chains[ci]!;
     let minX = Infinity; let minY = Infinity;
     let maxX = -Infinity; let maxY = -Infinity;
     for (const eidx of chain.entityIndices) {
@@ -588,19 +605,26 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
       for (const x of xs) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
       for (const y of ys) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
     }
-    return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
-  });
-
-  function bboxesOverlap(a: BBox, b: BBox): boolean {
-    return a.minX - gap <= b.maxX && a.maxX + gap >= b.minX &&
-           a.minY - gap <= b.maxY && a.maxY + gap >= b.minY;
+    if (!Number.isFinite(minX)) continue;
+    chainData.push({
+      ci,
+      bbox: { minX, minY, maxX, maxY },
+      pierceX: chain.piercePoint.x,
+      pierceY: chain.piercePoint.y,
+      isClosed: chain.isClosed,
+    });
   }
 
-  // ── Step 2: Union-Find over all chain pairs whose bbox overlap ────
-  // This correctly handles transitive connections (L/U/C shapes) in one pass.
-  const n = stats.chains.length;
-  const parent = new Int32Array(n);
-  for (let i = 0; i < n; i++) parent[i] = i;
+  const closed = chainData.filter((c) => c.isClosed);
+  const open   = chainData.filter((c) => !c.isClosed);
+
+  // ── Step 2: group closed chains via Union-Find ────────────────────
+  // Two closed chains merge when:
+  //   a) pierce-point of one lies INSIDE bbox of the other (containment/hole), OR
+  //   b) their bboxes are within `gap` distance (user-controlled tolerance)
+  const nc = closed.length;
+  const parent = new Int32Array(nc);
+  for (let i = 0; i < nc; i++) parent[i] = i;
 
   function find(x: number): number {
     while (parent[x] !== x) { parent[x] = parent[parent[x]!]!; x = parent[x]!; }
@@ -611,50 +635,95 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
     if (ra !== rb) parent[ra] = rb;
   }
 
-  for (let i = 0; i < n; i++) {
-    const bi = chainBBoxes[i];
-    if (!bi) continue;
-    for (let j = i + 1; j < n; j++) {
-      const bj = chainBBoxes[j];
-      if (!bj) continue;
-      if (bboxesOverlap(bi, bj)) union(i, j);
+  function ptInBBox(px: number, py: number, bb: BBox): boolean {
+    return px >= bb.minX && px <= bb.maxX && py >= bb.minY && py <= bb.maxY;
+  }
+
+  function bboxNear(a: BBox, b: BBox, g: number): boolean {
+    return a.minX - g <= b.maxX && a.maxX + g >= b.minX &&
+           a.minY - g <= b.maxY && a.maxY + g >= b.minY;
+  }
+
+  for (let i = 0; i < nc; i++) {
+    for (let j = i + 1; j < nc; j++) {
+      const ci = closed[i]!;
+      const cj = closed[j]!;
+      const contained =
+        ptInBBox(ci.pierceX, ci.pierceY, cj.bbox) ||
+        ptInBBox(cj.pierceX, cj.pierceY, ci.bbox);
+      const near = gap > 0 && bboxNear(ci.bbox, cj.bbox, gap);
+      if (contained || near) union(i, j);
     }
   }
 
-  // ── Step 3: group chains by Union-Find root ───────────────────────
-  const groupMap = new Map<number, number[]>();
-  for (let i = 0; i < n; i++) {
-    if (!chainBBoxes[i]) continue;
+  // ── Step 3: build closed groups ───────────────────────────────────
+  const groupMap = new Map<number, number[]>(); // root → indices into closed[]
+  for (let i = 0; i < nc; i++) {
     const root = find(i);
     let arr = groupMap.get(root);
     if (!arr) { arr = []; groupMap.set(root, arr); }
     arr.push(i);
   }
 
-  // ── Step 4: build cluster bbox + entity set per group ─────────────
   interface Cluster {
-    chainIndices: number[];
+    chainIndices: number[];   // original chain indices (ci)
     flatEntityIndices: Set<number>;
     minX: number; minY: number; maxX: number; maxY: number;
   }
 
   const clusters: Cluster[] = [];
-  for (const chainIndices of groupMap.values()) {
+  const clusterForClosedIdx: number[] = new Array(nc);
+
+  for (const members of groupMap.values()) {
     let minX = Infinity; let minY = Infinity;
     let maxX = -Infinity; let maxY = -Infinity;
+    const chainIndices: number[] = [];
     const flatEntityIndices = new Set<number>();
-    for (const ci of chainIndices) {
-      const bb = chainBBoxes[ci]!;
-      if (bb.minX < minX) minX = bb.minX;
-      if (bb.minY < minY) minY = bb.minY;
-      if (bb.maxX > maxX) maxX = bb.maxX;
-      if (bb.maxY > maxY) maxY = bb.maxY;
-      for (const eidx of stats.chains[ci]!.entityIndices) flatEntityIndices.add(eidx);
+
+    for (const mi of members) {
+      const cd = closed[mi]!;
+      clusterForClosedIdx[mi] = clusters.length;
+      if (cd.bbox.minX < minX) minX = cd.bbox.minX;
+      if (cd.bbox.minY < minY) minY = cd.bbox.minY;
+      if (cd.bbox.maxX > maxX) maxX = cd.bbox.maxX;
+      if (cd.bbox.maxY > maxY) maxY = cd.bbox.maxY;
+      chainIndices.push(cd.ci);
+      for (const eidx of stats.chains[cd.ci]!.entityIndices) flatEntityIndices.add(eidx);
     }
     clusters.push({ chainIndices, flatEntityIndices, minX, minY, maxX, maxY });
   }
 
-  // Sort clusters: top-to-bottom, left-to-right
+  // ── Step 4: attach open chains to nearest closed cluster ──────────
+  // "Nearest" = closed cluster whose bbox center is closest to pierce-point.
+  for (const od of open) {
+    if (clusters.length === 0) {
+      // No closed chains at all — treat every open chain as its own part
+      const { minX, minY, maxX, maxY } = od.bbox;
+      const flatEntityIndices = new Set<number>(stats.chains[od.ci]!.entityIndices);
+      clusters.push({ chainIndices: [od.ci], flatEntityIndices, minX, minY, maxX, maxY });
+      continue;
+    }
+    let bestCluster = 0;
+    let bestDist = Infinity;
+    for (let k = 0; k < clusters.length; k++) {
+      const cl = clusters[k]!;
+      const cx = (cl.minX + cl.maxX) / 2;
+      const cy = (cl.minY + cl.maxY) / 2;
+      const dx = od.pierceX - cx;
+      const dy = od.pierceY - cy;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; bestCluster = k; }
+    }
+    const cl = clusters[bestCluster]!;
+    cl.chainIndices.push(od.ci);
+    for (const eidx of stats.chains[od.ci]!.entityIndices) cl.flatEntityIndices.add(eidx);
+    if (od.bbox.minX < cl.minX) cl.minX = od.bbox.minX;
+    if (od.bbox.minY < cl.minY) cl.minY = od.bbox.minY;
+    if (od.bbox.maxX > cl.maxX) cl.maxX = od.bbox.maxX;
+    if (od.bbox.maxY > cl.maxY) cl.maxY = od.bbox.maxY;
+  }
+
+  // Sort clusters: top-to-bottom, left-to-right (by bbox min corner)
   clusters.sort((a, b) => {
     const rowDiff = a.minY - b.minY;
     return Math.abs(rowDiff) > 10 ? rowDiff : a.minX - b.minX;
