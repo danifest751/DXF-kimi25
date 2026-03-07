@@ -2579,6 +2579,23 @@
   flex-shrink: 0;
 }
 
+.sb-split-row-del {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 12px;
+  border-radius: 3px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+}
+.sb-split-row-del:hover {
+  color: #f87171;
+  opacity: 1;
+}
+
 .sb-split-gap-row {
   display: flex;
   align-items: center;

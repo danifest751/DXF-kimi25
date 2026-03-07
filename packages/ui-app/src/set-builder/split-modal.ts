@@ -241,11 +241,12 @@ function buildModalHTML(parts: SplitPart[], baseName: string, gap: number): stri
     .map((p, i) => {
       const color = colorForIndex(i);
       return `
-        <tr>
+        <tr data-part-idx="${i}">
           <td><span class="sb-split-swatch" style="background:${color}"></span>${i + 1}</td>
           <td>${p.name}</td>
           <td>${p.w}×${p.h}</td>
           <td>${p.chainCount}</td>
+          <td><button class="sb-split-row-del" data-split-action="delete-part" data-part-idx="${i}" title="Удалить">✕</button></td>
         </tr>`;
     })
     .join('');
@@ -274,7 +275,7 @@ function buildModalHTML(parts: SplitPart[], baseName: string, gap: number): stri
       <canvas class="sb-split-canvas" width="520" height="320"></canvas>
       <div class="sb-split-table-wrap">
         <table class="sb-split-table">
-          <thead><tr><th>#</th><th>${t('split.colName')}</th><th>W×H</th><th>${t('setBuilder.piercesShort')}</th></tr></thead>
+          <thead><tr><th>#</th><th>${t('split.colName')}</th><th>W×H</th><th>${t('setBuilder.piercesShort')}</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -303,7 +304,7 @@ function rebuildModalContent(root: HTMLDivElement, gap: number): void {
   if (tbody) {
     tbody.innerHTML = parts.map((p, i) => {
       const color = colorForIndex(i);
-      return `<tr><td><span class="sb-split-swatch" style="background:${color}"></span>${i + 1}</td><td>${p.name}</td><td>${p.w}×${p.h}</td><td>${p.chainCount}</td></tr>`;
+      return `<tr data-part-idx="${i}"><td><span class="sb-split-swatch" style="background:${color}"></span>${i + 1}</td><td>${p.name}</td><td>${p.w}×${p.h}</td><td>${p.chainCount}</td><td><button class="sb-split-row-del" data-split-action="delete-part" data-part-idx="${i}" title="Удалить">✕</button></td></tr>`;
     }).join('');
   }
 
@@ -327,6 +328,37 @@ function attachModalListeners(root: HTMLDivElement, state: SetBuilderState, sche
     if (!btn) return;
     const action = btn.dataset.splitAction;
     if (action === 'close') { closeSplitModal(); return; }
+    if (action === 'delete-part') {
+      const idx = Number(btn.dataset.partIdx);
+      if (!Number.isNaN(idx) && idx >= 0 && idx < _currentParts.length) {
+        _currentParts = _currentParts.filter((_, i) => i !== idx);
+        // renumber names
+        _currentParts = _currentParts.map((p, i) => ({ ...p, name: `Part ${i + 1}` }));
+        // update title
+        const isSingle = _currentParts.length === 1;
+        const titleEl = root.querySelector('.sb-split-title');
+        if (titleEl) titleEl.textContent = isSingle ? t('split.titleSingle') : tx('split.title', { count: String(_currentParts.length) });
+        // rebuild table
+        const tbody = root.querySelector('.sb-split-table tbody');
+        if (tbody) {
+          tbody.innerHTML = _currentParts.map((p, i) => {
+            const color = colorForIndex(i);
+            return `<tr data-part-idx="${i}"><td><span class="sb-split-swatch" style="background:${color}"></span>${i + 1}</td><td>${p.name}</td><td>${p.w}×${p.h}</td><td>${p.chainCount}</td><td><button class="sb-split-row-del" data-split-action="delete-part" data-part-idx="${i}" title="Удалить">✕</button></td></tr>`;
+          }).join('');
+        }
+        // redraw canvas
+        const canvas = root.querySelector<HTMLCanvasElement>('.sb-split-canvas');
+        if (canvas) drawSplitPreview(canvas, _currentSourceId, _currentParts, _view ?? undefined);
+        // update buttons visibility
+        const importBtn = root.querySelector<HTMLElement>('[data-split-action="import"]');
+        const zipBtn = root.querySelector<HTMLElement>('[data-split-action="zip"]');
+        if (importBtn) importBtn.style.display = isSingle ? 'none' : '';
+        if (zipBtn) zipBtn.style.display = isSingle ? 'none' : '';
+        const filesBtn = root.querySelector<HTMLElement>('[data-split-action="files"]');
+        if (filesBtn) filesBtn.textContent = isSingle ? t('split.downloadCropped') : t('split.downloadFiles');
+      }
+      return;
+    }
     if (action === 'import') {
       importPartsToLibrary(_currentParts, _currentBaseName, state, scheduleRender);
       closeSplitModal();
