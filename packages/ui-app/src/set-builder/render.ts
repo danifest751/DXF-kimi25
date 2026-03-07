@@ -11,7 +11,7 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning } from './icons.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
 
@@ -423,6 +423,7 @@ export function renderMaterialModal(
 export function renderPreviewModal(
   state: SetBuilderState,
   dxfThumbCache: Map<string, string>,
+  visibleItems: LibraryItem[],
 ): string {
   const item = state.previewLibraryId !== null
     ? state.library.find((it) => it.id === state.previewLibraryId) ?? null
@@ -431,7 +432,7 @@ export function renderPreviewModal(
 
   if (item) {
     const set = getSetItem(state, item.id);
-    const allItems = getVisibleLibraryItems(state);
+    const allItems = visibleItems;
     const idx = allItems.findIndex((it) => it.id === item.id);
     const prevItem = idx > 0 ? allItems[idx - 1] : null;
     const nextItem = idx >= 0 && idx < allItems.length - 1 ? allItems[idx + 1] : null;
@@ -507,7 +508,7 @@ export function renderPreviewModal(
                   <div class="sb-modal-stat-label">${t('material.title')}</div>
                   <div class="sb-modal-stat-value sb-modal-stat-value--material">
                     ${esc(label)}
-                    <button class="sb-btn sb-btn--xs sb-btn--ghost sb-modal-mat-change" data-a="assign-material" data-id="${item.id}" title="${t('material.assign')}">✎</button>
+                    <button class="sb-btn sb-btn--xs sb-btn--ghost sb-modal-mat-change" data-a="assign-material" data-id="${item.id}" title="${t('material.assign')}">${iconPencil}</button>
                   </div>
                 </div>
                 ${weightStr ? `
@@ -666,14 +667,14 @@ export function renderMain(
           <section class="sb-catalog-group">
             <div class="sb-catalog-group-head" data-a="catalog-drop" data-catalog="${esc(catalogName)}">
               <div class="sb-catalog-group-meta">
-                <span class="sb-catalog-folder-icon">📁</span><span class="sb-catalog-group-name">${esc(catalogName)}</span>
+                <span class="sb-catalog-folder-icon">${iconFolder}</span><span class="sb-catalog-group-name">${esc(catalogName)}</span>
                 <span class="sb-catalog-group-count">${items.length}</span>
               </div>
               <div class="sb-catalog-group-actions">
-                <button class="sb-icon sb-batch-opt-icon" data-a="open-batch-optimizer" data-catalog="${esc(catalogName)}" title="${t('batch.openBatchOptimizer')}">⚡</button>
+                <button class="sb-icon sb-batch-opt-icon" data-a="open-batch-optimizer" data-catalog="${esc(catalogName)}" title="${t('batch.openBatchOptimizer')}">${iconLightning}</button>
                 ${canManageCatalog ? `
-                  <button class="sb-icon" data-a="catalog-rename" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogRename')}">✎</button>
-                  <button class="sb-icon" data-a="catalog-delete" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogDelete')}">🗑</button>
+                  <button class="sb-icon" data-a="catalog-rename" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogRename')}">${iconPencil}</button>
+                  <button class="sb-icon" data-a="catalog-delete" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogDelete')}">${iconTrash}</button>
                 ` : ''}
               </div>
             </div>
@@ -941,7 +942,7 @@ export function renderMain(
       </div>
 
       ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
-      ${renderPreviewModal(state, dxfThumbCache)}
+      ${renderPreviewModal(state, dxfThumbCache, filtered)}
       ${renderMaterialModal(state)}
       ${renderOptimizerModal(
         optimizerState,

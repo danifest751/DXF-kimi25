@@ -20,17 +20,27 @@ function getStableKey(sourceFileId: number): string | null {
 }
 
 /**
- * По стабильному ключу находит libraryId в текущей библиотеке.
+ * Строит Map stableKey → libraryId за один проход O(n).
  */
-function resolveLibraryId(state: SetBuilderState, stableKey: string): number | null {
+function buildStableKeyMap(state: SetBuilderState): Map<string, number> {
+  const map = new Map<string, number>();
+  const lfById = new Map(loadedFiles.map((f) => [f.id, f]));
   for (const item of state.library) {
     if (item.sourceFileId === undefined) continue;
-    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    const lf = lfById.get(item.sourceFileId);
     if (!lf) continue;
-    if (lf.remoteId && lf.remoteId === stableKey) return item.id;
-    if (!lf.remoteId && `name:${lf.name}` === stableKey) return item.id;
+    const key = lf.remoteId ?? `name:${lf.name}`;
+    map.set(key, item.id);
   }
-  return null;
+  return map;
+}
+
+/**
+ * По стабильному ключу находит libraryId в текущей библиотеке.
+ * Принимает кэш-Map построенный через buildStableKeyMap для O(1) lookups.
+ */
+function resolveLibraryId(map: Map<string, number>, stableKey: string): number | null {
+  return map.get(stableKey) ?? null;
 }
 
 export function hydrateState(
@@ -135,8 +145,9 @@ const _pendingSet = new Map<string, { qty: number; enabled: boolean }>();
  */
 export function applyPendingSet(state: SetBuilderState): void {
   if (_pendingSet.size === 0) return;
+  const keyMap = buildStableKeyMap(state);
   for (const [stableKey, { qty, enabled }] of _pendingSet) {
-    const libraryId = resolveLibraryId(state, stableKey);
+    const libraryId = resolveLibraryId(keyMap, stableKey);
     if (libraryId === null) continue;
     _pendingSet.delete(stableKey);
     if (!state.set.has(libraryId)) {
@@ -227,8 +238,9 @@ export function loadMaterials(state: SetBuilderState): void {
  */
 export function applyPendingMaterials(state: SetBuilderState): void {
   if (_pendingMaterials.size === 0) return;
+  const keyMap = buildStableKeyMap(state);
   for (const [stableKey, materialId] of _pendingMaterials) {
-    const libraryId = resolveLibraryId(state, stableKey);
+    const libraryId = resolveLibraryId(keyMap, stableKey);
     if (libraryId === null) continue;
     _pendingMaterials.delete(stableKey);
     if (!state.materialAssignments.has(libraryId)) {

@@ -192,11 +192,13 @@
 }
 
 .sb-catalog-folder-icon {
-  font-size: 14px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: #60a5fa;
   flex-shrink: 0;
   opacity: 0.75;
 }
+.sb-catalog-folder-icon svg { width: 15px; height: 15px; }
 
 .sb-catalog-group-name {
   font-size: 12px;
@@ -2232,7 +2234,6 @@
 /* ── Batch optimizer icon in catalog header ── */
 .sb-batch-opt-icon {
   opacity: 0.5;
-  font-size: 13px;
   transition: opacity 0.15s;
 }
 

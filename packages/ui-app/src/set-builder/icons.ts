@@ -78,6 +78,12 @@ export const iconDash = svg(
   `<line x1="3" y1="8" x2="13" y2="8"/>`,
 );
 
+/** 📁 Folder / catalog */
+export const iconFolder = svg(
+  `<path d="M1 4a1 1 0 0 1 1-1h4l2 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1z" fill="currentColor" opacity="0.15"/>
+   <path d="M1 4a1 1 0 0 1 1-1h4l2 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1z"/>`,
+);
+
 /** ⚡ Lightning / batch */
 export const iconLightning = svg(
   `<path d="M10 2L4 9h5l-1 5 7-7H10z" fill="currentColor" stroke="none"/>`,

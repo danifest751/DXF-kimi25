@@ -62,6 +62,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   const pendingReadyFileIds = new Set<number>();
   let prevAuthToken = authSessionToken;
   let menuAnchorRect: { top: number; right: number } | null = null;
+  let persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function schedulePersist(): void {
+    if (persistDebounceTimer !== null) clearTimeout(persistDebounceTimer);
+    persistDebounceTimer = setTimeout(() => {
+      persistDebounceTimer = null;
+      persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
+    }, 400);
+  }
 
   function setToastState(msg: string): void {
     toastText = msg;
@@ -253,7 +262,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         menu.style.right = `${menuAnchorRect.right}px`;
       }
     }
-    persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
+    schedulePersist();
     applyModalPierceCanvas(root, modalCanvasState, state);
     drawOptimizerPreviewCanvas();
   }
