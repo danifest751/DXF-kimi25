@@ -766,8 +766,8 @@ export function renderMain(
         </div>
       </div>
 
-      <div class="sb-main">
-        <div class="sb-left">
+      <div class="sb-main" data-active-tab="${state.activeTab}">
+        <div class="sb-left" data-tab-panel="library results">
           <div class="sb-list-toolbar">
             <div class="sb-tabs">
               <button class="${state.activeTab === 'library' ? 'active' : ''}" data-a="tab" data-tab="library">${t('setBuilder.tabLibrary')}</button>
@@ -842,7 +842,7 @@ export function renderMain(
           `}
         </div>
 
-        <aside class="sb-right">
+        <aside class="sb-right" data-tab-panel="nesting">
           <div class="sb-set-list">
             ${setRows.length === 0
               ? `<div class="sb-empty">${t('setBuilder.empty.set')}</div>`
@@ -963,6 +963,16 @@ export function renderMain(
         </aside>
       </div>
 
+      <nav class="sb-mobile-nav">
+        <button class="sb-mobile-nav-btn ${state.activeTab === 'library' || state.activeTab === 'results' ? 'active' : ''}" data-a="tab" data-tab="library">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>${t('setBuilder.tabLibrary')}</span>
+        </button>
+        <button class="sb-mobile-nav-btn ${state.activeTab === 'nesting' ? 'active' : ''}" data-a="tab" data-tab="nesting">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>${t('setBuilder.tabNesting')}</span>
+        </button>
+      </nav>
       ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
       ${renderPreviewModal(state, dxfThumbCache, filtered)}
       ${renderMaterialModal(state)}

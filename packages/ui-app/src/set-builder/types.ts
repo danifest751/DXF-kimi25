@@ -1,6 +1,6 @@
 export type ItemStatus = 'ok' | 'warn' | 'error';
 export type NestingPhase = 'idle' | 'preparing' | 'nesting' | 'saving';
-export type SetBuilderTab = 'library' | 'results';
+export type SetBuilderTab = 'library' | 'results' | 'nesting';
 export type NestMode = 'normal' | 'commonLine';
 export type SetBuilderNestingStrategy = 'maxrects_bbox' | 'true_shape';
 export type LibrarySortBy = 'name' | 'area' | 'pierces' | 'cutLen';

@@ -442,7 +442,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
     if (action === 'tab') {
       const tab = button.dataset.tab;
-      if (tab === 'library' || tab === 'results') { state.activeTab = tab; scheduleRender(); }
+      if (tab === 'library' || tab === 'results' || tab === 'nesting') { state.activeTab = tab; scheduleRender(); }
       return;
     }
     if (action === 'sort-col') {
