@@ -62,11 +62,12 @@ export function computeSplitParts(sourceFileId: number, gap = 0): SplitPart[] | 
   }
 }
 
-/** Draw the split preview onto a canvas */
+/** Draw the split preview onto a canvas, respecting view pan/zoom */
 function drawSplitPreview(
   canvas: HTMLCanvasElement,
   sourceFileId: number,
   parts: SplitPart[],
+  view?: ViewState,
 ): void {
   const lf = loadedFiles.find((f) => f.id === sourceFileId);
   if (!lf || !lf.doc) return;
@@ -86,9 +87,13 @@ function drawSplitPreview(
   const bbH = Math.max(1e-6, bb.max.y - bb.min.y);
 
   const pad = 18;
-  const scale = Math.min((W - pad * 2) / bbW, (H - pad * 2) / bbH);
+  const fitScale = Math.min((W - pad * 2) / bbW, (H - pad * 2) / bbH);
   const cx = bb.min.x + bbW / 2;
   const cy = bb.min.y + bbH / 2;
+
+  const scale = view ? fitScale * view.scale : fitScale;
+  const offX  = view ? view.offX : 0;
+  const offY  = view ? view.offY : 0;
 
   const opts: EntityRenderOptions = {
     arcSegments: 16,
@@ -100,7 +105,7 @@ function drawSplitPreview(
 
   // Draw all entities (dim gray)
   ctx.save();
-  ctx.translate(W / 2, H / 2);
+  ctx.translate(W / 2 + offX, H / 2 + offY);
   ctx.scale(scale, -scale);
   ctx.translate(-cx, -cy);
   ctx.strokeStyle = 'rgba(180,180,200,0.4)';
@@ -116,9 +121,8 @@ function drawSplitPreview(
     const color = colorForIndex(i);
     const { minX, minY, maxX, maxY } = part.bbox;
 
-    // Convert world coords to canvas
-    const toCanvasX = (wx: number) => W / 2 + (wx - cx) * scale;
-    const toCanvasY = (wy: number) => H / 2 - (wy - cy) * scale;
+    const toCanvasX = (wx: number) => W / 2 + offX + (wx - cx) * scale;
+    const toCanvasY = (wy: number) => H / 2 + offY - (wy - cy) * scale;
 
     const x = toCanvasX(minX);
     const y = toCanvasY(maxY);
@@ -132,9 +136,8 @@ function drawSplitPreview(
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
 
-    // Label
     ctx.fillStyle = color;
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.font = `bold ${Math.max(9, Math.min(13, scale * 10))}px system-ui, sans-serif`;
     ctx.fillText(String(i + 1), x + 4, y + 13);
     ctx.restore();
   }
@@ -214,6 +217,9 @@ let _currentBaseName = '';
 let _scheduleRender: (() => void) | null = null;
 let _state: SetBuilderState | null = null;
 let _currentGap = 0;
+
+interface ViewState { scale: number; offX: number; offY: number; }
+let _view: ViewState | null = null;
 
 function getOrCreateModalRoot(): HTMLDivElement {
   if (!_modalRoot) {
@@ -303,7 +309,7 @@ function rebuildModalContent(root: HTMLDivElement, gap: number): void {
 
   // Redraw canvas
   const canvas = root.querySelector<HTMLCanvasElement>('.sb-split-canvas');
-  if (canvas) drawSplitPreview(canvas, _currentSourceId, parts);
+  if (canvas) drawSplitPreview(canvas, _currentSourceId, parts, _view ?? undefined);
 
   // Update multi-buttons visibility
   const importBtn = root.querySelector<HTMLElement>('[data-split-action="import"]');
@@ -351,6 +357,54 @@ function attachModalListeners(root: HTMLDivElement, state: SetBuilderState, sche
   root.addEventListener('click', (e) => {
     if (e.target === root) closeSplitModal();
   });
+
+  // Canvas zoom + pan
+  const canvas = root.querySelector<HTMLCanvasElement>('.sb-split-canvas');
+  if (canvas) {
+    if (!_view) _view = { scale: 1, offX: 0, offY: 0 };
+
+    canvas.style.cursor = 'grab';
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (!_view) _view = { scale: 1, offX: 0, offY: 0 };
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+      // zoom towards cursor
+      _view.offX = mx - factor * (mx - _view.offX);
+      _view.offY = my - factor * (my - _view.offY);
+      _view.scale = Math.max(0.1, Math.min(50, _view.scale * factor));
+      drawSplitPreview(canvas, _currentSourceId, _currentParts, _view);
+    }, { passive: false });
+
+    let dragStart: { x: number; y: number; offX: number; offY: number } | null = null;
+    canvas.addEventListener('mousedown', (e) => {
+      if (!_view) _view = { scale: 1, offX: 0, offY: 0 };
+      dragStart = { x: e.clientX, y: e.clientY, offX: _view.offX, offY: _view.offY };
+      canvas.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragStart || !_view) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      _view.offX = dragStart.offX + (e.clientX - dragStart.x) * scaleX;
+      _view.offY = dragStart.offY + (e.clientY - dragStart.y) * scaleY;
+      drawSplitPreview(canvas, _currentSourceId, _currentParts, _view);
+    });
+    window.addEventListener('mouseup', () => {
+      dragStart = null;
+      canvas.style.cursor = 'grab';
+    });
+
+    // Double-click resets view
+    canvas.addEventListener('dblclick', () => {
+      _view = { scale: 1, offX: 0, offY: 0 };
+      drawSplitPreview(canvas, _currentSourceId, _currentParts, _view);
+    });
+  }
 }
 
 export function openSplitModal(
@@ -369,6 +423,7 @@ export function openSplitModal(
   _currentBaseName = lf.name.replace(/\.dxf$/i, '');
   _state = state;
   _scheduleRender = scheduleRender;
+  _view = { scale: 1, offX: 0, offY: 0 };
 
   const root = getOrCreateModalRoot();
   root.innerHTML = buildModalHTML(parts, _currentBaseName, _currentGap);
@@ -379,7 +434,7 @@ export function openSplitModal(
   // Draw canvas after DOM is ready
   requestAnimationFrame(() => {
     const canvas = root.querySelector<HTMLCanvasElement>('.sb-split-canvas');
-    if (canvas) drawSplitPreview(canvas, sourceFileId, parts);
+    if (canvas) drawSplitPreview(canvas, sourceFileId, parts, _view ?? undefined);
   });
 }
 

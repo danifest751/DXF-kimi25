@@ -576,13 +576,81 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
 
   type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
-  // ── Step 1: per-chain bbox + pierce-point ─────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────
+
+  /** Ray-casting point-in-polygon (2D). Works for any simple polygon. */
+  function ptInPolygon(px: number, py: number, poly: Float64Array): boolean {
+    const n = poly.length >> 1; // number of vertices
+    let inside = false;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const xi = poly[i * 2]!; const yi = poly[i * 2 + 1]!;
+      const xj = poly[j * 2]!; const yj = poly[j * 2 + 1]!;
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function bboxNear(a: BBox, b: BBox, g: number): boolean {
+    return a.minX - g <= b.maxX && a.maxX + g >= b.minX &&
+           a.minY - g <= b.maxY && a.maxY + g >= b.minY;
+  }
+
+  /** Tessellate a chain's entities into a flat Float64Array of [x,y,...] world coords. */
+  function tessellateChain(chain: typeof stats.chains[number]): Float64Array {
+    const pts: number[] = [];
+    for (const eidx of chain.entityIndices) {
+      const fe = doc.flatEntities[eidx];
+      if (!fe) continue;
+      const e = fe.entity;
+      const m = fe.transform;
+      const add = (x: number, y: number) => {
+        const p = mat4TransformPoint(m, { x, y, z: 0 });
+        pts.push(p.x, p.y);
+      };
+      switch (e.type) {
+        case DXFEntityType.LINE:
+          add(e.start.x, e.start.y); add(e.end.x, e.end.y); break;
+        case DXFEntityType.CIRCLE: {
+          const segs = 32;
+          for (let s = 0; s <= segs; s++) {
+            const a = (s / segs) * Math.PI * 2;
+            add(e.center.x + Math.cos(a) * e.radius, e.center.y + Math.sin(a) * e.radius);
+          }
+          break;
+        }
+        case DXFEntityType.ARC: {
+          const tps = tessellateArc(e.center, e.radius, e.startAngle, e.endAngle, 32);
+          for (const p of tps) add(p.x, p.y); break;
+        }
+        case DXFEntityType.ELLIPSE: {
+          const tps = tessellateEllipse(e.center, e.majorAxis, e.minorAxisRatio, e.startAngle, e.endAngle, 32);
+          for (const p of tps) add(p.x, p.y); break;
+        }
+        case DXFEntityType.SPLINE: {
+          const tps = tessellateSpline(e.degree, e.controlPoints, e.knots, e.weights, 64);
+          for (const p of tps) add(p.x, p.y); break;
+        }
+        case DXFEntityType.POLYLINE:
+          for (const v of e.vertices) add(v.x, v.y); break;
+        case DXFEntityType.LWPOLYLINE: {
+          const tps = tessellateLWPolyline(e.vertices, e.bulges, e.closed, 32);
+          for (const p of tps) add(p.x, p.y); break;
+        }
+      }
+    }
+    return new Float64Array(pts);
+  }
+
+  // ── Step 1: per-chain bbox + pierce-point + polygon ───────────────
   interface ChainData {
     ci: number;
     bbox: BBox;
     pierceX: number;
     pierceY: number;
     isClosed: boolean;
+    poly: Float64Array | null; // tessellated polygon, only for closed chains
   }
 
   const chainData: ChainData[] = [];
@@ -606,12 +674,14 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
       for (const y of ys) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
     }
     if (!Number.isFinite(minX)) continue;
+    const poly = chain.isClosed ? tessellateChain(chain) : null;
     chainData.push({
       ci,
       bbox: { minX, minY, maxX, maxY },
       pierceX: chain.piercePoint.x,
       pierceY: chain.piercePoint.y,
       isClosed: chain.isClosed,
+      poly,
     });
   }
 
@@ -619,9 +689,9 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
   const open   = chainData.filter((c) => !c.isClosed);
 
   // ── Step 2: group closed chains via Union-Find ────────────────────
-  // Two closed chains merge when:
-  //   a) pierce-point of one lies INSIDE bbox of the other (containment/hole), OR
-  //   b) their bboxes are within `gap` distance (user-controlled tolerance)
+  // Merge criteria for two closed chains A and B:
+  //   a) pierce-point of A lies inside the POLYGON of B (or vice-versa) — true hole/containment
+  //   b) their bboxes are within `gap` distance — user-controlled proximity merge
   const nc = closed.length;
   const parent = new Int32Array(nc);
   for (let i = 0; i < nc; i++) parent[i] = i;
@@ -635,22 +705,24 @@ export function splitDXFIntoParts(doc: NormalizedDocument, stats: CuttingStats, 
     if (ra !== rb) parent[ra] = rb;
   }
 
-  function ptInBBox(px: number, py: number, bb: BBox): boolean {
-    return px >= bb.minX && px <= bb.maxX && py >= bb.minY && py <= bb.maxY;
-  }
-
-  function bboxNear(a: BBox, b: BBox, g: number): boolean {
-    return a.minX - g <= b.maxX && a.maxX + g >= b.minX &&
-           a.minY - g <= b.maxY && a.maxY + g >= b.minY;
-  }
-
   for (let i = 0; i < nc; i++) {
     for (let j = i + 1; j < nc; j++) {
       const ci = closed[i]!;
       const cj = closed[j]!;
-      const contained =
-        ptInBBox(ci.pierceX, ci.pierceY, cj.bbox) ||
-        ptInBBox(cj.pierceX, cj.pierceY, ci.bbox);
+      // First quick bbox pre-filter before expensive polygon test
+      const bboxOverlap =
+        ci.bbox.minX <= cj.bbox.maxX && ci.bbox.maxX >= cj.bbox.minX &&
+        ci.bbox.minY <= cj.bbox.maxY && ci.bbox.maxY >= cj.bbox.minY;
+      let contained = false;
+      if (bboxOverlap) {
+        // Check if pierce-point of one is inside the real polygon of the other
+        if (cj.poly && cj.poly.length >= 6) {
+          contained = ptInPolygon(ci.pierceX, ci.pierceY, cj.poly);
+        }
+        if (!contained && ci.poly && ci.poly.length >= 6) {
+          contained = ptInPolygon(cj.pierceX, cj.pierceY, ci.poly);
+        }
+      }
       const near = gap > 0 && bboxNear(ci.bbox, cj.bbox, gap);
       if (contained || near) union(i, j);
     }
