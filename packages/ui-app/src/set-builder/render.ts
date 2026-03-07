@@ -240,11 +240,20 @@ const SHEET_PART_COLORS = [
   '#34d399', '#60a5fa', '#facc15', '#e879f9', '#38bdf8',
 ];
 
+const _sheetMarkupCache = new Map<string, string>();
+
+export function clearSheetMarkupCache(): void {
+  _sheetMarkupCache.clear();
+}
+
 export function buildSheetPlacementsMarkup(
   sheet: SheetResult,
   dxfThumbCache: Map<string, string>,
   includeThumbs = false,
 ): string {
+  const cacheKey = `${sheet.id}:${sheet.placements.length}:${includeThumbs ? dxfThumbCache.size : 0}`;
+  const cached = _sheetMarkupCache.get(cacheKey);
+  if (cached !== undefined) return cached;
   const noGap = sheet.gap === 0;
   const safeW = Math.max(1, sheet.sheetWidth);
   const safeH = Math.max(1, sheet.sheetHeight);
@@ -291,7 +300,9 @@ export function buildSheetPlacementsMarkup(
       `;
     })
     .join('');
-  return `<div class="sb-sheet-canvas" style="--sheet-ratio:${ratio};">${placements}</div>`;
+  const html = `<div class="sb-sheet-canvas" style="--sheet-ratio:${ratio};">${placements}</div>`;
+  _sheetMarkupCache.set(cacheKey, html);
+  return html;
 }
 
 export function buildLibraryRow(

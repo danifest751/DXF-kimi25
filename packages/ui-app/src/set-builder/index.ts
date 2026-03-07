@@ -19,7 +19,7 @@ import type { SheetPreset } from './context.js';
 import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog } from './library.js';
 import { runNesting, exportSheetByIndex } from './nesting.js';
-import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual } from './render.js';
+import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual, clearSheetMarkupCache } from './render.js';
 import { createThumbQueueController } from './thumb-queue.js';
 import type { RenderSnapshot } from './render.js';
 import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState } from './canvas-modal.js';
@@ -288,6 +288,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       filesUpdatedFrameId = null;
       if (pendingFilesUpdatedAdded > 0) {
         dxfThumbCache.clear();
+      clearSheetMarkupCache();
         setToastState(t('setBuilder.toast.filesSynced'));
       }
       pendingFilesUpdatedAdded = 0;
@@ -448,7 +449,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'run') {
       void runNesting(
         state, sheetPresets,
-        (r) => { lastEngineResult = r; },
+        (r) => { lastEngineResult = r; clearSheetMarkupCache(); },
         (m) => { lastItemDocs = m; },
         showToast, render,
       );
