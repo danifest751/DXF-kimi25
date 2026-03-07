@@ -7,6 +7,7 @@
 import './styles/base.css';
 import './styles/set-builder.css';
 import './styles/animations.css';
+import './styles/responsive.css';
 
 import { restoreAuthSession, runTMAAutoLogin } from './auth.js';
 import { initSetBuilder } from './set-builder/index.js';
