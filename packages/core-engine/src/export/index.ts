@@ -8,7 +8,7 @@ import type { NestingResult } from '../nesting/index.js';
 import type { CuttingStats } from '../cutting/index.js';
 import { DXFEntityType, DXFFormat, DXFVersion } from '../types/index.js';
 import type { DXFDocument, DXFEntity, DXFLayer, DXFLineEntity, DXFArcEntity, DXFCircleEntity, DXFLWPolylineEntity, DXFEllipseEntity, DXFSplineEntity, DXFPolylineEntity, BoundingBox } from '../types/index.js';
-import type { FlattenedEntity } from '../normalize/index.js';
+import type { FlattenedEntity, NormalizedDocument } from '../normalize/index.js';
 import { mat4TransformPoint, tessellateArc, tessellateEllipse, tessellateSpline, tessellateLWPolyline } from '../geometry/index.js';
 
 // ─── Экспорт в DXF ──────────────────────────────────────────────────
