@@ -152,7 +152,7 @@ async function telegramSendMessageWithKeyboard(
   const cleanedRows = keyboardRows.map((row) =>
     row.map((btn) => {
       if ('web_app' in btn && btn.web_app) return { text: btn.text, web_app: btn.web_app };
-      const { style: _style, web_app: _wa, ...rest } = btn as { text: string; callback_data: string; style?: string; web_app?: never };
+      const { web_app: _wa, ...rest } = btn as { text: string; callback_data: string; style?: string; web_app?: never };
       return rest;
     }),
   );
