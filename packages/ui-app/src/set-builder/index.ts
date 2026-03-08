@@ -398,7 +398,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'tg-logout') { void logoutWorkspace().then(() => scheduleRender()); return; }
     if (action === 'catalog-add') { void addCatalog(state, authSessionToken, showToast, render); return; }
     if (action === 'catalog-rename') { void renameCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
-    if (action === 'catalog-delete') { void deleteCurrentCatalog(state, button.dataset.catalog, showToast, render); return; }
+    if (action === 'catalog-delete') {
+      state.busyLabel = t('setBuilder.deleting');
+      scheduleRender();
+      void deleteCurrentCatalog(state, button.dataset.catalog, showToast, render).then(() => { state.busyLabel = ''; scheduleRender(); });
+      return;
+    }
     if (action === 'catalog-collapse') {
       const cat = button.dataset.catalog ?? '';
       if (cat) {
@@ -555,9 +560,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'menu-delete') {
+      state.busyLabel = t('setBuilder.deleting');
+      state.openMenuLibraryId = null;
+      scheduleRender();
       void removeLibraryItem(state, id, showToast).then((removed) => {
-        if (!removed) return;
-        state.openMenuLibraryId = null;
+        state.busyLabel = '';
+        if (!removed) { scheduleRender(); return; }
         showToast(t('setBuilder.toast.itemDeleted'));
         scheduleRender();
       });
@@ -1006,8 +1014,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   fileInput.addEventListener('change', () => {
     const files = fileInput.files ? Array.from(fileInput.files) : [];
     fileInput.value = '';
+    if (files.length === 0) return;
+    state.uploadingCount += files.length;
+    scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (id) => { state.activeLibraryId = id; });
+      void loadSingleFile(f, (id) => { state.activeLibraryId = id; }).finally(() => {
+        state.uploadingCount = Math.max(0, state.uploadingCount - 1);
+        scheduleRender();
+      });
     }
   });
 
@@ -1026,8 +1040,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     e.preventDefault();
     dropOverlay?.classList.remove('active');
     const files = e.dataTransfer ? Array.from(e.dataTransfer.files).filter((f) => f.name.toLowerCase().endsWith('.dxf')) : [];
+    if (files.length === 0) return;
+    state.uploadingCount += files.length;
+    scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (id) => { state.activeLibraryId = id; });
+      void loadSingleFile(f, (id) => { state.activeLibraryId = id; }).finally(() => {
+        state.uploadingCount = Math.max(0, state.uploadingCount - 1);
+        scheduleRender();
+      });
     }
   });
 

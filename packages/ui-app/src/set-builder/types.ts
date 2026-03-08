@@ -98,4 +98,6 @@ export interface SetBuilderState {
   optimizerOpenForId: number | null;
   isCacheLoaded: boolean;
   collapsedCatalogs: Set<string>;
+  uploadingCount: number;
+  busyLabel: string;
 }

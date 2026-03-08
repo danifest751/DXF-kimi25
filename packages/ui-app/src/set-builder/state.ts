@@ -37,6 +37,8 @@ export function createInitialState(): SetBuilderState {
     optimizerOpenForId: null,
     isCacheLoaded: false,
     collapsedCatalogs: new Set(),
+    uploadingCount: 0,
+    busyLabel: '',
   };
 }
 

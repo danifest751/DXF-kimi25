@@ -168,6 +168,8 @@ export const en: Record<TranslationKey, string> = {
   'catalog.delete.error': 'Failed to delete catalog: {msg}',
 
   // Set Builder
+  'setBuilder.uploading': 'Uploading…',
+  'setBuilder.deleting': 'Deleting…',
   'setBuilder.upload': 'Upload',
   'setBuilder.cacheVerifying': 'Syncing with server…',
   'setBuilder.searchPlaceholder': 'Search by file name',

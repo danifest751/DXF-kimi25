@@ -973,6 +973,14 @@ export function renderMain(
           <span>${t('setBuilder.tabNesting')}</span>
         </button>
       </nav>
+      ${(state.uploadingCount > 0 || state.busyLabel) ? `
+      <div class="sb-busy-overlay">
+        <div class="sb-busy-card">
+          <span class="sb-run-spinner"></span>
+          <span class="sb-busy-label">${esc(state.busyLabel || t('setBuilder.uploading'))}</span>
+          ${state.uploadingCount > 1 ? `<span class="sb-busy-count">${state.uploadingCount}</span>` : ''}
+        </div>
+      </div>` : ''}
       ${toastText ? `<div class="sb-toast">${esc(toastText)}</div>` : ''}
       ${renderPreviewModal(state, dxfThumbCache, filtered)}
       ${renderMaterialModal(state)}

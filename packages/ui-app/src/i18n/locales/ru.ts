@@ -166,6 +166,8 @@ export const ru = {
   'catalog.delete.error': 'Не удалось удалить каталог: {msg}',
 
   // Set Builder
+  'setBuilder.uploading': 'Загрузка…',
+  'setBuilder.deleting': 'Удаление…',
   'setBuilder.upload': 'Загрузить',
   'setBuilder.cacheVerifying': 'Синхронизация с сервером…',
   'setBuilder.searchPlaceholder': 'Поиск по имени файла',
