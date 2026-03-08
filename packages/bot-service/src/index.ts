@@ -37,6 +37,7 @@ interface TelegramResponse<T> {
 export interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: {
+    readonly message_id: number;
     readonly chat: { readonly id: number };
     readonly from?: { readonly id: number; readonly username?: string; readonly language_code?: string };
     readonly text?: string;
@@ -109,6 +110,7 @@ const QUANTITY_CALLBACK_PREFIX = 'qty:';
 const VARIANT_CALLBACK_PREFIX = 'var:';
 const chatNestingContext = new Map<number, PendingNestingContext>();
 const chatNestingContextLastUsed = new Map<number, number>();
+const processedMessageIds = new Set<number>();
 const CONTEXT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const BOT_MAX_DXF_BYTES = 20 * 1024 * 1024; // 20 MB (Telegram bot limit)
 
@@ -1215,6 +1217,14 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       return;
     }
 
+    const msgId = message.message_id;
+    if (processedMessageIds.has(msgId)) return;
+    processedMessageIds.add(msgId);
+    if (processedMessageIds.size > 500) {
+      const first = processedMessageIds.values().next().value;
+      if (first !== undefined) processedMessageIds.delete(first);
+    }
+
     try {
       const dxfBuffer = await downloadTelegramFile(token, message.document.file_id);
       const result = analyzeDXF(dxfBuffer);
@@ -1266,6 +1276,13 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
   if (message.text !== undefined) {
     const textLocale = detectBotLocale(message.from?.language_code);
     const ts = getBotStrings(textLocale);
+
+    if (message.text === '/reset' || message.text === '/start') {
+      chatNestingContext.delete(chatId);
+      chatNestingContextLastUsed.delete(chatId);
+      await telegramSendMessage(token, chatId, ts.resetDone);
+      return;
+    }
 
     if (message.text === '/login' || message.text === '/auth') {
       try {
