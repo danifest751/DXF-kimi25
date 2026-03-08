@@ -418,7 +418,7 @@ function renderNestingPreview(result: NestingResult): Buffer {
   const ox = PREVIEW_PADDING;
   const oy = PREVIEW_PADDING;
   const toX = (x: number): number => ox + x * scale;
-  const toY = (y: number): number => oy + (sheetH - y) * scale;
+  const toY = (y: number): number => oy + y * scale;
 
   drawLine(pixels, width, height, toX(0), toY(0), toX(sheetW), toY(0));
   drawLine(pixels, width, height, toX(sheetW), toY(0), toX(sheetW), toY(sheetH));
@@ -431,7 +431,7 @@ function renderNestingPreview(result: NestingResult): Buffer {
     const colorG = 90 + (i * 79) % 130;
     const colorB = 100 + (i * 37) % 120;
     const x = toX(p.x);
-    const y = toY(p.y + p.height); // p.y is bottom-left in math coords, toY inverts to screen
+    const y = toY(p.y);
     const w = p.width * scale;
     const h = p.height * scale;
 
