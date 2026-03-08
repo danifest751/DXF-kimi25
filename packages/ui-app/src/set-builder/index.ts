@@ -999,7 +999,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     updateNestItems: () => scheduleRender(),
     syncWelcomeVisibility: () => scheduleRender(),
     computeStats: computeStatsForFile,
-    setActiveFile: (id: number) => { state.activeLibraryId = id; scheduleRender(); },
+    setActiveFile: (_id: number) => { scheduleRender(); },
     reloadFromServer: async () => {
       await reloadWorkspaceLibraryFromServer();
       scheduleRender();
@@ -1018,7 +1018,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     state.uploadingCount += files.length;
     scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (id) => { state.activeLibraryId = id; }).finally(() => {
+      void loadSingleFile(f, (_id) => {}).finally(() => {
         state.uploadingCount = Math.max(0, state.uploadingCount - 1);
         scheduleRender();
       });
@@ -1044,7 +1044,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     state.uploadingCount += files.length;
     scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (id) => { state.activeLibraryId = id; }).finally(() => {
+      void loadSingleFile(f, (_id) => {}).finally(() => {
         state.uploadingCount = Math.max(0, state.uploadingCount - 1);
         scheduleRender();
       });
