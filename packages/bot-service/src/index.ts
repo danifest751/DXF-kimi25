@@ -373,82 +373,13 @@ function drawEntityBBoxFallback(
   drawLine(pixels, width, height, s4.x, s4.y, s1.x, s1.y);
 }
 
-function getEntityWorldBBox(fe: FlattenedEntity): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  const bb = fe.entity.boundingBox;
-  if (bb === undefined) return null;
 
-  const p1 = mat4TransformPoint(fe.transform, bb.min);
-  const p2 = mat4TransformPoint(fe.transform, { x: bb.max.x, y: bb.min.y, z: bb.min.z });
-  const p3 = mat4TransformPoint(fe.transform, bb.max);
-  const p4 = mat4TransformPoint(fe.transform, { x: bb.min.x, y: bb.max.y, z: bb.min.z });
-  const xs = [p1.x, p2.x, p3.x, p4.x];
-  const ys = [p1.y, p2.y, p3.y, p4.y];
-
-  return {
-    minX: Math.min(...xs),
-    minY: Math.min(...ys),
-    maxX: Math.max(...xs),
-    maxY: Math.max(...ys),
-  };
-}
-
-function extractNestingItems(normalized: NormalizedDocument, stats: ReturnType<typeof computeCuttingStats>): readonly {
+function extractNestingItems(normalized: NormalizedDocument, _stats: ReturnType<typeof computeCuttingStats>): readonly {
   readonly item: NestingItem;
   readonly itemDoc: ItemDocData;
 }[] {
-  const items: {
-    item: NestingItem;
-    itemDoc: ItemDocData;
-  }[] = [];
-
-  for (let i = 0; i < stats.chains.length; i++) {
-    const chain = stats.chains[i]!;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    const chainEntities: FlattenedEntity[] = [];
-
-    for (const entityIndex of chain.entityIndices) {
-      const fe = normalized.flatEntities[entityIndex];
-      if (fe === undefined) continue;
-      chainEntities.push(fe);
-      const bb = getEntityWorldBBox(fe);
-      if (bb === null) continue;
-      minX = Math.min(minX, bb.minX);
-      minY = Math.min(minY, bb.minY);
-      maxX = Math.max(maxX, bb.maxX);
-      maxY = Math.max(maxY, bb.maxY);
-    }
-
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-      continue;
-    }
-
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-    items.push({
-      item: {
-        id: i + 1,
-        name: `Part ${i + 1}`,
-        width,
-        height,
-        quantity: 1,
-      },
-      itemDoc: {
-        flatEntities: chainEntities,
-        bbox: {
-          min: { x: minX, y: minY, z: 0 },
-          max: { x: maxX, y: maxY, z: 0 },
-        },
-      },
-    });
-  }
-
-  if (items.length > 0) {
-    return items;
-  }
-
+  // Treat the entire DXF file as one part (total bbox + all entities).
+  // Per-chain splitting caused holes/inner contours to be mispositioned in DXF export.
   const total = normalized.totalBBox;
   if (total === null) return [];
 
