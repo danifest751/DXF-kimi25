@@ -110,8 +110,9 @@ const QUANTITY_CALLBACK_PREFIX = 'qty:';
 const VARIANT_CALLBACK_PREFIX = 'var:';
 const chatNestingContext = new Map<number, PendingNestingContext>();
 const chatNestingContextLastUsed = new Map<number, number>();
-const processedMessageIds = new Set<number>();
+const processedMessageIds = new Map<number, number>(); // messageId → timestamp
 const CONTEXT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEDUP_TTL_MS = 10 * 60 * 1000; // 10 min dedup window
 const BOT_MAX_DXF_BYTES = 20 * 1024 * 1024; // 20 MB (Telegram bot limit)
 
 function setNestingContext(chatId: number, ctx: PendingNestingContext): void {
@@ -661,6 +662,8 @@ async function sendHome(token: string, chatId: number, ctx: PendingNestingContex
   await telegramSendMessageWithKeyboard(token, chatId, composeHomeText(ctx), buildHomeButtons(ctx), 'HTML');
 }
 
+const sendDashboard = sendHome;
+
 // ─── Экран 2: Настройки ──────────────────────────────────────
 
 function composeSettingsText(ctx: PendingNestingContext): string {
@@ -775,11 +778,6 @@ function buildVariantsButtons(ctx: PendingNestingContext): BtnGrid {
   }
   rows.push([{ text: s.btnHome, callback_data: `${ACTION_CALLBACK_PREFIX}menu` }]);
   return rows;
-}
-
-// Совместимость: sendDashboard теперь ведёт на home
-async function sendDashboard(token: string, chatId: number, ctx: PendingNestingContext): Promise<void> {
-  await sendHome(token, chatId, ctx);
 }
 
 function toSafeBaseName(fileName: string): string {
@@ -1012,8 +1010,11 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
 
         // P5: protect event loop — reject if nesting takes >25s
         const BOT_NESTING_TIMEOUT_MS = 25_000;
-        const nestPromise = new Promise<NestingResult>((resolve) => {
-          resolve(nestItems(itemsWithQuantity, context.sheet, context.gap, nestingOptions));
+        const nestPromise = new Promise<NestingResult>((resolve, reject) => {
+          setImmediate(() => {
+            try { resolve(nestItems(itemsWithQuantity, context.sheet, context.gap, nestingOptions)); }
+            catch (e) { reject(e); }
+          });
         });
         const nesting = await Promise.race([
           nestPromise,
@@ -1149,15 +1150,20 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
     }
 
     const msgId = message.message_id;
-    if (processedMessageIds.has(msgId)) return;
-    processedMessageIds.add(msgId);
-    if (processedMessageIds.size > 500) {
-      const first = processedMessageIds.values().next().value;
-      if (first !== undefined) processedMessageIds.delete(first);
+    const now = Date.now();
+    if ((processedMessageIds.get(msgId) ?? 0) > now - DEDUP_TTL_MS) return;
+    processedMessageIds.set(msgId, now);
+    // Evict expired entries to prevent unbounded growth
+    if (processedMessageIds.size > 1000) {
+      const cutoff = now - DEDUP_TTL_MS;
+      for (const [id, ts] of processedMessageIds) {
+        if (ts < cutoff) processedMessageIds.delete(id);
+      }
     }
 
     try {
       const dxfBuffer = await downloadTelegramFile(token, message.document.file_id);
+      await new Promise<void>((resolve) => setImmediate(resolve));
       const result = analyzeDXF(dxfBuffer);
       const defaultSheet = SHEET_PRESETS[1]?.size ?? SHEET_PRESETS[0]!.size;
       const current = chatNestingContext.get(chatId);
@@ -1267,13 +1273,6 @@ async function handleTelegramUpdate(token: string, update: TelegramUpdate): Prom
       });
 
       await sendSettings(token, chatId, chatNestingContext.get(chatId)!);
-      return;
-    }
-
-    if (message.text === '/start') {
-      chatNestingContext.delete(chatId);
-      chatNestingContextLastUsed.delete(chatId);
-      await telegramSendMessage(token, chatId, ts.startNoContext);
       return;
     }
 

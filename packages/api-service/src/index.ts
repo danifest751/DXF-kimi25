@@ -304,7 +304,7 @@ function parseBooleanStringInput(value: string): boolean | null {
 function getAuthTokenFromRequest(req: Request): string {
   const cookieToken = getAuthCookieToken(req);
   if (cookieToken) return cookieToken;
-  const header = req.header('authorization') ?? req.header('Authorization') ?? '';
+  const header = req.header('authorization') ?? '';
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim();
   }
