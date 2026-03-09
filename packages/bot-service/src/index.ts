@@ -15,6 +15,7 @@ import { DXFEntityType, type Point3D } from '../../core-engine/src/types/index.j
 import { createTelegramLoginCode } from '../../api-service/src/telegram-auth.js';
 import { getSharedSheet } from '../../api-service/src/shared-sheets.js';
 import { detectBotLocale, getBotStrings, type BotLocale } from './i18n.js';
+import { toArrayBuffer } from '../../core-engine/src/utils.js';
 
 export interface BotMessage {
   readonly chatId: string;
@@ -131,10 +132,6 @@ setInterval(() => {
   }
 }, 3 * 60 * 60 * 1000).unref();
 
-function toArrayBuffer(buf: Buffer): ArrayBuffer {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-}
-
 function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
@@ -167,51 +164,30 @@ async function telegramSendMessageWithKeyboard(
   await telegramGet(token, 'sendMessage', params);
 }
 
-function setPixel(pixels: Uint8Array, width: number, height: number, x: number, y: number): void {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const ix = Math.round(x);
-  const iy = Math.round(y);
-  if (ix < 0 || iy < 0 || ix >= width || iy >= height) return;
-  const idx = (iy * width + ix) * 4;
-  pixels[idx] = 20;
-  pixels[idx + 1] = 20;
-  pixels[idx + 2] = 20;
-  pixels[idx + 3] = 255;
-}
-
-function setPixelRgb(
-  pixels: Uint8Array,
-  width: number,
-  height: number,
-  x: number,
-  y: number,
-  r: number,
-  g: number,
-  b: number,
-): void {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const ix = Math.round(x);
-  const iy = Math.round(y);
-  if (ix < 0 || iy < 0 || ix >= width || iy >= height) return;
-  const idx = (iy * width + ix) * 4;
-  pixels[idx] = r;
-  pixels[idx + 1] = g;
-  pixels[idx + 2] = b;
-  pixels[idx + 3] = 255;
-}
 
 function drawLine(pixels: Uint8Array, width: number, height: number, x0: number, y0: number, x1: number, y1: number): void {
+  if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return;
   const dx = x1 - x0;
   const dy = y1 - y0;
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   if (steps <= 0) {
-    setPixel(pixels, width, height, x0, y0);
+    const ix = Math.round(x0);
+    const iy = Math.round(y0);
+    if (ix >= 0 && iy >= 0 && ix < width && iy < height) {
+      const idx = (iy * width + ix) * 4;
+      pixels[idx] = 20; pixels[idx + 1] = 20; pixels[idx + 2] = 20; pixels[idx + 3] = 255;
+    }
     return;
   }
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    setPixel(pixels, width, height, x0 + dx * t, y0 + dy * t);
+  const stepsI = Math.ceil(steps);
+  for (let i = 0; i <= stepsI; i++) {
+    const t = i / stepsI;
+    const ix = Math.round(x0 + dx * t);
+    const iy = Math.round(y0 + dy * t);
+    if (ix >= 0 && iy >= 0 && ix < width && iy < height) {
+      const idx = (iy * width + ix) * 4;
+      pixels[idx] = 20; pixels[idx + 1] = 20; pixels[idx + 2] = 20; pixels[idx + 3] = 255;
+    }
   }
 }
 
@@ -235,13 +211,16 @@ function fillRect(
   g: number,
   b: number,
 ): void {
+  // Clamp range once — no per-pixel bounds check needed inside the loop
   const x0 = Math.max(0, Math.floor(x));
   const y0 = Math.max(0, Math.floor(y));
   const x1 = Math.min(width - 1, Math.ceil(x + w));
   const y1 = Math.min(height - 1, Math.ceil(y + h));
   for (let py = y0; py <= y1; py++) {
+    const rowBase = py * width;
     for (let px = x0; px <= x1; px++) {
-      setPixelRgb(pixels, width, height, px, py, r, g, b);
+      const idx = (rowBase + px) * 4;
+      pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
     }
   }
 }

@@ -212,36 +212,50 @@ function checkLocalRateLimit(key: string, maxRequests: number, windowMs: number)
 async function checkRateLimit(key: string, maxRequests: number, windowMs: number): Promise<boolean> {
   if (!supabaseEnabled) return checkLocalRateLimit(key, maxRequests, windowMs);
 
+  // Fast path: check local cache first to skip Supabase on the common case.
+  // This avoids a network round-trip when the local window is still valid.
+  if (!checkLocalRateLimit(key, maxRequests, windowMs)) return false;
+
   const now = Date.now();
   try {
-    const params = new URLSearchParams({
-      select: 'key,window_start_ms,count,updated_at',
-      key: `eq.${key}`,
-      limit: '1',
-    });
-    const currentResp = await supabaseRequest(`/${RATE_LIMITS_TABLE}?${params.toString()}`);
-    if (!currentResp?.ok) return checkLocalRateLimit(key, maxRequests, windowMs);
-
-    const rows = await currentResp.json() as RateLimitRow[];
-    const current = Array.isArray(rows) && rows.length > 0 ? rows[0]! : null;
-    const expired = !current || now - Number(current.window_start_ms) > windowMs;
-    const nextCount = expired ? 1 : Number(current.count) + 1;
-    const windowStartMs = expired ? now : Number(current.window_start_ms);
-
+    // Single upsert: insert new row or merge into existing one.
+    // PostgREST merge-duplicates keeps the existing row's values on conflict,
+    // so we always read back the current state with return=representation.
     const upsertResp = await supabaseRequest(`/${RATE_LIMITS_TABLE}?on_conflict=key`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify([{
+        key,
+        window_start_ms: now,
+        count: 1,
+        updated_at: new Date(now).toISOString(),
+      }]),
+    });
+    if (!upsertResp?.ok) return true; // local already passed above
+
+    const rows = await upsertResp.json() as RateLimitRow[];
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0]! : null;
+    if (!row) return true;
+
+    const windowExpired = now - Number(row.window_start_ms) > windowMs;
+    const nextCount = windowExpired ? 1 : Number(row.count) + 1;
+    const nextWindowStart = windowExpired ? now : Number(row.window_start_ms);
+
+    // Write updated count back (fire-and-forget, don't await to save latency)
+    void supabaseRequest(`/${RATE_LIMITS_TABLE}?on_conflict=key`, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify([{
         key,
-        window_start_ms: windowStartMs,
+        window_start_ms: nextWindowStart,
         count: nextCount,
         updated_at: new Date(now).toISOString(),
       }]),
     });
-    if (!upsertResp?.ok) return checkLocalRateLimit(key, maxRequests, windowMs);
+
     return nextCount <= maxRequests;
   } catch {
-    return checkLocalRateLimit(key, maxRequests, windowMs);
+    return true; // local already passed above, allow on Supabase error
   }
 }
 
@@ -466,27 +480,6 @@ app.post(['/api/auth/adopt-token', '/api/auth-adopt-token'], async (req: Request
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: 'Auth adopt token failed', details: message });
-  }
-});
-
-app.post('/api/library-catalogs-delete', async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!isWorkspaceLibraryEnabled()) {
-      res.status(503).json({ error: 'Workspace library storage is not configured' });
-      return;
-    }
-
-    const workspaceId = await requireWorkspaceId(req, res);
-    if (!workspaceId) return;
-
-    const catalogId = typeof req.body?.catalogId === 'string' ? req.body.catalogId : '';
-    const modeRaw = typeof req.body?.mode === 'string' ? req.body.mode : '';
-    const mode = modeRaw === 'delete_files' ? 'delete_files' : 'move_to_uncategorized';
-    await deleteWorkspaceCatalog(workspaceId, catalogId, mode);
-    res.json({ success: true, mode });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: 'Delete catalog failed', details: message });
   }
 });
 

@@ -69,13 +69,14 @@ export function isWorkspaceLibraryEnabled(): boolean {
   return supabaseEnabled;
 }
 
-async function countRows(table: string, workspaceId: string): Promise<number> {
+async function countRowsExact(table: string, workspaceId: string): Promise<number> {
   const params = new URLSearchParams({
     select: 'id',
     workspace_id: `eq.${workspaceId}`,
+    limit: '1',
   });
   const resp = await supabaseRequest(`/${table}?${params.toString()}`, {
-    method: 'HEAD',
+    method: 'GET',
     headers: { Prefer: 'count=exact' },
   });
   if (!resp) return 0;
@@ -121,7 +122,7 @@ function buildWorkspaceStoragePath(workspaceId: string, fileId: string): string 
 }
 
 async function ensureWorkspaceFileCapacity(workspaceId: string): Promise<void> {
-  const fileCount = await countRows(WORKSPACE_FILES_TABLE, workspaceId);
+  const fileCount = await countRowsExact(WORKSPACE_FILES_TABLE, workspaceId);
   if (fileCount >= MAX_FILES_PER_WORKSPACE) {
     throw new Error(`Лимит: максимум ${MAX_FILES_PER_WORKSPACE} файлов на workspace`);
   }
@@ -254,7 +255,7 @@ export async function createWorkspaceCatalog(workspaceId: string, nameInput: str
   const name = nameInput.trim().slice(0, MAX_NAME_LENGTH);
   if (name.length < 1) throw new Error('Catalog name is required');
 
-  const count = await countRows(WORKSPACE_CATALOGS_TABLE, workspaceId);
+  const count = await countRowsExact(WORKSPACE_CATALOGS_TABLE, workspaceId);
   if (count >= MAX_CATALOGS_PER_WORKSPACE) {
     throw new Error(`Лимит: максимум ${MAX_CATALOGS_PER_WORKSPACE} каталогов на workspace`);
   }

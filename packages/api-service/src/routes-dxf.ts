@@ -13,6 +13,7 @@ import type { NestingItem, NestingResult, SheetSize } from '../../core-engine/sr
 import { exportNestingToDXF, exportNestingToCSV, exportCuttingStatsToCSV } from '../../core-engine/src/export/index.js';
 import { calculatePrice } from '../../pricing/src/index.js';
 import { generateShortHash, getSharedSheet, hasSharedSheet, pruneExpiredSheets, saveSharedSheet } from './shared-sheets.js';
+import { toArrayBuffer as _toArrayBuffer } from '../../core-engine/src/utils.js';
 
 // ─── Validation helpers (shared with index.ts via re-export) ──────────
 
@@ -34,7 +35,7 @@ export function validateDxfPayload(req: Request, res: Response): boolean {
 }
 
 export function toArrayBuffer(buf: Buffer): ArrayBuffer {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  return _toArrayBuffer(buf);
 }
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
