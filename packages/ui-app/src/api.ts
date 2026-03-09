@@ -12,6 +12,13 @@ function withCredentials(init: RequestInit): RequestInit {
   };
 }
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function apiRequestJSON<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
@@ -28,7 +35,7 @@ async function apiRequestJSON<T>(
   }));
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+    throw new ApiError(response.status, text || `HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

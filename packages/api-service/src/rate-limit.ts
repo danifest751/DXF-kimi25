@@ -78,8 +78,8 @@ export async function heavyRateLimit(req: Request, res: Response, next: () => vo
 
 export async function nestingRateLimit(req: Request, res: Response, next: () => void): Promise<void> {
   const ip = getClientIp(req);
-  if (!await checkRateLimit(`nest:${ip}`, 3, 60_000)) {
-    res.status(429).json({ error: 'Too many nesting requests. Limit: 3 per minute.' });
+  if (!await checkRateLimit(`nest:${ip}`, 10, 60_000)) {
+    res.status(429).json({ error: 'Too many nesting requests. Limit: 10 per minute.' });
     return;
   }
   next();

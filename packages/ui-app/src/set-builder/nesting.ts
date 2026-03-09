@@ -1,4 +1,4 @@
-import { apiPostJSON, downloadBlob } from '../api.js';
+import { apiPostJSON, ApiError } from '../api.js';
 import { loadedFiles } from '../state.js';
 import { t } from '../i18n/index.js';
 import { nestItems } from '../../../core-engine/src/nesting/index.js';
@@ -256,6 +256,10 @@ export async function runNesting(
       });
       result = resp.data;
     } catch (apiErr) {
+      if (apiErr instanceof ApiError && apiErr.status === 429) {
+        showToast(t('setBuilder.toast.rateLimitNesting'));
+        return;
+      }
       console.warn('[set-builder] API nesting failed, falling back to local:', apiErr);
       result = nestItems(items, { width: sheet.w, height: sheet.h }, gap, options);
     }
