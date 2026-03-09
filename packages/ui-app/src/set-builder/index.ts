@@ -285,6 +285,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     });
   }
 
+  function forceRender(): void {
+    lastRenderSnapshot = null;
+    scheduleRender();
+  }
+
   function toggleOpen(next?: boolean): void {
     state.open = typeof next === 'boolean' ? next : !state.open;
     scheduleRender();
@@ -640,7 +645,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'sheet-drag-toggle') {
       state.dragMode = !state.dragMode;
       clearSheetMarkupCache();
-      scheduleRender();
+      forceRender();
       return;
     }
     if (action === 'sheet-resave') {
@@ -651,11 +656,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       }
       const sheetId = state.results.sheets[idx]?.id ?? state.previewSheetId ?? '';
       const manualOverrides = sheetId ? state.manualPlacements.get(sheetId) : undefined;
+      button.classList.add('sb-icon--busy');
       state.busyLabel = t('setBuilder.sheetResaving');
-      scheduleRender();
+      forceRender();
       void reshareSheet(idx, lastEngineResult, lastItemDocs, manualOverrides).then((newHash) => {
+        button.classList.remove('sb-icon--busy');
         state.busyLabel = '';
-        if (!newHash) { showToast(t('setBuilder.toast.hashUnavailable')); scheduleRender(); return; }
+        if (!newHash) { showToast(t('setBuilder.toast.hashUnavailable')); forceRender(); return; }
         if (state.results) {
           const updatedSheets = state.results.sheets.map((s, i) =>
             i === idx ? { ...s, hash: newHash } : s,
@@ -663,7 +670,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           state.results = { sheets: updatedSheets };
         }
         showToast(t('setBuilder.sheetResaved'));
-        scheduleRender();
+        forceRender();
       });
       return;
     }
@@ -674,13 +681,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         return;
       }
       const sheetId = state.results.sheets[idx]?.id ?? state.previewSheetId ?? '';
+      button.classList.add('sb-icon--busy');
       state.busyLabel = t('setBuilder.autoArranging');
-      scheduleRender();
+      forceRender();
       void (async () => {
         try {
           const { nestItems } = await import('../../../core-engine/src/nesting/index.js');
           const singleResult = buildSingleSheetResult(lastEngineResult!, idx);
-          if (!singleResult) { state.busyLabel = ''; scheduleRender(); return; }
+          if (!singleResult) { state.busyLabel = ''; button.classList.remove('sb-icon--busy'); forceRender(); return; }
 
           const sheet = singleResult.sheet;
           const items = singleResult.sheets[0]!.placed.map((p) => ({
@@ -707,11 +715,12 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           state.busyLabel = '';
           clearSheetMarkupCache();
           showToast(t('setBuilder.autoArrangeDone'));
-          scheduleRender();
+          // forceRender triggers full re-render with updated manualPlacements
+          forceRender();
         } catch (err) {
           console.warn('[set-builder] auto-arrange failed:', err);
           state.busyLabel = '';
-          scheduleRender();
+          forceRender();
         }
       })();
       return;

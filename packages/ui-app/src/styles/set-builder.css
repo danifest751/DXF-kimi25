@@ -631,6 +631,22 @@
   align-items: center;
 }
 
+.sb-icon.active {
+  background: color-mix(in srgb, var(--accent-primary, #00d4ff) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary, #00d4ff) 60%, transparent);
+  color: var(--accent-primary, #00d4ff);
+}
+
+.sb-icon.active:hover {
+  background: color-mix(in srgb, var(--accent-primary, #00d4ff) 30%, transparent);
+}
+
+.sb-icon.sb-icon--busy {
+  opacity: 0.5;
+  cursor: wait;
+  pointer-events: none;
+}
+
 .sb-icon svg {
   width: 16px;
   height: 16px;
@@ -1108,8 +1124,17 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-light);
   background: linear-gradient(145deg, rgba(8, 14, 23, 0.9), rgba(12, 20, 34, 0.92));
-  overflow: hidden;
+  overflow: visible;
   margin: 8px 0;
+}
+
+.sb-sheet-canvas--card {
+  overflow: hidden;
+}
+
+.sb-sheet-canvas--drag {
+  overflow: visible;
+  z-index: 0;
 }
 
 .sb-sheet-part {
@@ -1124,6 +1149,25 @@
 .sb-sheet-part--no-gap {
   border-color: color-mix(in srgb, var(--part-color, #7ec6ff) 30%, transparent);
   border-radius: 0;
+}
+
+.sb-sheet-part--draggable {
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow 0.1s ease, opacity 0.1s ease;
+}
+
+.sb-sheet-part--draggable:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--part-color, #7ec6ff) 70%, transparent);
+  z-index: 10;
+}
+
+.sb-sheet-part--dragging {
+  cursor: grabbing !important;
+  opacity: 0.85;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5),
+              0 0 0 2px color-mix(in srgb, var(--part-color, #7ec6ff) 90%, transparent);
+  z-index: 100;
 }
 
 .sb-sheet-part-img {
@@ -1510,12 +1554,20 @@
 }
 
 .sb-modal-sheet-preview {
-  overflow: hidden;
+  overflow: auto;
   background: rgba(6, 10, 20, 0.6);
   border-right: 1px solid var(--border);
   padding: 12px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.sb-modal-sheet-preview--drag {
+  overflow: visible;
+}
+
+.sb-modal-sheet-preview .sb-sheet-canvas--drag {
+  overflow: visible;
 }
 
 .sb-modal-sheet-preview .sb-sheet-canvas {

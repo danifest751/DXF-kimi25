@@ -261,6 +261,7 @@ export function buildSheetPlacementsMarkup(
   includeThumbs = false,
   dragMode = false,
   manualOverrides?: readonly { x: number; y: number }[],
+  cardMode = false,
 ): string {
   const hasManual = manualOverrides && manualOverrides.length > 0;
   const cacheKey = `${sheet.id}:${sheet.placements.length}:${includeThumbs ? dxfThumbCache.size : 0}`;
@@ -318,7 +319,11 @@ export function buildSheetPlacementsMarkup(
       `;
     })
     .join('');
-  const canvasClass = dragMode ? 'sb-sheet-canvas sb-sheet-canvas--drag' : 'sb-sheet-canvas';
+  const canvasClass = dragMode
+    ? 'sb-sheet-canvas sb-sheet-canvas--drag'
+    : cardMode
+      ? 'sb-sheet-canvas sb-sheet-canvas--card'
+      : 'sb-sheet-canvas';
   const html = `<div class="${canvasClass}" style="--sheet-ratio:${ratio};">${placements}</div>`;
   if (!hasManual && !dragMode) _sheetMarkupCache.set(cacheKey, html);
   return html;
@@ -609,7 +614,7 @@ export function renderPreviewModal(
           </div>
         </div>
         <div class="sb-modal-sheet-body">
-          <div class="sb-modal-sheet-preview" data-sheet-id="${sheet.id}" data-sheet-w="${sheet.sheetWidth}" data-sheet-h="${sheet.sheetHeight}">${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, state.dragMode, manualOverrides)}</div>
+          <div class="sb-modal-sheet-preview${state.dragMode ? ' sb-modal-sheet-preview--drag' : ''}" data-sheet-id="${sheet.id}" data-sheet-w="${sheet.sheetWidth}" data-sheet-h="${sheet.sheetHeight}">${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, state.dragMode, manualOverrides)}</div>
           <div class="sb-modal-sheet-side">
             <div class="sb-modal-util-block">
               <div class="sb-modal-util-label">${t('setBuilder.utilization')}</div>
@@ -845,7 +850,7 @@ export function renderMain(
                   : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
                     <div class="sb-sheet-card">
                       <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true)}
+                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, false, undefined, true)}
                       <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
                       <div class="sb-sheet-actions">
                         <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
