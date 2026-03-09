@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@dxf-viewer/core-engine": "*",
+    "@sentry/browser": "^10.42.0",
+    "@sentry/vite-plugin": "^5.1.1",
     "idb": "^8.0.0"
   },
   "devDependencies": {

@@ -9,9 +9,12 @@ import './styles/set-builder.css';
 import './styles/animations.css';
 import './styles/responsive.css';
 
+import { initSentry } from './sentry.js';
 import { restoreAuthSession, runTMAAutoLogin } from './auth.js';
 import { initSetBuilder } from './set-builder/index.js';
 import { setBuilderRoot, btnSetBuilder } from './ui-shell.js';
+
+initSentry();
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 

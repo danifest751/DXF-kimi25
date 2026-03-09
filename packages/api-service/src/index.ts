@@ -4,6 +4,8 @@
  * Полный API вокруг core-engine.
  */
 
+import { initSentry, sentryRequestHandler } from './sentry.js';
+initSentry();
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -1250,5 +1252,7 @@ app.post('/api/file-materials-upsert', async (req: Request, res: Response): Prom
     res.status(500).json({ error: 'Upsert file material failed', details: message });
   }
 });
+
+app.use(sentryRequestHandler());
 
 export default app;
