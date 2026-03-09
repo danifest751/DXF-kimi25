@@ -99,6 +99,14 @@ export const iconLightning = svg(
   `<path d="M10 2L4 9h5l-1 5 7-7H10z" fill="currentColor" stroke="none"/>`,
 );
 
+/** 🗜 Zip / archive download */
+export const iconZip = svg(
+  `<rect x="3" y="1" width="10" height="14" rx="1.5"/>
+   <line x1="8" y1="5" x2="8" y2="11"/>
+   <polyline points="5,8 8,11 11,8"/>
+   <line x1="5" y1="13" x2="11" y2="13"/>`,
+);
+
 /** ⚠ Warning */
 export const iconWarning = svg(
   `<path d="M8 2L14.5 13H1.5z"/>

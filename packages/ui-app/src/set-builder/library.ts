@@ -5,6 +5,7 @@ import { t } from '../i18n/index.js';
 import { buildContourFromAll, contourAreaMm2 } from '../../../core-engine/src/contour/index.js';
 import type { LibraryItem, SetBuilderState } from './types.js';
 import { getLibraryItem } from './state.js';
+import { buildZip } from './optimizer/batch-index.js';
 
 export function mapLoadedCatalogName(catalogId: string | null): string {
   if (catalogId === null || catalogId === UNCATEGORIZED_CATALOG_ID) return t('setBuilder.unnamedCatalog');
@@ -367,6 +368,72 @@ export async function renameCurrentCatalog(
     state.catalogFilter = prevName;
     showToast(t('setBuilder.toast.catalogOpFailed'));
     render();
+  }
+}
+
+export async function downloadCatalogZip(
+  state: SetBuilderState,
+  catalogName: string,
+  showToast: (msg: string) => void,
+): Promise<void> {
+  const items = state.library.filter((it) => it.catalog === catalogName);
+  if (items.length === 0) {
+    showToast(t('setBuilder.toast.catalogZipEmpty'));
+    return;
+  }
+
+  const files: { name: string; data: Uint8Array }[] = [];
+  let skipped = 0;
+
+  for (const item of items) {
+    const lf = item.sourceFileId !== undefined
+      ? loadedFiles.find((f) => f.id === item.sourceFileId)
+      : null;
+
+    if (lf?.localBase64) {
+      const bin = atob(lf.localBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      files.push({ name: item.name.endsWith('.dxf') ? item.name : item.name + '.dxf', data: bytes });
+    } else if (lf?.remoteId ?? item.remoteId) {
+      const remoteId = lf?.remoteId ?? item.remoteId!;
+      try {
+        const dl = await apiGetJSON<{ success: boolean; name: string; base64: string }>(
+          `/api/library-files-download?fileId=${encodeURIComponent(remoteId)}`,
+          getAuthHeaders(),
+        );
+        const bin = atob(dl.base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const name = (dl.name || item.name);
+        files.push({ name: name.endsWith('.dxf') ? name : name + '.dxf', data: bytes });
+      } catch {
+        skipped++;
+      }
+    } else {
+      skipped++;
+    }
+  }
+
+  if (files.length === 0) {
+    showToast(t('setBuilder.toast.catalogZipEmpty'));
+    return;
+  }
+
+  const zipBytes = buildZip(files);
+  const blob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${catalogName}.zip`;
+  a.click();
+  await new Promise<void>((r) => setTimeout(r, 200));
+  URL.revokeObjectURL(url);
+
+  if (skipped > 0) {
+    showToast(`${t('setBuilder.toast.catalogZipDone')} (${skipped} ${t('setBuilder.toast.skipped')})`);
+  } else {
+    showToast(t('setBuilder.toast.catalogZipDone'));
   }
 }
 

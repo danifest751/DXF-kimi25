@@ -17,7 +17,7 @@ import type { MaterialAssignment } from './types.js';
 import { SHEET_PRESETS } from './mock-data.js';
 import type { SheetPreset } from './context.js';
 import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
-import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog } from './library.js';
+import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog, downloadCatalogZip } from './library.js';
 import { runNesting, exportSheetByIndex } from './nesting.js';
 import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual, clearSheetMarkupCache } from './render.js';
 import { createThumbQueueController } from './thumb-queue.js';
@@ -402,6 +402,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       state.busyLabel = t('setBuilder.deleting');
       scheduleRender();
       void deleteCurrentCatalog(state, button.dataset.catalog, showToast, render).then(() => { state.busyLabel = ''; scheduleRender(); });
+      return;
+    }
+    if (action === 'catalog-zip') {
+      const catalogName = button.dataset.catalog ?? '';
+      if (!catalogName) return;
+      state.busyLabel = t('setBuilder.archiving');
+      scheduleRender();
+      void downloadCatalogZip(state, catalogName, showToast).finally(() => { state.busyLabel = ''; scheduleRender(); });
       return;
     }
     if (action === 'catalog-collapse') {

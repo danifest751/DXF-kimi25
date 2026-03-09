@@ -11,7 +11,7 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip } from './icons.js';
 import { computeSplitParts } from './split-modal.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
@@ -694,6 +694,7 @@ export function renderMain(
               </div>
               <div class="sb-catalog-group-actions">
                 <button class="sb-icon sb-batch-opt-icon" data-a="open-batch-optimizer" data-catalog="${esc(catalogName)}" title="${t('batch.openBatchOptimizer')}">${iconLightning}</button>
+                <button class="sb-icon" data-a="catalog-zip" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogZip')}">${iconZip}</button>
                 ${canManageCatalog ? `
                   <button class="sb-icon" data-a="catalog-rename" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogRename')}">${iconPencil}</button>
                   <button class="sb-icon" data-a="catalog-delete" data-catalog="${esc(catalogName)}" title="${t('setBuilder.catalogDelete')}">${iconTrash}</button>

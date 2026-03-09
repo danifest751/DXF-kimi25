@@ -170,6 +170,8 @@ export const en: Record<TranslationKey, string> = {
   // Set Builder
   'setBuilder.uploading': 'Uploading…',
   'setBuilder.deleting': 'Deleting…',
+  'setBuilder.archiving': 'Archiving…',
+  'setBuilder.catalogZip': 'Download catalog as ZIP',
   'setBuilder.upload': 'Upload',
   'setBuilder.cacheVerifying': 'Syncing with server…',
   'setBuilder.searchPlaceholder': 'Search by file name',
@@ -302,6 +304,8 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.toast.sheetExported': 'Sheet DXF exported',
   'setBuilder.toast.allSheetsExported': 'All sheets exported',
   'setBuilder.toast.filesSynced': 'Files synced',
+  'setBuilder.toast.catalogZipDone': 'Archive downloaded',
+  'setBuilder.toast.catalogZipEmpty': 'No files to archive',
   'setBuilder.prompt.setQtySelected': 'Set quantity for selected',
   'setBuilder.prompt.moveToCatalog': 'Move to catalog (enter number or name):',
   'setBuilder.prompt.deleteCatalogMode': 'Delete catalog: enter "move" (move files) or "delete" (delete files)',

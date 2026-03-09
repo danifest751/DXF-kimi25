@@ -168,6 +168,8 @@ export const ru = {
   // Set Builder
   'setBuilder.uploading': 'Загрузка…',
   'setBuilder.deleting': 'Удаление…',
+  'setBuilder.archiving': 'Архивация…',
+  'setBuilder.catalogZip': 'Скачать каталог как ZIP',
   'setBuilder.upload': 'Загрузить',
   'setBuilder.cacheVerifying': 'Синхронизация с сервером…',
   'setBuilder.searchPlaceholder': 'Поиск по имени файла',
@@ -300,6 +302,8 @@ export const ru = {
   'setBuilder.toast.sheetExported': 'Лист DXF экспортирован',
   'setBuilder.toast.allSheetsExported': 'Все листы экспортированы',
   'setBuilder.toast.filesSynced': 'Файлы синхронизированы',
+  'setBuilder.toast.catalogZipDone': 'Архив скачан',
+  'setBuilder.toast.catalogZipEmpty': 'Нет файлов для архивации',
   'setBuilder.prompt.setQtySelected': 'Укажите количество для выбранных',
   'setBuilder.prompt.moveToCatalog': 'Переместить в каталог (введите номер или название):',
   'setBuilder.prompt.deleteCatalogMode': 'Удаление каталога: введите "move" (перенести файлы) или "delete" (удалить файлы)',

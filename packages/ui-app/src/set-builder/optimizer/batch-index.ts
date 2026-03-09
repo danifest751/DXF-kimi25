@@ -150,7 +150,7 @@ function crc32(data: Uint8Array): number {
 }
 crc32.table = null as null | Uint32Array;
 
-function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+export function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
   const enc = new TextEncoder();
   const localHeaders: Uint8Array[] = [];
   const centralDirs: Uint8Array[] = [];
