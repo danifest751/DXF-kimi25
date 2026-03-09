@@ -483,6 +483,25 @@ app.post(['/api/auth/adopt-token', '/api/auth-adopt-token'], async (req: Request
   }
 });
 
+app.post('/api/library-catalogs-delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isWorkspaceLibraryEnabled()) {
+      res.status(503).json({ error: 'Workspace library storage is not configured' });
+      return;
+    }
+    const workspaceId = await requireWorkspaceId(req, res);
+    if (!workspaceId) return;
+    const catalogId = typeof req.body?.catalogId === 'string' ? req.body.catalogId : '';
+    const modeRaw = typeof req.body?.mode === 'string' ? req.body.mode : '';
+    const mode = modeRaw === 'delete_files' ? 'delete_files' : 'move_to_uncategorized';
+    await deleteWorkspaceCatalog(workspaceId, catalogId, mode);
+    res.json({ success: true, mode });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Delete catalog failed', details: message });
+  }
+});
+
 app.get(['/api/auth/me', '/api/auth-me'], async (req: Request, res: Response): Promise<void> => {
   try {
     const token = getAuthTokenFromRequest(req);
