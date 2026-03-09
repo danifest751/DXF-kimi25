@@ -53,6 +53,7 @@ export interface RenderSnapshot {
   locale: string;
   catalogsKey: string;
   loadedFilesKey: string;
+  libCatalogKey: string;
   isCacheLoaded: boolean;
   optiPhase: string;
   batchPhase: string;
@@ -105,7 +106,8 @@ export function snapshotState(
     authToken: authSessionToken.slice(0, 8),
     locale: getLocale(),
     catalogsKey: workspaceCatalogs.map((c) => c.id).join(','),
-    loadedFilesKey: loadedFiles.map((f) => `${f.id}:${f.loading ? 'l' : 'r'}`).join(','),
+    loadedFilesKey: loadedFiles.map((f) => `${f.id}:${f.loading ? 'l' : 'r'}:${f.catalogId ?? ''}`).join(','),
+    libCatalogKey: state.library.map((it) => `${it.id}:${it.catalog}`).join(','),
     isCacheLoaded: state.isCacheLoaded,
     optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',

@@ -378,6 +378,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
   root.addEventListener('pointermove', (e) => {
     if (!sheetDragActive || !sheetDragEl) return;
+    e.preventDefault();
     const canvas = sheetDragEl.closest<HTMLElement>('.sb-sheet-canvas');
     if (!canvas) return;
 
@@ -390,9 +391,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
     sheetDragEl.style.left = `${newLeft.toFixed(3)}%`;
     sheetDragEl.style.top = `${newTop.toFixed(3)}%`;
-  });
+  }, { passive: false });
 
-  root.addEventListener('pointerup', (e) => {
+  root.addEventListener('pointerup', (e) => {  // eslint-disable-line @typescript-eslint/no-unused-vars
     if (!sheetDragActive || !sheetDragEl || state.previewSheetId === null) return;
     sheetDragActive = false;
     sheetDragEl.classList.remove('sb-sheet-part--dragging');
@@ -971,7 +972,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     draggedLibraryId = null;
     void moveLibraryItemToCatalogName(state, moveId, targetCatalog).then((moved) => {
       showToast(moved ? t('setBuilder.toast.itemMoved') : t('setBuilder.toast.itemMoveFailed'));
-      scheduleRender();
+      forceRender();
     });
   });
 
