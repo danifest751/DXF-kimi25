@@ -18,8 +18,8 @@ import { SHEET_PRESETS } from './mock-data.js';
 import type { SheetPreset } from './context.js';
 import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog, downloadCatalogZip } from './library.js';
-import { runNesting, exportSheetByIndex } from './nesting.js';
-import { renderMain, renderDxfThumbDataUrl, snapshotState, snapshotsEqual, clearSheetMarkupCache } from './render.js';
+import { runNesting, exportSheetByIndex, reshareSheet, buildSingleSheetResult } from './nesting.js';
+import { renderMain, snapshotState, snapshotsEqual, clearSheetMarkupCache } from './render.js';
 import { createThumbQueueController } from './thumb-queue.js';
 import type { RenderSnapshot } from './render.js';
 import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState } from './canvas-modal.js';
@@ -64,6 +64,15 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let prevAuthToken = authSessionToken;
   let menuAnchorRect: { top: number; right: number } | null = null;
   let persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ─── Sheet part drag state ────────────────────────────────────────────
+  let sheetDragActive = false;
+  let sheetDragPlacementIdx = -1;
+  let sheetDragStartClientX = 0;
+  let sheetDragStartClientY = 0;
+  let sheetDragStartPctX = 0;
+  let sheetDragStartPctY = 0;
+  let sheetDragEl: HTMLElement | null = null;
 
   function schedulePersist(): void {
     if (persistDebounceTimer !== null) clearTimeout(persistDebounceTimer);
@@ -335,6 +344,88 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     }
   }
 
+  // ─── Sheet part pointer-drag ─────────────────────────────────────────
+  root.addEventListener('pointerdown', (e) => {
+    if (!state.dragMode || state.previewSheetId === null) return;
+    const partEl = (e.target as HTMLElement).closest<HTMLElement>('.sb-sheet-part--draggable');
+    if (!partEl) return;
+    const canvas = partEl.closest<HTMLElement>('.sb-sheet-canvas');
+    if (!canvas) return;
+
+    const idx = Number(partEl.dataset.placementIdx ?? '-1');
+    if (idx < 0) return;
+
+    e.preventDefault();
+    sheetDragActive = true;
+    sheetDragPlacementIdx = idx;
+    sheetDragEl = partEl;
+    sheetDragStartClientX = e.clientX;
+    sheetDragStartClientY = e.clientY;
+
+    const styleLeft = parseFloat(partEl.style.left) || 0;
+    const styleTop = parseFloat(partEl.style.top) || 0;
+    sheetDragStartPctX = styleLeft;
+    sheetDragStartPctY = styleTop;
+
+    partEl.setPointerCapture(e.pointerId);
+    partEl.classList.add('sb-sheet-part--dragging');
+  });
+
+  root.addEventListener('pointermove', (e) => {
+    if (!sheetDragActive || !sheetDragEl) return;
+    const canvas = sheetDragEl.closest<HTMLElement>('.sb-sheet-canvas');
+    if (!canvas) return;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const dx = ((e.clientX - sheetDragStartClientX) / canvasRect.width) * 100;
+    const dy = ((e.clientY - sheetDragStartClientY) / canvasRect.height) * 100;
+
+    const newLeft = Math.max(0, Math.min(99, sheetDragStartPctX + dx));
+    const newTop = Math.max(0, Math.min(99, sheetDragStartPctY + dy));
+
+    sheetDragEl.style.left = `${newLeft.toFixed(3)}%`;
+    sheetDragEl.style.top = `${newTop.toFixed(3)}%`;
+  });
+
+  root.addEventListener('pointerup', (e) => {
+    if (!sheetDragActive || !sheetDragEl || state.previewSheetId === null) return;
+    sheetDragActive = false;
+    sheetDragEl.classList.remove('sb-sheet-part--dragging');
+
+    const canvas = sheetDragEl.closest<HTMLElement>('.sb-sheet-canvas');
+    if (!canvas) { sheetDragEl = null; return; }
+
+    const sheetId = state.previewSheetId;
+    const sheet = state.results?.sheets.find((s) => s.id === sheetId);
+    if (!sheet) { sheetDragEl = null; return; }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const dx = ((e.clientX - sheetDragStartClientX) / canvasRect.width) * 100;
+    const dy = ((e.clientY - sheetDragStartClientY) / canvasRect.height) * 100;
+
+    const newLeftPct = Math.max(0, Math.min(99, sheetDragStartPctX + dx));
+    const newTopPct = Math.max(0, Math.min(99, sheetDragStartPctY + dy));
+
+    // Convert % back to sheet coordinates (mm)
+    const safeW = Math.max(1, sheet.sheetWidth);
+    const safeH = Math.max(1, sheet.sheetHeight);
+    const newX = (newLeftPct / 100) * safeW;
+    const newY = (newTopPct / 100) * safeH;
+
+    // Update or create manual overrides array for this sheet
+    const prev = state.manualPlacements.get(sheetId);
+    const overrides: { x: number; y: number }[] = prev
+      ? [...prev]
+      : sheet.placements.slice(0, 120).map((p) => ({ x: p.x, y: p.y }));
+    if (sheetDragPlacementIdx < overrides.length) {
+      overrides[sheetDragPlacementIdx] = { x: newX, y: newY };
+    }
+    state.manualPlacements.set(sheetId, overrides);
+
+    sheetDragEl = null;
+    // No full re-render needed — DOM already updated inline
+  });
+
   // ─── pierce toggle ───────────────────────────────────────────────────
   root.addEventListener('change', (e) => {
     const target = e.target as HTMLElement;
@@ -544,6 +635,85 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const idx = Number(button.dataset.index ?? '-1');
       if (!Number.isFinite(idx) || idx < 0 || !lastEngineResult) { showToast(t('setBuilder.toast.noResultToExport')); return; }
       void exportSheetByIndex(lastEngineResult, lastItemDocs, idx).then((ok) => { if (ok) showToast(t('setBuilder.toast.sheetExported')); });
+      return;
+    }
+    if (action === 'sheet-drag-toggle') {
+      state.dragMode = !state.dragMode;
+      clearSheetMarkupCache();
+      scheduleRender();
+      return;
+    }
+    if (action === 'sheet-resave') {
+      const idx = Number(button.dataset.index ?? '-1');
+      if (!Number.isFinite(idx) || idx < 0 || !lastEngineResult || !state.results) {
+        showToast(t('setBuilder.toast.noResultToExport'));
+        return;
+      }
+      const sheetId = state.results.sheets[idx]?.id ?? state.previewSheetId ?? '';
+      const manualOverrides = sheetId ? state.manualPlacements.get(sheetId) : undefined;
+      state.busyLabel = t('setBuilder.sheetResaving');
+      scheduleRender();
+      void reshareSheet(idx, lastEngineResult, lastItemDocs, manualOverrides).then((newHash) => {
+        state.busyLabel = '';
+        if (!newHash) { showToast(t('setBuilder.toast.hashUnavailable')); scheduleRender(); return; }
+        if (state.results) {
+          const updatedSheets = state.results.sheets.map((s, i) =>
+            i === idx ? { ...s, hash: newHash } : s,
+          );
+          state.results = { sheets: updatedSheets };
+        }
+        showToast(t('setBuilder.sheetResaved'));
+        scheduleRender();
+      });
+      return;
+    }
+    if (action === 'sheet-auto-arrange') {
+      const idx = Number(button.dataset.index ?? '-1');
+      if (!Number.isFinite(idx) || idx < 0 || !lastEngineResult || !state.results) {
+        showToast(t('setBuilder.toast.noResultToExport'));
+        return;
+      }
+      const sheetId = state.results.sheets[idx]?.id ?? state.previewSheetId ?? '';
+      state.busyLabel = t('setBuilder.autoArranging');
+      scheduleRender();
+      void (async () => {
+        try {
+          const { nestItems } = await import('../../../core-engine/src/nesting/index.js');
+          const singleResult = buildSingleSheetResult(lastEngineResult!, idx);
+          if (!singleResult) { state.busyLabel = ''; scheduleRender(); return; }
+
+          const sheet = singleResult.sheet;
+          const items = singleResult.sheets[0]!.placed.map((p) => ({
+            id: p.itemId,
+            name: p.name,
+            width: p.width,
+            height: p.height,
+            quantity: 1,
+          }));
+
+          const reResult = nestItems(items, { width: sheet.width, height: sheet.height }, lastEngineResult!.gap, {
+            rotationEnabled: state.rotationEnabled,
+            rotationAngleStepDeg: state.rotationStepDeg,
+            strategy: 'maxrects_bbox',
+            multiStart: false,
+            seed: Math.floor(Math.random() * 65536),
+            commonLine: { enabled: false, maxMergeDistanceMm: 0, minSharedLenMm: 0 },
+          });
+
+          if (reResult && reResult.sheets[0]) {
+            const newPlacements = reResult.sheets[0].placed.map((p) => ({ x: p.x, y: p.y }));
+            state.manualPlacements.set(sheetId, newPlacements);
+          }
+          state.busyLabel = '';
+          clearSheetMarkupCache();
+          showToast(t('setBuilder.autoArrangeDone'));
+          scheduleRender();
+        } catch (err) {
+          console.warn('[set-builder] auto-arrange failed:', err);
+          state.busyLabel = '';
+          scheduleRender();
+        }
+      })();
       return;
     }
     if (action === 'export-all') {

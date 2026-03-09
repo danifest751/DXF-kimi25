@@ -107,6 +107,30 @@ export const iconZip = svg(
    <line x1="5" y1="13" x2="11" y2="13"/>`,
 );
 
+/** ↔ Move / drag parts freely */
+export const iconMove = svg(
+  `<path d="M8 2v12M2 8h12"/>
+   <polyline points="5,5 2,8 5,11"/>
+   <polyline points="11,5 14,8 11,11"/>
+   <polyline points="5,5 8,2 11,5"/>
+   <polyline points="5,11 8,14 11,11"/>`,
+);
+
+/** ↑ Resave / overwrite hash */
+export const iconResave = svg(
+  `<path d="M3 9v3a2 2 0 002 2h6a2 2 0 002-2V9"/>
+   <polyline points="5,6 8,3 11,6"/>
+   <line x1="8" y1="3" x2="8" y2="11"/>`,
+);
+
+/** ⊞ Auto-arrange */
+export const iconAutoArrange = svg(
+  `<rect x="2" y="2" width="5" height="5" rx="0.8"/>
+   <rect x="9" y="2" width="5" height="5" rx="0.8"/>
+   <rect x="2" y="9" width="5" height="5" rx="0.8"/>
+   <rect x="9" y="9" width="5" height="5" rx="0.8"/>`,
+);
+
 /** ⚠ Warning */
 export const iconWarning = svg(
   `<path d="M8 2L14.5 13H1.5z"/>

@@ -100,4 +100,6 @@ export interface SetBuilderState {
   collapsedCatalogs: Set<string>;
   uploadingCount: number;
   busyLabel: string;
+  dragMode: boolean;
+  manualPlacements: Map<string, { x: number; y: number }[]>;
 }

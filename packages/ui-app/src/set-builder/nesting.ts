@@ -156,6 +156,41 @@ export function buildSingleSheetResult(
   };
 }
 
+export async function reshareSheet(
+  sheetIdx: number,
+  lastEngineResult: NestingResult,
+  lastItemDocs: Map<number, ItemDocData>,
+  manualPlacements?: readonly { x: number; y: number }[],
+): Promise<string> {
+  const singleResult = buildSingleSheetResult(lastEngineResult, sheetIdx);
+  if (!singleResult) return '';
+
+  // Apply manual placement overrides to the engine result before sharing
+  const resultToShare = manualPlacements && manualPlacements.length > 0
+    ? {
+        ...singleResult,
+        sheets: singleResult.sheets.map((s) => ({
+          ...s,
+          placed: s.placed.map((p, i) => {
+            const ov = manualPlacements[i];
+            return ov !== undefined ? { ...p, x: ov.x, y: ov.y } : p;
+          }),
+        })),
+      }
+    : singleResult;
+
+  try {
+    const shareResp = await apiPostJSON<{ success: boolean; hashes: string[] }>('/api/nesting-share', {
+      nestingResult: resultToShare,
+      itemDocs: Object.fromEntries(lastItemDocs),
+    });
+    return shareResp.hashes[0] ?? '';
+  } catch (err) {
+    console.warn('[set-builder] reshareSheet failed:', err);
+    return '';
+  }
+}
+
 export async function exportSheetByIndex(
   lastEngineResult: NestingResult,
   lastItemDocs: Map<number, ItemDocData>,

@@ -39,6 +39,8 @@ export function createInitialState(): SetBuilderState {
     collapsedCatalogs: new Set(),
     uploadingCount: 0,
     busyLabel: '',
+    dragMode: false,
+    manualPlacements: new Map(),
   };
 }
 

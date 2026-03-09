@@ -11,7 +11,7 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip, iconMove, iconResave, iconAutoArrange } from './icons.js';
 import { computeSplitParts } from './split-modal.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
@@ -57,6 +57,9 @@ export interface RenderSnapshot {
   optiPhase: string;
   batchPhase: string;
   collapsedCatalogsKey: string;
+  dragMode: boolean;
+  manualPlacementsKey: string;
+  busyLabel: string;
 }
 
 export function snapshotState(
@@ -107,6 +110,9 @@ export function snapshotState(
     optiPhase: optimizerState ? `${optimizerState.phase}:${optimizerState.running ? '1' : '0'}:${optimizerState.activeTab}:${optimizerState.result ? '1' : '0'}` : '',
     batchPhase: batchOptimizerState?.phase ?? '',
     collapsedCatalogsKey: [...state.collapsedCatalogs].sort().join(','),
+    dragMode: state.dragMode,
+    manualPlacementsKey: [...state.manualPlacements.entries()].map(([id, arr]) => `${id}:${arr.length}`).join(','),
+    busyLabel: state.busyLabel,
   };
 }
 
@@ -253,10 +259,15 @@ export function buildSheetPlacementsMarkup(
   sheet: SheetResult,
   dxfThumbCache: Map<string, string>,
   includeThumbs = false,
+  dragMode = false,
+  manualOverrides?: readonly { x: number; y: number }[],
 ): string {
+  const hasManual = manualOverrides && manualOverrides.length > 0;
   const cacheKey = `${sheet.id}:${sheet.placements.length}:${includeThumbs ? dxfThumbCache.size : 0}`;
-  const cached = _sheetMarkupCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  if (!hasManual && !dragMode) {
+    const cached = _sheetMarkupCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+  }
   const noGap = sheet.gap === 0;
   const safeW = Math.max(1, sheet.sheetWidth);
   const safeH = Math.max(1, sheet.sheetHeight);
@@ -271,10 +282,13 @@ export function buildSheetPlacementsMarkup(
 
   const placements = sheet.placements
     .slice(0, 120)
-    .map((p) => {
-      const left = Math.max(0, Math.min(100, (p.x / safeW) * 100));
+    .map((p, i) => {
+      const override = hasManual ? manualOverrides![i] : undefined;
+      const px = override !== undefined ? override.x : p.x;
+      const py = override !== undefined ? override.y : p.y;
+      const left = Math.max(0, Math.min(100, (px / safeW) * 100));
       const width = Math.max(0.9, Math.min(100, (p.w / safeW) * 100));
-      const top = Math.max(0, Math.min(100, (p.y / safeH) * 100));
+      const top = Math.max(0, Math.min(100, (py / safeH) * 100));
       const height = Math.max(0.9, Math.min(100, (p.h / safeH) * 100));
       const angle = typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg) ? p.angleDeg : 0;
       const color = SHEET_PART_COLORS[colorMap.get(p.itemId) ?? 0]!;
@@ -295,16 +309,18 @@ export function buildSheetPlacementsMarkup(
             dxfThumbCache,
           })
         : '<span class="sb-sheet-part-fallback">DXF</span>';
+      const draggable = dragMode ? ' sb-sheet-part--draggable' : '';
       return `
-        <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;--part-color:${color};" title="${esc(p.name)}">
+        <div class="sb-sheet-part${noGap ? ' sb-sheet-part--no-gap' : ''}${draggable}" data-placement-idx="${i}" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${width.toFixed(3)}%;height:${height.toFixed(3)}%;--part-color:${color};" title="${esc(p.name)}">
           ${thumbMarkup}
           <span class="sb-sheet-part-name">${esc(p.name)}</span>
         </div>
       `;
     })
     .join('');
-  const html = `<div class="sb-sheet-canvas" style="--sheet-ratio:${ratio};">${placements}</div>`;
-  _sheetMarkupCache.set(cacheKey, html);
+  const canvasClass = dragMode ? 'sb-sheet-canvas sb-sheet-canvas--drag' : 'sb-sheet-canvas';
+  const html = `<div class="${canvasClass}" style="--sheet-ratio:${ratio};">${placements}</div>`;
+  if (!hasManual && !dragMode) _sheetMarkupCache.set(cacheKey, html);
   return html;
 }
 
@@ -570,6 +586,7 @@ export function renderPreviewModal(
   const nextSheet = sheetIdx >= 0 && sheetIdx < sheets.length - 1 ? sheets[sheetIdx + 1] : null;
   const utilizationClamped = Math.max(0, Math.min(100, sheet.utilization));
   const utilizationColor = utilizationClamped >= 75 ? '#57ffbc' : utilizationClamped >= 50 ? '#ffd26f' : '#ff8b98';
+  const manualOverrides = state.manualPlacements.get(sheet.id);
 
   return `
     <div class="sb-modal-backdrop">
@@ -584,12 +601,15 @@ export function renderPreviewModal(
             <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${nextSheet?.id ?? ''}" ${!nextSheet ? 'disabled' : ''} title="${nextSheet?.id.toUpperCase() ?? ''}">${iconChevronRight}</button>
           </div>
           <div class="sb-modal-head-right">
+            <button class="sb-icon${state.dragMode ? ' active' : ''}" data-a="sheet-drag-toggle" title="${state.dragMode ? t('setBuilder.dragModeOff') : t('setBuilder.dragModeOn')}">${iconMove}</button>
+            <button class="sb-icon" data-a="sheet-auto-arrange" data-index="${sheetIdx}" title="${t('setBuilder.autoArrange')}">${iconAutoArrange}</button>
+            <button class="sb-icon" data-a="sheet-resave" data-index="${sheetIdx}" title="${t('setBuilder.sheetResave')}">${iconResave}</button>
             <span class="sb-modal-counter">${sheetIdx + 1} / ${sheets.length}</span>
             <button class="sb-icon" data-a="close-preview" title="${t('setBuilder.close')}">${iconClose}</button>
           </div>
         </div>
         <div class="sb-modal-sheet-body">
-          <div class="sb-modal-sheet-preview">${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true)}</div>
+          <div class="sb-modal-sheet-preview" data-sheet-id="${sheet.id}" data-sheet-w="${sheet.sheetWidth}" data-sheet-h="${sheet.sheetHeight}">${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, state.dragMode, manualOverrides)}</div>
           <div class="sb-modal-sheet-side">
             <div class="sb-modal-util-block">
               <div class="sb-modal-util-label">${t('setBuilder.utilization')}</div>
