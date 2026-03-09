@@ -223,6 +223,7 @@ export async function runNesting(
   // Фаза 1: подготовка данных
   state.loading = true;
   state.nestingPhase = 'preparing';
+  state.manualPlacements.clear();
   render();
 
   const { items, skipped } = buildSetNestingItems(state);
