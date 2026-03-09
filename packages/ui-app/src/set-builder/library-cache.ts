@@ -12,7 +12,7 @@
 import { loadedFiles } from '../state.js';
 import type { LibraryItem, SetBuilderState } from './types.js';
 
-const CACHE_KEY_PREFIX = 'dxf_lib_cache_v1_';
+const CACHE_KEY_PREFIX = 'dxf_lib_cache_v2_';
 
 interface CachedLibraryItem {
   remoteId: string;
