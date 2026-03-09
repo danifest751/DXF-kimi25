@@ -448,6 +448,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
 
     if (target.classList.contains('sb-modal-backdrop')) {
       state.previewLibraryId = null;
+      if (state.previewSheetId !== null) clearSheetMarkupCache();
       state.previewSheetId = null;
       scheduleRender();
       return;
@@ -630,7 +631,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       return;
     }
     if (action === 'preview-sheet') { state.previewSheetId = button.dataset.sheet ?? null; state.previewLibraryId = null; scheduleRender(); return; }
-    if (action === 'close-preview') { state.previewLibraryId = null; state.previewSheetId = null; scheduleRender(); return; }
+    if (action === 'close-preview') { state.previewLibraryId = null; if (state.previewSheetId !== null) clearSheetMarkupCache(); state.previewSheetId = null; scheduleRender(); return; }
     if (action === 'copy-hash') {
       const hash = button.dataset.hash ?? '';
       if (hash) void copyHash(hash);
@@ -670,6 +671,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
           );
           state.results = { sheets: updatedSheets };
         }
+        clearSheetMarkupCache();
         showToast(t('setBuilder.sheetResaved'));
         forceRender();
       });
@@ -1148,6 +1150,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       if (state.openMenuLibraryId !== null) { state.openMenuLibraryId = null; scheduleRender(); return; }
       if (state.previewLibraryId !== null || state.previewSheetId !== null) {
         state.previewLibraryId = null;
+        if (state.previewSheetId !== null) clearSheetMarkupCache();
         state.previewSheetId = null;
         scheduleRender();
         return;
