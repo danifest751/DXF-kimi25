@@ -14,27 +14,31 @@ export function mapLoadedCatalogName(catalogId: string | null): string {
 
 export function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: number): LibraryItem | null {
   const lf = loadedFiles.find((f) => f.id === sourceId);
-  if (!lf || lf.doc == null) return null;
+  if (!lf) return null;
 
-  const bb = lf.doc.totalBBox;
-  const w = bb !== null ? Math.max(1, Math.round(bb.max.x - bb.min.x)) : 0;
-  const h = bb !== null ? Math.max(1, Math.round(bb.max.y - bb.min.y)) : 0;
-  const status = lf.loadError ? 'error' : lf.loading ? 'warn' : 'ok';
+  const isLoading = lf.loading || lf.doc == null;
+  const status = lf.loadError ? 'error' : isLoading ? 'warn' : 'ok';
   const issues = lf.loadError
     ? [lf.loadError]
-    : lf.loading
+    : isLoading
       ? [t('setBuilder.fileLoading')]
       : [];
 
+  const bb = !isLoading ? lf.doc.totalBBox : null;
+  const w = bb !== null ? Math.max(1, Math.round(bb.max.x - bb.min.x)) : 0;
+  const h = bb !== null ? Math.max(1, Math.round(bb.max.y - bb.min.y)) : 0;
+
   let areaMm2 = 0;
-  try {
-    const contour = buildContourFromAll(lf.doc.flatEntities);
-    if (contour) areaMm2 = Math.round(contourAreaMm2(contour));
-  } catch {
-    areaMm2 = 0;
-  }
-  if (areaMm2 === 0 && w > 0 && h > 0) {
-    areaMm2 = Math.round(w * h * 0.7);
+  if (!isLoading) {
+    try {
+      const contour = buildContourFromAll(lf.doc.flatEntities);
+      if (contour) areaMm2 = Math.round(contourAreaMm2(contour));
+    } catch {
+      areaMm2 = 0;
+    }
+    if (areaMm2 === 0 && w > 0 && h > 0) {
+      areaMm2 = Math.round(w * h * 0.7);
+    }
   }
 
   return {
@@ -45,9 +49,9 @@ export function mapLoadedFileToLibraryItem(sourceId: number, nextLibraryId: numb
     w,
     h,
     areaMm2,
-    pierces: Math.max(0, lf.stats.totalPierces),
-    cutLen: Math.max(0, lf.stats.totalCutLength),
-    layersCount: lf.doc.layerNames.length,
+    pierces: isLoading ? 0 : Math.max(0, lf.stats.totalPierces),
+    cutLen: isLoading ? 0 : Math.max(0, lf.stats.totalCutLength),
+    layersCount: isLoading ? 0 : lf.doc.layerNames.length,
     status,
     issues,
     thumbVariant: 1000 + sourceId,
