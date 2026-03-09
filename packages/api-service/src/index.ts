@@ -5,7 +5,6 @@
  */
 
 import { initSentry, sentryRequestHandler } from './sentry.js';
-initSentry();
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -32,6 +31,8 @@ import {
   uploadWorkspaceFileBuffer,
   uploadWorkspaceFileBufferWithId,
 } from './workspace-library.js';
+
+initSentry();
 
 const app = express();
 const upload = multer({
