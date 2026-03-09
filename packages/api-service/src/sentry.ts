@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/node';
 
-const dsn = process.env.SENTRY_DSN?.trim() ?? '';
+const dsn = process.env.SENTRY_DSN?.trim() ?? 'https://ba408c992fbe6d8172360ec010d55f66@o4511016326660096.ingest.us.sentry.io/4511016625045504';
 
 export function initSentry(): void {
   if (!dsn) return;
