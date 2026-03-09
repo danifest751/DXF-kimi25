@@ -165,7 +165,7 @@ export function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Arra
     const local = new Uint8Array([
       0x50, 0x4b, 0x03, 0x04,     // signature
       ...u16le(20),                 // version needed
-      ...u16le(0),                  // flags
+      ...u16le(0x0800),             // flags: bit 11 = UTF-8 filename encoding
       ...u16le(0),                  // compression (stored)
       ...u16le(0), ...u16le(0),    // mod time, mod date
       ...u32le(crc),
@@ -180,7 +180,7 @@ export function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Arra
     const central = new Uint8Array([
       0x50, 0x4b, 0x01, 0x02,     // signature
       ...u16le(20), ...u16le(20),  // version made, needed
-      ...u16le(0),                  // flags
+      ...u16le(0x0800),             // flags: bit 11 = UTF-8 filename encoding
       ...u16le(0),                  // compression (stored)
       ...u16le(0), ...u16le(0),    // mod time, mod date
       ...u32le(crc),
