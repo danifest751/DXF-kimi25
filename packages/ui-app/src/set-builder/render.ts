@@ -113,7 +113,7 @@ export function snapshotState(
     batchPhase: batchOptimizerState?.phase ?? '',
     collapsedCatalogsKey: [...state.collapsedCatalogs].sort().join(','),
     dragMode: state.dragMode,
-    manualPlacementsKey: [...state.manualPlacements.entries()].map(([id, arr]) => `${id}:${arr.length}`).join(','),
+    manualPlacementsKey: [...state.manualPlacements.entries()].map(([id, arr]) => `${id}:${arr.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('|')}`).join(';'),
     busyLabel: state.busyLabel,
   };
 }
@@ -266,8 +266,9 @@ export function buildSheetPlacementsMarkup(
   cardMode = false,
 ): string {
   const hasManual = manualOverrides && manualOverrides.length > 0;
-  const cacheKey = `${sheet.id}:${sheet.placements.length}:${includeThumbs ? dxfThumbCache.size : 0}`;
-  if (!hasManual && !dragMode) {
+  const manualKey = hasManual ? manualOverrides!.map((o) => `${o.x.toFixed(1)},${o.y.toFixed(1)}`).join(';') : '';
+  const cacheKey = `${sheet.id}:${sheet.placements.length}:${includeThumbs ? dxfThumbCache.size : 0}:${manualKey}`;
+  if (!dragMode) {
     const cached = _sheetMarkupCache.get(cacheKey);
     if (cached !== undefined) return cached;
   }
@@ -327,7 +328,7 @@ export function buildSheetPlacementsMarkup(
       ? 'sb-sheet-canvas sb-sheet-canvas--card'
       : 'sb-sheet-canvas';
   const html = `<div class="${canvasClass}" style="--sheet-ratio:${ratio};">${placements}</div>`;
-  if (!hasManual && !dragMode) _sheetMarkupCache.set(cacheKey, html);
+  if (!dragMode) _sheetMarkupCache.set(cacheKey, html);
   return html;
 }
 
@@ -852,7 +853,7 @@ export function renderMain(
                   : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
                     <div class="sb-sheet-card">
                       <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, false, undefined, true)}
+                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, false, state.manualPlacements.get(sheet.id), true)}
                       <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
                       <div class="sb-sheet-actions">
                         <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
