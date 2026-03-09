@@ -49,6 +49,7 @@ export function saveLibraryCache(state: SetBuilderState, authToken: string): voi
     if (item.sourceFileId === undefined) continue;
     const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
     if (!lf?.remoteId) continue; // кэшируем только авторизованные файлы
+    if (lf.loading || lf.doc == null) continue; // пропускаем незагруженные
     items.push({
       remoteId: lf.remoteId,
       name: item.name,

@@ -1095,6 +1095,8 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (detail?.batchDone) {
       if (fileReadyDebounceTimer !== null) { clearTimeout(fileReadyDebounceTimer); fileReadyDebounceTimer = null; }
       pendingReadyFileIds.clear();
+      if (authSessionToken) saveLibraryCache(state, authSessionToken);
+      state.isCacheLoaded = false;
       scheduleFilesUpdatedRender(added);
     } else {
       scheduleFilesUpdatedRender(added);
@@ -1114,7 +1116,6 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       fileReadyDebounceTimer = null;
       pendingReadyFileIds.clear();
       syncLoadedFilesIntoLibrary(state);
-      if (authSessionToken && !state.isCacheLoaded) saveLibraryCache(state, authSessionToken);
       lastRenderSnapshot = null;
       if (renderFrameId !== null) return;
       renderFrameId = window.requestAnimationFrame(() => { renderFrameId = null; render(); });

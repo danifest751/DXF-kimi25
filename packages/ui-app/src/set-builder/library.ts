@@ -77,17 +77,33 @@ export function syncLoadedFilesIntoLibrary(state: SetBuilderState): void {
     loadedFiles.filter((f) => f.remoteId).map((f) => f.remoteId!),
   );
 
-  // Pass 1: replace in-place cache entries that now have a real loadedFile
+  // Pass 1a: replace in-place cache entries (items without sourceFileId) that now have a real loadedFile
   for (const lf of loadedFiles) {
     if (!lf.remoteId) continue;
     const cached = cacheByRemote.get(lf.remoteId);
     if (!cached) continue;
-    // Replace cache item with real data (preserves list order and id slot)
     const mapped = mapLoadedFileToLibraryItem(lf.id, cached.item.id);
     if (mapped) {
       state.library[cached.idx] = mapped;
       existingBySource.set(lf.id, mapped);
       cacheByRemote.delete(lf.remoteId);
+    }
+  }
+
+  // Pass 1b: refresh existing real items whose loadedFile has finished loading (was placeholder)
+  for (let i = 0; i < state.library.length; i++) {
+    const item = state.library[i]!;
+    if (item.sourceFileId === undefined) continue;
+    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    if (!lf) continue;
+    const isNowLoaded = !lf.loading && lf.doc != null;
+    const wasLoading = item.status === 'warn' && item.issues[0] === t('setBuilder.fileLoading');
+    if (isNowLoaded && wasLoading) {
+      const refreshed = mapLoadedFileToLibraryItem(lf.id, item.id);
+      if (refreshed) {
+        state.library[i] = refreshed;
+        existingBySource.set(lf.id, refreshed);
+      }
     }
   }
 
