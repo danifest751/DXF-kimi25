@@ -12,7 +12,8 @@ export function initSentry(): void {
   });
 }
 
-export function sentryRequestHandler() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function sentryRequestHandler(): any {
   return Sentry.expressErrorHandler();
 }
 
