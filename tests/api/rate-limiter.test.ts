@@ -137,24 +137,24 @@ describe('S4/heavyRateLimit: 10 requests per minute per IP', () => {
 
 // ─── nestingRateLimit: 3 req/min per IP ───────────────────────────────
 
-describe('nestingRateLimit: 3 requests per minute per IP', () => {
+describe('nestingRateLimit: 10 requests per minute per IP', () => {
   const validNestBody = {
     items: [{ id: 1, name: 'P', width: 100, height: 100, quantity: 1 }],
     sheet: { width: 1000, height: 2000 },
     gap: 5,
   };
 
-  it('allows first 3 nesting requests from same IP', async () => {
+  it('allows first 10 nesting requests from same IP', async () => {
     const ip = uniqueIp();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 10; i++) {
       const status = await postJson('/api/nest', validNestBody, ip);
       expect(status).not.toBe(429);
     }
   });
 
-  it('blocks 4th nesting request from same IP', async () => {
+  it('blocks 11th nesting request from same IP', async () => {
     const ip = uniqueIp();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 10; i++) {
       await postJson('/api/nest', validNestBody, ip);
     }
     const status = await postJson('/api/nest', validNestBody, ip);

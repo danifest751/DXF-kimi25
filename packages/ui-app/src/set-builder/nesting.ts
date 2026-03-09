@@ -1,4 +1,4 @@
-import { apiPostJSON, ApiError } from '../api.js';
+import { apiPostJSON, ApiError, downloadBlob } from '../api.js';
 import { loadedFiles } from '../state.js';
 import { t } from '../i18n/index.js';
 import { nestItems } from '../../../core-engine/src/nesting/index.js';
