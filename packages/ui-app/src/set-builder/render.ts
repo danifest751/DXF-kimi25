@@ -999,17 +999,19 @@ export function renderMain(
             ` : ''}
             <button class="sb-btn sb-btn--primary sb-btn--run" data-a="run" ${runDisabled}>${t('setBuilder.runNesting')}</button>
           </div>
-          <div class="sb-totals">
-            <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
-            <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
-            <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
-            <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
-            ${totals.totalWeightKg !== null ? `<div><span>${t('setBuilder.totalWeight')}:</span><b>${formatWeightKg(totals.totalWeightKg)}</b></div>` : ''}
-          </div>
-          <div class="sb-issues">
-            <div class="sb-issues-title">${t('setBuilder.issues.title')}</div>
-            ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
-          </div>
+
+          <!-- Totals: collapsible summary, closed by default -->
+          <details class="sb-nest-section">
+            <summary class="sb-nest-section-label">${t('setBuilder.totals.title')}</summary>
+            <div class="sb-nest-section-body sb-totals">
+              <div><span>${t('setBuilder.enabledParts')}:</span><b>${totals.enabledParts}</b></div>
+              <div><span>${t('setBuilder.totalQty')}:</span><b>${totals.qtySum}</b></div>
+              <div><span>${t('setBuilder.totalPierces')}:</span><b>${totals.piercesSum}</b></div>
+              <div><span>${t('setBuilder.totalCutLen')}:</span><b>${fmtLen(totals.cutLenSum)}</b></div>
+              ${totals.totalWeightKg !== null ? `<div><span>${t('setBuilder.totalWeight')}:</span><b>${formatWeightKg(totals.totalWeightKg)}</b></div>` : ''}
+            </div>
+          </details>
+
           <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
 
           <!-- 3.1 Templates -->
@@ -1064,6 +1066,12 @@ export function renderMain(
               <input type="checkbox" data-a="tg-notify-toggle" ${notifyEnabled ? 'checked' : ''} />
               ${t('tgNotify.enable')}
             </label>
+          </div>
+
+          <!-- Issues: moved to bottom -->
+          <div class="sb-issues">
+            <div class="sb-issues-title">${t('setBuilder.issues.title')}</div>
+            ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
           </div>
         </aside>
       </div>

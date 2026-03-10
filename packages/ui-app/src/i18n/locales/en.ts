@@ -221,6 +221,7 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.renamePreset': 'Rename preset',
   'setBuilder.deletePreset': 'Delete preset',
   'setBuilder.enabled': 'enabled',
+  'setBuilder.totals.title': 'Set statistics',
   'setBuilder.enabledParts': 'Enabled parts',
   'setBuilder.totalQty': 'Total qty',
   'setBuilder.totalPierces': 'Total pierces',

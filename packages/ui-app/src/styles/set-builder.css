@@ -1082,7 +1082,10 @@
   flex-wrap: wrap;
 }
 
-.sb-totals,
+.sb-totals {
+  font-size: 12px;
+}
+
 .sb-issues {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

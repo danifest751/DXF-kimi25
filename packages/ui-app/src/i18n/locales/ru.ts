@@ -218,6 +218,7 @@ export const ru = {
   'setBuilder.renamePreset': 'Переименовать пресет',
   'setBuilder.deletePreset': 'Удалить пресет',
   'setBuilder.enabled': 'включено',
+  'setBuilder.totals.title': 'Статистика набора',
   'setBuilder.enabledParts': 'Включённых деталей',
   'setBuilder.totalQty': 'Общее кол-во',
   'setBuilder.totalPierces': 'Всего врезок',
