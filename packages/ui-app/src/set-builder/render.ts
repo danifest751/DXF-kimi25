@@ -922,63 +922,69 @@ export function renderMain(
                 }).join('')}
           </div>
           <div class="sb-set-nest-panel">
-            <div class="sb-nest-section">
-              <div class="sb-nest-section-label">${t('setBuilder.settingsSheet')}</div>
-              <div class="sb-preset-row">
-                <select class="sb-select sb-select--preset" data-a="preset">
-                  ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
-                </select>
-                <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">${iconPencil}</button>
-                ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">${iconClose}</button>` : ''}
-              </div>
-              <div class="sb-custom-sheet">
-                <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
-                <span>×</span>
-                <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" placeholder="H" title="${t('setBuilder.customSheetH')}" />
-                <button class="sb-btn sb-btn--ghost sb-btn--xs" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
-              </div>
-            </div>
-
-            <div class="sb-nest-section">
-              <div class="sb-nest-section-label">${t('setBuilder.settingsMode')}</div>
-              <div class="sb-toggle">
-                <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
-                <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
-              </div>
-            </div>
-
-            <div class="sb-nest-section">
-              <div class="sb-nest-section-label">${t('setBuilder.settingsAlgo')}</div>
-              <div class="sb-nest-row">
-                <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
-                <div class="sb-nest-value">${t('setBuilder.strategyPrecise')}</div>
-              </div>
-              ${state.mode === 'normal' ? `
-              <div class="sb-nest-row">
-                <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
-                <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
-              </div>
-              ` : ''}
-              <div class="sb-nest-row">
-                <label class="sb-nest-row-label">${t('setBuilder.rotate')}</label>
-                <div class="sb-nest-row-controls">
-                  <input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/>
-                  <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}" ${state.rotationEnabled ? '' : 'disabled'}>
-                    <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
-                    <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
-                    <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+            <details class="sb-nest-section">
+              <summary class="sb-nest-section-label">${t('setBuilder.settingsSheet')}</summary>
+              <div class="sb-nest-section-body">
+                <div class="sb-preset-row">
+                  <select class="sb-select sb-select--preset" data-a="preset">
+                    ${sheetPresets.map((p) => `<option value="${p.id}" ${state.sheetPresetId === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
                   </select>
+                  <button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-rename" title="${t('setBuilder.renamePreset')}">${iconPencil}</button>
+                  ${state.sheetPresetId.startsWith('custom_') ? `<button class="sb-btn sb-btn--ghost sb-btn--xs sb-btn--icon" data-a="preset-delete" title="${t('setBuilder.deletePreset')}">${iconClose}</button>` : ''}
+                </div>
+                <div class="sb-custom-sheet">
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-w" value="${customSheetWidthMm}" placeholder="W" title="${t('setBuilder.customSheetW')}" />
+                  <span>×</span>
+                  <input class="sb-input sb-input--sm" type="number" min="1" data-a="sheet-custom-h" value="${customSheetHeightMm}" placeholder="H" title="${t('setBuilder.customSheetH')}" />
+                  <button class="sb-btn sb-btn--ghost sb-btn--xs" data-a="sheet-custom-add">${t('setBuilder.addSheetSize')}</button>
                 </div>
               </div>
-              <div class="sb-nest-row">
-                <label class="sb-nest-row-label">${t('setBuilder.multiStart')}</label>
-                <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''}/>
+            </details>
+
+            <details class="sb-nest-section">
+              <summary class="sb-nest-section-label">${t('setBuilder.settingsMode')}</summary>
+              <div class="sb-nest-section-body">
+                <div class="sb-toggle">
+                  <button class="${state.mode === 'normal' ? 'active' : ''}" data-a="mode" data-mode="normal">${t('setBuilder.normal')}</button>
+                  <button class="${state.mode === 'commonLine' ? 'active' : ''}" data-a="mode" data-mode="commonLine">${t('setBuilder.commonLine')}</button>
+                </div>
               </div>
-              <div class="sb-nest-row">
-                <label class="sb-nest-row-label">${t('setBuilder.seed')}</label>
-                <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" />
+            </details>
+
+            <details class="sb-nest-section">
+              <summary class="sb-nest-section-label">${t('setBuilder.settingsAlgo')}</summary>
+              <div class="sb-nest-section-body">
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.nestingStrategy')}</label>
+                  <div class="sb-nest-value">${t('setBuilder.strategyPrecise')}</div>
+                </div>
+                ${state.mode === 'normal' ? `
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.gapLabel')}</label>
+                  <input class="sb-input sb-input--sm" type="number" min="0" data-a="gap" value="${state.gapMm}" />
+                </div>
+                ` : ''}
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.rotate')}</label>
+                  <div class="sb-nest-row-controls">
+                    <input type="checkbox" data-a="rotation" ${state.rotationEnabled ? 'checked' : ''}/>
+                    <select class="sb-select sb-select--mini" data-a="rotation-step" title="${t('setBuilder.rotationStep')}" ${state.rotationEnabled ? '' : 'disabled'}>
+                      <option value="1" ${state.rotationStepDeg === 1 ? 'selected' : ''}>1°</option>
+                      <option value="2" ${state.rotationStepDeg === 2 ? 'selected' : ''}>2°</option>
+                      <option value="5" ${state.rotationStepDeg === 5 ? 'selected' : ''}>5°</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.multiStart')}</label>
+                  <input type="checkbox" data-a="multi-start" ${state.multiStart ? 'checked' : ''}/>
+                </div>
+                <div class="sb-nest-row">
+                  <label class="sb-nest-row-label">${t('setBuilder.seed')}</label>
+                  <input class="sb-input sb-input--sm" type="number" step="1" data-a="seed" value="${state.seed}" />
+                </div>
               </div>
-            </div>
+            </details>
 
             ${state.loading ? `
             <div class="sb-run-progress">
