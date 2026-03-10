@@ -621,6 +621,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       const applied = applyTemplate(state, tplId);
       showToast(applied ? t('templates.toast.loaded') : t('setBuilder.toast.noEligible'));
       templatesOpen = false;
+      if (applied) state.activeTab = 'nesting';
       scheduleRender();
       return;
     }
