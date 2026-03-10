@@ -29,11 +29,9 @@ function buildSheetSvg(sheet: SheetResult): string {
     const lf = loadedFiles.find((f) => f.id === p.itemId);
     const angleDeg = p.angleDeg ?? 0;
 
-    // SVG coordinate system: Y grows down. DXF: Y grows up.
-    // p.x, p.y = bottom-left corner of placed bbox in sheet coords (Y-up).
-    // SVG position of top-left corner: tx = PAD + p.x, ty = PAD + (H - p.y - p.h)
+    // Engine uses Y-down (screen) coordinates: p.x,p.y = top-left corner of bbox.
     const tx = PAD + p.x;
-    const ty = PAD + (H - p.y - p.h);
+    const ty = PAD + p.y;
 
     if (lf && lf.doc && lf.doc.flatEntities.length > 0) {
       const bb = lf.doc.totalBBox;
@@ -54,7 +52,7 @@ function buildSheetSvg(sheet: SheetResult): string {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, cW, cH);
-          // DXF Y-up → canvas Y-down flip, no rotation (rotation handled by SVG transform)
+          // DXF coords are Y-up; flip to canvas Y-down
           ctx.save();
           ctx.translate(cW / 2, cH / 2);
           ctx.scale(scale, -scale);
@@ -73,9 +71,9 @@ function buildSheetSvg(sheet: SheetResult): string {
           const dataUrl = canvas.toDataURL('image/png');
 
           // SVG transform (applied right-to-left):
-          // 1. scale(1,-1)          — compensate for canvas Y-flip (DXF Y-up was flipped in canvas)
-          // 2. rotate(-angleDeg)    — DXF rotation is CCW, SVG rotate() is CW → negate
-          // 3. translate(bboxCx,bboxCy) — move to placement bbox centre in SVG coords
+          // 1. rotate(-angleDeg)    — DXF rotation is CCW, SVG rotate() is CW → negate
+          // 2. translate(bboxCx,bboxCy) — move to placement bbox centre in SVG coords
+          // Canvas already has correct screen orientation (DXF Y-up flipped to Y-down)
           const bboxCx = (tx + p.w / 2).toFixed(3);
           const bboxCy = (ty + p.h / 2).toFixed(3);
 
@@ -93,7 +91,7 @@ function buildSheetSvg(sheet: SheetResult): string {
           const drawH = (bbH * imgScale).toFixed(3);
           const imgX = (-(bbW * imgScale) / 2).toFixed(3);
           const imgY = (-(bbH * imgScale) / 2).toFixed(3);
-          return `<image href="${dataUrl}" x="${imgX}" y="${imgY}" width="${drawW}" height="${drawH}" transform="translate(${bboxCx},${bboxCy}) rotate(${(-angleDeg).toFixed(2)}) scale(1,-1)" />`;
+          return `<image href="${dataUrl}" x="${imgX}" y="${imgY}" width="${drawW}" height="${drawH}" transform="translate(${bboxCx},${bboxCy}) rotate(${(-angleDeg).toFixed(2)})" />`;
         }
       }
     }
