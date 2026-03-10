@@ -27,28 +27,36 @@ function buildSheetSvg(sheet: SheetResult): string {
   const partsMarkup = sheet.placements.map((p) => {
     const color = colorMap.get(p.itemId) ?? '#818cf8';
     const lf = loadedFiles.find((f) => f.id === p.itemId);
+    const angleDeg = p.angleDeg ?? 0;
+
+    // SVG coordinate system: Y grows down. DXF: Y grows up.
+    // p.x, p.y = bottom-left corner of placed bbox in sheet coords (Y-up).
+    // SVG position of top-left corner: tx = PAD + p.x, ty = PAD + (H - p.y - p.h)
+    const tx = PAD + p.x;
+    const ty = PAD + (H - p.y - p.h);
 
     if (lf && lf.doc && lf.doc.flatEntities.length > 0) {
       const bb = lf.doc.totalBBox;
       if (bb) {
         const bbW = Math.max(1e-6, bb.max.x - bb.min.x);
         const bbH = Math.max(1e-6, bb.max.y - bb.min.y);
-        const scaleX = p.w / bbW;
-        const scaleY = p.h / bbH;
-        const scale = Math.min(scaleX, scaleY);
+
+        // Canvas size = original (unrotated) part bbox in pixels
+        const scale = Math.max(1e-6, Math.min(2000 / bbW, 2000 / bbH, 4));
+        const cW = Math.max(1, Math.round(bbW * scale));
+        const cH = Math.max(1, Math.round(bbH * scale));
         const cx = bb.min.x + bbW / 2;
         const cy = bb.min.y + bbH / 2;
-        const angleRad = ((p.angleDeg ?? 0) * Math.PI) / 180;
 
         const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(p.w));
-        canvas.height = Math.max(1, Math.round(p.h));
+        canvas.width = cW;
+        canvas.height = cH;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.clearRect(0, 0, cW, cH);
+          // DXF Y-up → canvas Y-down flip, no rotation (rotation handled by SVG transform)
           ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate(-angleRad);
+          ctx.translate(cW / 2, cH / 2);
           ctx.scale(scale, -scale);
           ctx.translate(-cx, -cy);
           ctx.strokeStyle = color;
@@ -63,16 +71,25 @@ function buildSheetSvg(sheet: SheetResult): string {
           for (const fe of lf.doc.flatEntities) renderEntity(ctx, fe, opts);
           ctx.restore();
           const dataUrl = canvas.toDataURL('image/png');
-          const tx = PAD + p.x;
-          const ty = PAD + (H - p.y - p.h);
-          return `<image href="${dataUrl}" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${p.w.toFixed(1)}" height="${p.h.toFixed(1)}" />`;
+
+          // SVG transform:
+          // 1. Place image so its centre aligns with placement bbox centre
+          // 2. Rotate around that centre by -angleDeg (DXF rotation is CCW, SVG is CW)
+          // 3. The canvas already has Y-flipped content (DXF→screen), so no extra flip needed
+          const bboxCx = (tx + p.w / 2).toFixed(3);
+          const bboxCy = (ty + p.h / 2).toFixed(3);
+          // image is drawn at (-bbW/2, -bbH/2) in its local coords, scaled to (p.w × p.h) after rotation
+          const imgScale = Math.min(p.w / bbW, p.h / bbH);
+          const drawW = (bbW * imgScale).toFixed(3);
+          const drawH = (bbH * imgScale).toFixed(3);
+          const imgX = (-(bbW * imgScale) / 2).toFixed(3);
+          const imgY = (-(bbH * imgScale) / 2).toFixed(3);
+          return `<image href="${dataUrl}" x="${imgX}" y="${imgY}" width="${drawW}" height="${drawH}" transform="translate(${bboxCx},${bboxCy}) rotate(${(-angleDeg).toFixed(2)})" />`;
         }
       }
     }
 
     // Fallback: filled rectangle
-    const tx = PAD + p.x;
-    const ty = PAD + (H - p.y - p.h);
     return `
       <rect x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${p.w.toFixed(1)}" height="${p.h.toFixed(1)}"
         fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="1" rx="1">
