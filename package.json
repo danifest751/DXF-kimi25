@@ -19,9 +19,12 @@
     "start:bot": "npm run start -w @dxf-viewer/bot-service",
     "test": "vitest run",
     "test:ui": "vitest run tests/ui",
-    "test:set-builder": "vitest run tests/ui/set-builder-state.test.ts tests/ui/set-builder-mock-nesting.test.ts"
+    "test:set-builder": "vitest run tests/ui/set-builder-state.test.ts tests/ui/set-builder-mock-nesting.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.2.1"
   },
   "engines": {
