@@ -72,19 +72,18 @@ function buildSheetSvg(sheet: SheetResult): string {
           ctx.restore();
           const dataUrl = canvas.toDataURL('image/png');
 
-          // SVG transform:
-          // 1. Place image so its centre aligns with placement bbox centre
-          // 2. Rotate around that centre by -angleDeg (DXF rotation is CCW, SVG is CW)
-          // 3. The canvas already has Y-flipped content (DXF→screen), so no extra flip needed
+          // SVG transform (applied right-to-left):
+          // 1. scale(1,-1)          — compensate for canvas Y-flip (DXF Y-up was flipped in canvas)
+          // 2. rotate(-angleDeg)    — DXF rotation is CCW, SVG rotate() is CW → negate
+          // 3. translate(bboxCx,bboxCy) — move to placement bbox centre in SVG coords
           const bboxCx = (tx + p.w / 2).toFixed(3);
           const bboxCy = (ty + p.h / 2).toFixed(3);
-          // image is drawn at (-bbW/2, -bbH/2) in its local coords, scaled to (p.w × p.h) after rotation
           const imgScale = Math.min(p.w / bbW, p.h / bbH);
           const drawW = (bbW * imgScale).toFixed(3);
           const drawH = (bbH * imgScale).toFixed(3);
           const imgX = (-(bbW * imgScale) / 2).toFixed(3);
           const imgY = (-(bbH * imgScale) / 2).toFixed(3);
-          return `<image href="${dataUrl}" x="${imgX}" y="${imgY}" width="${drawW}" height="${drawH}" transform="translate(${bboxCx},${bboxCy}) rotate(${(-angleDeg).toFixed(2)})" />`;
+          return `<image href="${dataUrl}" x="${imgX}" y="${imgY}" width="${drawW}" height="${drawH}" transform="translate(${bboxCx},${bboxCy}) rotate(${(-angleDeg).toFixed(2)}) scale(1,-1)" />`;
         }
       }
     }
