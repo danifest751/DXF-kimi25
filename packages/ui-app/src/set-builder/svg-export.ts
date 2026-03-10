@@ -78,7 +78,17 @@ function buildSheetSvg(sheet: SheetResult): string {
           // 3. translate(bboxCx,bboxCy) — move to placement bbox centre in SVG coords
           const bboxCx = (tx + p.w / 2).toFixed(3);
           const bboxCy = (ty + p.h / 2).toFixed(3);
-          const imgScale = Math.min(p.w / bbW, p.h / bbH);
+
+          // After SVG rotate(-angleDeg), the image's bbW maps to p.w and bbH maps to p.h
+          // (the engine stores p.w/p.h as the post-rotation bbox).
+          // So the scale that makes the unrotated image fit after rotation:
+          const angleRad = (angleDeg * Math.PI) / 180;
+          const cosA = Math.abs(Math.cos(angleRad));
+          const sinA = Math.abs(Math.sin(angleRad));
+          // rotated bbox of bbW×bbH:  rW = bbW*cos + bbH*sin, rH = bbW*sin + bbH*cos
+          const rW = bbW * cosA + bbH * sinA;
+          const rH = bbW * sinA + bbH * cosA;
+          const imgScale = Math.min(p.w / rW, p.h / rH);
           const drawW = (bbW * imgScale).toFixed(3);
           const drawH = (bbH * imgScale).toFixed(3);
           const imgX = (-(bbW * imgScale) / 2).toFixed(3);
