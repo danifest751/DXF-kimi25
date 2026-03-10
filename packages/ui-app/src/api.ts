@@ -13,9 +13,12 @@ function withCredentials(init: RequestInit): RequestInit {
 }
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  /** Seconds to wait before retrying (from Retry-After header), if present. */
+  public readonly retryAfter: number | null;
+  constructor(public readonly status: number, message: string, retryAfter: number | null = null) {
     super(message);
     this.name = 'ApiError';
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -35,7 +38,9 @@ async function apiRequestJSON<T>(
   }));
   if (!response.ok) {
     const text = await response.text();
-    throw new ApiError(response.status, text || `HTTP ${response.status}`);
+    const retryAfterRaw = response.headers.get('retry-after');
+    const retryAfter = retryAfterRaw ? (parseInt(retryAfterRaw, 10) || null) : null;
+    throw new ApiError(response.status, text || `HTTP ${response.status}`, retryAfter);
   }
   return response.json() as Promise<T>;
 }

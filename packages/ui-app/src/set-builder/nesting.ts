@@ -1,4 +1,5 @@
 import { apiPostJSON, ApiError, downloadBlob } from '../api.js';
+import { withRateLimitRetry } from '../api-queue.js';
 import { loadedFiles } from '../state.js';
 import { t } from '../i18n/index.js';
 import NestingWorker from '../nesting-worker.js?worker';
@@ -268,9 +269,8 @@ export async function runNesting(
     if (isOffline) {
       showToast(t('setBuilder.toast.offlineLocalNesting'));
       result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
-    } else
-    try {
-      const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+    } else {
+      const nestPayload = {
         items,
         sheet: { width: sheet.w, height: sheet.h },
         gap,
@@ -280,34 +280,32 @@ export async function runNesting(
         multiStart: options.multiStart,
         seed: options.seed,
         commonLine: options.commonLine,
-      });
-      result = resp.data;
-    } catch (apiErr) {
-      if (apiErr instanceof ApiError && apiErr.status === 429) {
-        const RETRY_DELAY_SEC = 60;
-        for (let sec = RETRY_DELAY_SEC; sec > 0; sec--) {
-          showToast(t('setBuilder.toast.rateLimitRetry').replace('{n}', String(sec)));
-          await new Promise<void>((res) => setTimeout(res, 1000));
-          if (!state.loading) return;
+      };
+      try {
+        const resp = await withRateLimitRetry(
+          () => apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', nestPayload),
+          {
+            maxAttempts: 3,
+            onCountdown: (sec, attempt) => {
+              state.busyLabel = t('setBuilder.toast.rateLimitRetry')
+                .replace('{n}', String(sec))
+                .replace('{attempt}', String(attempt));
+              render();
+            },
+            onRetry: () => {
+              state.busyLabel = t('setBuilder.nesting');
+              render();
+            },
+            signal: nestingAbortController?.signal,
+          },
+        );
+        state.busyLabel = '';
+        result = resp.data;
+      } catch (apiErr) {
+        state.busyLabel = '';
+        if (apiErr instanceof ApiError && apiErr.status === 429) {
+          showToast(t('setBuilder.toast.rateLimitNesting'));
         }
-        try {
-          const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
-            items,
-            sheet: { width: sheet.w, height: sheet.h },
-            gap,
-            rotationEnabled: options.rotationEnabled,
-            rotationAngleStepDeg: options.rotationAngleStepDeg,
-            strategy: options.strategy,
-            multiStart: options.multiStart,
-            seed: options.seed,
-            commonLine: options.commonLine,
-          });
-          result = resp.data;
-        } catch (retryErr) {
-          console.warn('[set-builder] Retry after 429 failed, falling back to local worker:', retryErr);
-          result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
-        }
-      } else {
         console.warn('[set-builder] API nesting failed, falling back to local worker:', apiErr);
         result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
       }
