@@ -15,6 +15,10 @@ export default defineConfig({
           },
         ],
       },
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'DXF Viewer',
         short_name: 'DXF',
