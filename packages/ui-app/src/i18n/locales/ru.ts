@@ -304,6 +304,8 @@ export const ru = {
   'setBuilder.toast.filesSynced': 'Файлы синхронизированы',
   'setBuilder.toast.catalogZipDone': 'Архив скачан',
   'setBuilder.toast.catalogZipEmpty': 'Нет файлов для архивации',
+  'setBuilder.toast.rateLimitRetry': 'Лимит запросов. Повтор через {n} сек…',
+  'setBuilder.toast.rateLimitNesting': 'Лимит запросов. Попробуйте позже.',
   'setBuilder.prompt.setQtySelected': 'Укажите количество для выбранных',
   'setBuilder.prompt.moveToCatalog': 'Переместить в каталог (введите номер или название):',
   'setBuilder.prompt.deleteCatalogMode': 'Удаление каталога: введите "move" (перенести файлы) или "delete" (удалить файлы)',

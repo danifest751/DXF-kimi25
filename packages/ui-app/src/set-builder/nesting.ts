@@ -1,14 +1,35 @@
 import { apiPostJSON, ApiError, downloadBlob } from '../api.js';
 import { loadedFiles } from '../state.js';
 import { t } from '../i18n/index.js';
-import { nestItems } from '../../../core-engine/src/nesting/index.js';
+import NestingWorker from '../nesting-worker.js?worker';
+import type { NestingWorkerRequest, NestingWorkerResponse } from '../nesting-worker.js';
 import type { NestingItem, NestingOptions, NestingResult } from '../../../core-engine/src/nesting/index.js';
+
 import { exportNestingToDXF } from '../../../core-engine/src/export/index.js';
 import type { ItemDocData } from '../../../core-engine/src/export/index.js';
 import type { SetBuilderState, SheetResult } from './types.js';
 import { canRunNesting, getSetRows } from './state.js';
 import type { SheetPreset } from './context.js';
 import { SHEET_PRESETS } from './mock-data.js';
+
+function nestItemsViaWorker(
+  items: NestingItem[],
+  sheet: { width: number; height: number },
+  gap: number,
+  options: NestingOptions,
+): Promise<NestingResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new NestingWorker();
+    worker.onmessage = (e: MessageEvent<NestingWorkerResponse>) => {
+      worker.terminate();
+      if (e.data.type === 'done') resolve(e.data.result);
+      else reject(new Error(e.data.message));
+    };
+    worker.onerror = (err) => { worker.terminate(); reject(err); };
+    const req: NestingWorkerRequest = { items, sheet, gap, options };
+    worker.postMessage(req);
+  });
+}
 
 function yieldFrame(): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -257,11 +278,33 @@ export async function runNesting(
       result = resp.data;
     } catch (apiErr) {
       if (apiErr instanceof ApiError && apiErr.status === 429) {
-        showToast(t('setBuilder.toast.rateLimitNesting'));
-        return;
+        const RETRY_DELAY_SEC = 60;
+        for (let sec = RETRY_DELAY_SEC; sec > 0; sec--) {
+          showToast(t('setBuilder.toast.rateLimitRetry').replace('{n}', String(sec)));
+          await new Promise<void>((res) => setTimeout(res, 1000));
+          if (!state.loading) return;
+        }
+        try {
+          const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+            items,
+            sheet: { width: sheet.w, height: sheet.h },
+            gap,
+            rotationEnabled: options.rotationEnabled,
+            rotationAngleStepDeg: options.rotationAngleStepDeg,
+            strategy: options.strategy,
+            multiStart: options.multiStart,
+            seed: options.seed,
+            commonLine: options.commonLine,
+          });
+          result = resp.data;
+        } catch (retryErr) {
+          console.warn('[set-builder] Retry after 429 failed, falling back to local worker:', retryErr);
+          result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
+        }
+      } else {
+        console.warn('[set-builder] API nesting failed, falling back to local worker:', apiErr);
+        result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
       }
-      console.warn('[set-builder] API nesting failed, falling back to local:', apiErr);
-      result = nestItems(items, { width: sheet.w, height: sheet.h }, gap, options);
     }
 
     if (!result) {
