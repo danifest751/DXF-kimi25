@@ -10,11 +10,16 @@ export interface SetTemplate {
   items: Array<{ stableKey: string; qty: number; enabled: boolean }>;
 }
 
-function getStableKey(sourceFileId: number): string | null {
-  const lf = loadedFiles.find((f) => f.id === sourceFileId);
-  if (!lf) return null;
-  if (lf.remoteId) return lf.remoteId;
-  return `name:${lf.name}`;
+function getStableKeyFromLibraryItem(item: import('./types.js').LibraryItem): string | null {
+  // prefer remoteId (stable across sessions), fallback to name
+  if (item.remoteId) return item.remoteId;
+  if (item.name) return `name:${item.name}`;
+  // last resort: try via loadedFiles
+  if (item.sourceFileId !== undefined) {
+    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+    if (lf) return lf.remoteId ?? `name:${lf.name}`;
+  }
+  return null;
 }
 
 export function loadTemplates(): SetTemplate[] {
@@ -36,8 +41,8 @@ export function saveSetAsTemplate(state: SetBuilderState, name: string): SetTemp
   const items: SetTemplate['items'] = [];
   for (const s of state.set.values()) {
     const item = state.library.find((it) => it.id === s.libraryId);
-    if (!item || item.sourceFileId === undefined) continue;
-    const stableKey = getStableKey(item.sourceFileId);
+    if (!item) continue;
+    const stableKey = getStableKeyFromLibraryItem(item);
     if (!stableKey) continue;
     items.push({ stableKey, qty: s.qty, enabled: s.enabled });
   }
@@ -61,11 +66,20 @@ export function applyTemplate(state: SetBuilderState, templateId: string): boole
 
   const keyMap = new Map<string, number>();
   for (const item of state.library) {
-    if (item.sourceFileId === undefined) continue;
-    const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
-    if (!lf) continue;
-    const key = lf.remoteId ?? `name:${lf.name}`;
-    keyMap.set(key, item.id);
+    // prefer remoteId, fallback to name-based key (matches how saveSetAsTemplate builds stableKey)
+    if (item.remoteId) {
+      keyMap.set(item.remoteId, item.id);
+    } else {
+      keyMap.set(`name:${item.name}`, item.id);
+    }
+    // also try via loadedFiles for extra coverage when available
+    if (item.sourceFileId !== undefined) {
+      const lf = loadedFiles.find((f) => f.id === item.sourceFileId);
+      if (lf) {
+        const lfKey = lf.remoteId ?? `name:${lf.name}`;
+        if (!keyMap.has(lfKey)) keyMap.set(lfKey, item.id);
+      }
+    }
   }
 
   let applied = 0;
