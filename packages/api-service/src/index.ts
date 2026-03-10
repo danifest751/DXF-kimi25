@@ -14,6 +14,7 @@ import { heavyRateLimit, nestingRateLimit } from './rate-limit.js';
 import routesAuth from './routes-auth.js';
 import routesWorkspace from './routes-workspace.js';
 import routesTelegram from './routes-telegram.js';
+import routesNotify from './routes-notify.js';
 
 initSentry();
 
@@ -78,6 +79,7 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
 app.use('/api', routesAuth);
 app.use('/api', routesWorkspace);
 app.use('/api', routesTelegram);
+app.use('/api', routesNotify);
 
 // ─── DXF / nesting / price / export / share routes ───────────────────
 registerDxfRoutes(app, heavyRateLimit, nestingRateLimit);

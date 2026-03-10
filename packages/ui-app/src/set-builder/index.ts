@@ -36,6 +36,10 @@ import { buildBatchEntries, analyzeBatchEntries, runBatchOptimization, downloadB
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import { openSplitModal } from './split-modal.js';
 import { renderBatchModal } from './optimizer/batch-render.js';
+import { loadTemplates, saveSetAsTemplate, applyTemplate, deleteTemplate } from './templates.js';
+import { pushToHistory, loadHistory, deleteHistoryEntry } from './history.js';
+import { exportSheetAsSvg, exportAllSheetsAsSvg, printResultsAsPdf } from './svg-export.js';
+import { loadNotifySettings, saveNotifySettings, sendNestingDoneNotification, sendFileUploadedNotification } from './tg-notify.js';
 
 export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement): void {
   const appRoot = document.getElementById('app') as HTMLDivElement | null;
@@ -64,6 +68,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
   let prevAuthToken = authSessionToken;
   let menuAnchorRect: { top: number; right: number } | null = null;
   let persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let templatesOpen = false;
+  let historyOpen = false;
+  let notifySettings = loadNotifySettings();
 
   // ─── Sheet part drag state ────────────────────────────────────────────
   let sheetDragActive = false;
@@ -248,7 +255,7 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       persistState(state, sheetPresets, customSheetWidthMm, customSheetHeightMm);
       return;
     }
-    const snap = snapshotState(state, authSessionToken, lastEngineResult, optiState, batchState);
+    const snap = snapshotState(state, authSessionToken, lastEngineResult, optiState, batchState, templatesOpen, historyOpen, notifySettings.enabled);
     const needsFullRender = lastRenderSnapshot === null || !snapshotsEqual(lastRenderSnapshot, snap);
     if (needsFullRender) {
       renderMain(
@@ -258,6 +265,11 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
         authSessionToken, authWorkspaceId,
         optiState,
         batchState,
+        loadTemplates(),
+        loadHistory(),
+        templatesOpen,
+        historyOpen,
+        notifySettings.enabled,
       );
       lastRenderSnapshot = snap;
       thumbQueue.schedule();
@@ -576,10 +588,98 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'run') {
       void runNesting(
         state, sheetPresets,
-        (r) => { lastEngineResult = r; clearSheetMarkupCache(); },
+        (r) => {
+          lastEngineResult = r;
+          clearSheetMarkupCache();
+          // 3.2 — auto-save to history
+          if (state.results) pushToHistory(state.results);
+          // 3.5 — Telegram notification
+          void sendNestingDoneNotification({
+            sheetsCount: r.sheets.length,
+            partsCount: r.totalPlaced,
+            avgUtilization: Math.round(r.avgFillPercent),
+          });
+        },
         (m) => { lastItemDocs = m; },
         showToast, render,
       );
+      return;
+    }
+    // 3.1 — Templates
+    if (action === 'templates-open') { templatesOpen = !templatesOpen; historyOpen = false; scheduleRender(); return; }
+    if (action === 'templates-save') {
+      if (state.set.size === 0) { showToast(t('templates.toast.emptySet')); return; }
+      const name = prompt(t('templates.prompt.name'), `Шаблон ${new Date().toLocaleDateString()}`);
+      if (name === null) return;
+      const tpl = saveSetAsTemplate(state, name);
+      if (tpl) showToast(t('templates.toast.saved')); else showToast(t('templates.toast.emptySet'));
+      scheduleRender();
+      return;
+    }
+    if (action === 'templates-load') {
+      const tplId = button.dataset.id ?? '';
+      const applied = applyTemplate(state, tplId);
+      showToast(applied ? t('templates.toast.loaded') : t('setBuilder.toast.noEligible'));
+      templatesOpen = false;
+      scheduleRender();
+      return;
+    }
+    if (action === 'templates-delete') {
+      const tplId = button.dataset.id ?? '';
+      deleteTemplate(tplId);
+      showToast(t('templates.toast.deleted'));
+      scheduleRender();
+      return;
+    }
+    // 3.2 — History
+    if (action === 'history-open') { historyOpen = !historyOpen; templatesOpen = false; scheduleRender(); return; }
+    if (action === 'history-restore') {
+      const entryId = button.dataset.id ?? '';
+      const entries = loadHistory();
+      const entry = entries.find((e) => e.id === entryId);
+      if (entry) {
+        state.results = entry.results;
+        state.activeTab = 'results';
+        showToast(t('history.toast.restored'));
+        historyOpen = false;
+        scheduleRender();
+      }
+      return;
+    }
+    if (action === 'history-delete') {
+      const entryId = button.dataset.id ?? '';
+      deleteHistoryEntry(entryId);
+      showToast(t('history.toast.deleted'));
+      scheduleRender();
+      return;
+    }
+    // 3.4 — SVG/PDF export
+    if (action === 'export-svg') {
+      if (!state.results) { showToast(t('export.toast.noResult')); return; }
+      exportAllSheetsAsSvg(state.results);
+      showToast(t('export.toast.svgDone'));
+      return;
+    }
+    if (action === 'export-svg-sheet') {
+      const idx = Number(button.dataset.index ?? '-1');
+      if (!state.results || idx < 0) { showToast(t('export.toast.noResult')); return; }
+      const sheet = state.results.sheets[idx];
+      if (sheet) exportSheetAsSvg(sheet, `sheet-${idx + 1}.svg`);
+      showToast(t('export.toast.svgDone'));
+      return;
+    }
+    if (action === 'export-pdf') {
+      if (!state.results) { showToast(t('export.toast.noResult')); return; }
+      printResultsAsPdf(state.results);
+      return;
+    }
+    // 3.5 — Telegram notify toggle
+    if (action === 'tg-notify-toggle') {
+      if (!authSessionToken) { showToast(t('tgNotify.toast.needLogin')); return; }
+      notifySettings = { enabled: !notifySettings.enabled };
+      saveNotifySettings(notifySettings);
+      showToast(notifySettings.enabled ? t('tgNotify.toast.subscribed') : t('tgNotify.toast.unsubscribed'));
+      scheduleRender();
       return;
     }
     if (action === 'add-set') { upsertSetItem(state, id, 1); showToast(t('setBuilder.toast.addedToSet')); scheduleRender(); return; }
@@ -1034,6 +1134,13 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
       scheduleRender();
       return;
     }
+    if (action === 'tg-notify-toggle' && el instanceof HTMLInputElement) {
+      if (!authSessionToken) { showToast(t('tgNotify.toast.needLogin')); el.checked = !el.checked; return; }
+      notifySettings = { enabled: el.checked };
+      saveNotifySettings(notifySettings);
+      showToast(notifySettings.enabled ? t('tgNotify.toast.subscribed') : t('tgNotify.toast.unsubscribed'));
+      return;
+    }
     if ((action === 'mat-group' || action === 'mat-grade' || action === 'mat-thickness') && el instanceof HTMLSelectElement) {
       const itemId = state.materialModalOpenForId;
       if (itemId === null) return;
@@ -1210,7 +1317,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     state.uploadingCount += files.length;
     scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (_id) => {}).finally(() => {
+      void loadSingleFile(f, (_id) => {}).then(() => {
+        void sendFileUploadedNotification(f.name);
+      }).finally(() => {
         state.uploadingCount = Math.max(0, state.uploadingCount - 1);
         scheduleRender();
       });
@@ -1236,7 +1345,9 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     state.uploadingCount += files.length;
     scheduleRender();
     for (const f of files) {
-      void loadSingleFile(f, (_id) => {}).finally(() => {
+      void loadSingleFile(f, (_id) => {}).then(() => {
+        void sendFileUploadedNotification(f.name);
+      }).finally(() => {
         state.uploadingCount = Math.max(0, state.uploadingCount - 1);
         scheduleRender();
       });

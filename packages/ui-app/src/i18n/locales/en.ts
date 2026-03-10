@@ -422,4 +422,44 @@ export const en: Record<TranslationKey, string> = {
   'batch.abort': 'Stop',
   'batch.run': 'Optimize',
   'batch.openBatchOptimizer': 'Batch optimize catalog',
+
+  // Set Templates (3.1)
+  'templates.title': 'Set Templates',
+  'templates.save': 'Save Set',
+  'templates.load': 'Load Template',
+  'templates.noTemplates': 'No saved templates',
+  'templates.prompt.name': 'Template name:',
+  'templates.toast.saved': 'Template saved',
+  'templates.toast.loaded': 'Template loaded',
+  'templates.toast.deleted': 'Template deleted',
+  'templates.toast.emptySet': 'Set is empty — nothing to save',
+  'templates.delete': 'Delete template',
+  'templates.parts': 'parts',
+
+  // Nesting History (3.2)
+  'history.title': 'Nesting History',
+  'history.noHistory': 'No saved nesting results',
+  'history.restore': 'Restore',
+  'history.delete': 'Delete',
+  'history.toast.restored': 'Nesting restored',
+  'history.toast.deleted': 'Entry deleted',
+  'history.sheets': 'sheets',
+  'history.utilization': 'utilization',
+  'history.parts': 'parts',
+
+  // SVG/PDF Export (3.4)
+  'export.svgPdf': 'SVG / PDF',
+  'export.svg': 'Export SVG',
+  'export.pdf': 'Print PDF',
+  'export.toast.svgDone': 'SVG downloaded',
+  'export.toast.noResult': 'No nesting result to export',
+
+  // Telegram notifications (3.5)
+  'tgNotify.title': 'Telegram Notifications',
+  'tgNotify.enable': 'Enable notifications',
+  'tgNotify.nestingDone': 'Nesting finished',
+  'tgNotify.fileUploaded': 'File uploaded',
+  'tgNotify.toast.subscribed': 'Notifications enabled',
+  'tgNotify.toast.unsubscribed': 'Notifications disabled',
+  'tgNotify.toast.needLogin': 'Telegram login required',
 } as const;

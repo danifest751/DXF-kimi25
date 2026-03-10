@@ -420,6 +420,46 @@ export const ru = {
   'batch.abort': 'Остановить',
   'batch.run': 'Оптимизировать',
   'batch.openBatchOptimizer': 'Пакетная оптимизация каталога',
+
+  // Set Templates (3.1)
+  'templates.title': 'Шаблоны наборов',
+  'templates.save': 'Сохранить набор',
+  'templates.load': 'Загрузить шаблон',
+  'templates.noTemplates': 'Нет сохранённых шаблонов',
+  'templates.prompt.name': 'Название шаблона:',
+  'templates.toast.saved': 'Шаблон сохранён',
+  'templates.toast.loaded': 'Шаблон загружен',
+  'templates.toast.deleted': 'Шаблон удалён',
+  'templates.toast.emptySet': 'Набор пуст — нечего сохранять',
+  'templates.delete': 'Удалить шаблон',
+  'templates.parts': 'дет.',
+
+  // Nesting History (3.2)
+  'history.title': 'История раскладок',
+  'history.noHistory': 'Нет сохранённых раскладок',
+  'history.restore': 'Восстановить',
+  'history.delete': 'Удалить',
+  'history.toast.restored': 'Раскладка восстановлена',
+  'history.toast.deleted': 'Запись удалена',
+  'history.sheets': 'листов',
+  'history.utilization': 'заполнение',
+  'history.parts': 'дет.',
+
+  // SVG/PDF Export (3.4)
+  'export.svgPdf': 'SVG / PDF',
+  'export.svg': 'Экспорт SVG',
+  'export.pdf': 'Печать PDF',
+  'export.toast.svgDone': 'SVG скачан',
+  'export.toast.noResult': 'Нет результата для экспорта',
+
+  // Telegram notifications (3.5)
+  'tgNotify.title': 'Telegram уведомления',
+  'tgNotify.enable': 'Получать уведомления',
+  'tgNotify.nestingDone': 'Раскладка завершена',
+  'tgNotify.fileUploaded': 'Файл загружен',
+  'tgNotify.toast.subscribed': 'Уведомления включены',
+  'tgNotify.toast.unsubscribed': 'Уведомления отключены',
+  'tgNotify.toast.needLogin': 'Нужен вход в Telegram',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

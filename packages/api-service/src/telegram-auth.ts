@@ -453,6 +453,18 @@ export async function createSessionForTelegramUser(telegramUserIdInput: number |
   return { sessionToken, workspaceId: user.workspaceId, expiresAt };
 }
 
+export async function getTelegramUserIdByUserId(userId: string): Promise<string | null> {
+  for (const user of usersByTelegram.values()) {
+    if (user.id === userId) return user.telegramUserId;
+  }
+  if (!supabaseEnabled) return null;
+  const params = new URLSearchParams({ select: 'telegram_user_id', id: `eq.${userId}`, limit: '1' });
+  const response = await supabaseRequest(`/${APP_USERS_TABLE}?${params.toString()}`);
+  if (!response?.ok) return null;
+  const rows = await response.json() as Array<{ telegram_user_id: string }>;
+  return rows[0]?.telegram_user_id ?? null;
+}
+
 export async function revokeAuthSessionByToken(tokenInput: string): Promise<void> {
   pruneLocalMaps();
   const token = tokenInput.trim();

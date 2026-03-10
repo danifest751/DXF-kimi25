@@ -14,6 +14,8 @@ import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
 import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip, iconMove, iconResave, iconAutoArrange } from './icons.js';
 import { computeSplitParts } from './split-modal.js';
 import type { SheetPreset } from './context.js';
+import type { SetTemplate } from './templates.js';
+import type { HistoryEntry } from './history.js';
 import { getVisibleLibraryItems } from './library.js';
 
 export interface RenderSnapshot {
@@ -61,6 +63,9 @@ export interface RenderSnapshot {
   dragMode: boolean;
   manualPlacementsKey: string;
   busyLabel: string;
+  templatesOpen: boolean;
+  historyOpen: boolean;
+  notifyEnabled: boolean;
 }
 
 export function snapshotState(
@@ -69,6 +74,9 @@ export function snapshotState(
   lastEngineResult: NestingResult | null,
   optimizerState: OptimizerState | null,
   batchOptimizerState: BatchOptimizerState | null,
+  templatesOpen: boolean,
+  historyOpen: boolean,
+  notifyEnabled: boolean,
 ): RenderSnapshot {
   return {
     libCount: state.library.length,
@@ -115,6 +123,9 @@ export function snapshotState(
     dragMode: state.dragMode,
     manualPlacementsKey: [...state.manualPlacements.entries()].map(([id, arr]) => `${id}:${arr.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('|')}`).join(';'),
     busyLabel: state.busyLabel,
+    templatesOpen,
+    historyOpen,
+    notifyEnabled,
   };
 }
 
@@ -665,6 +676,11 @@ export function renderMain(
   authWorkspaceId: string,
   optimizerState: OptimizerState | null,
   batchOptimizerState: BatchOptimizerState | null,
+  templates: SetTemplate[],
+  history: HistoryEntry[],
+  templatesOpen: boolean,
+  historyOpen: boolean,
+  notifyEnabled: boolean,
 ): void {
   const filtered = getVisibleLibraryItems(state);
   const setRows = getSetRows(state);
@@ -989,6 +1005,60 @@ export function renderMain(
             ${issues.length === 0 ? `<div class="sb-empty">${t('setBuilder.empty.noIssues')}</div>` : issues.map((it) => `<div>${esc(it.issue)} <b>×${it.count}</b></div>`).join('')}
           </div>
           <button class="sb-btn sb-btn--ghost" data-a="clear-set">${t('setBuilder.clearSet')}</button>
+
+          <!-- 3.1 Templates -->
+          <div class="sb-panel-section">
+            <div class="sb-panel-row">
+              <button class="sb-btn sb-btn--ghost sb-btn--sm" data-a="templates-open">${t('templates.title')}</button>
+              <button class="sb-btn sb-btn--sm" data-a="templates-save">${t('templates.save')}</button>
+            </div>
+            ${templatesOpen ? `
+            <div class="sb-dropdown-panel">
+              ${templates.length === 0
+                ? `<div class="sb-empty">${t('templates.noTemplates')}</div>`
+                : templates.map((tpl) => `
+                  <div class="sb-dropdown-row">
+                    <span class="sb-dropdown-row-name" title="${esc(tpl.name)}">${esc(tpl.name)}</span>
+                    <span class="sb-dropdown-row-meta">${tpl.items.length} ${t('templates.parts')}</span>
+                    <button class="sb-btn sb-btn--xs" data-a="templates-load" data-id="${esc(tpl.id)}">${t('templates.load')}</button>
+                    <button class="sb-icon" data-a="templates-delete" data-id="${esc(tpl.id)}" title="${t('templates.delete')}">${iconTrash}</button>
+                  </div>`).join('')}
+            </div>` : ''}
+          </div>
+
+          <!-- 3.2 History -->
+          <div class="sb-panel-section">
+            <div class="sb-panel-row">
+              <button class="sb-btn sb-btn--ghost sb-btn--sm" data-a="history-open">${t('history.title')}</button>
+            </div>
+            ${historyOpen ? `
+            <div class="sb-dropdown-panel">
+              ${history.length === 0
+                ? `<div class="sb-empty">${t('history.noHistory')}</div>`
+                : history.map((entry) => `
+                  <div class="sb-dropdown-row">
+                    <span class="sb-dropdown-row-name">${new Date(entry.createdAt).toLocaleString()}</span>
+                    <span class="sb-dropdown-row-meta">${entry.sheetsCount} ${t('history.sheets')} · ${entry.avgUtilization}%</span>
+                    <button class="sb-btn sb-btn--xs" data-a="history-restore" data-id="${esc(entry.id)}">${t('history.restore')}</button>
+                    <button class="sb-icon" data-a="history-delete" data-id="${esc(entry.id)}" title="${t('history.delete')}">${iconTrash}</button>
+                  </div>`).join('')}
+            </div>` : ''}
+          </div>
+
+          <!-- 3.4 SVG/PDF export -->
+          ${state.results ? `
+          <div class="sb-panel-section sb-panel-row">
+            <button class="sb-btn sb-btn--ghost sb-btn--sm" data-a="export-svg">${t('export.svg')}</button>
+            <button class="sb-btn sb-btn--ghost sb-btn--sm" data-a="export-pdf">${t('export.pdf')}</button>
+          </div>` : ''}
+
+          <!-- 3.5 Telegram notifications -->
+          <div class="sb-panel-section sb-panel-row">
+            <label class="sb-notify-label">
+              <input type="checkbox" data-a="tg-notify-toggle" ${notifyEnabled ? 'checked' : ''} />
+              ${t('tgNotify.enable')}
+            </label>
+          </div>
         </aside>
       </div>
 
