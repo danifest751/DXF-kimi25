@@ -306,6 +306,7 @@ export const ru = {
   'setBuilder.toast.catalogZipEmpty': 'Нет файлов для архивации',
   'setBuilder.toast.rateLimitRetry': 'Лимит запросов. Повтор через {n} сек…',
   'setBuilder.toast.rateLimitNesting': 'Лимит запросов. Попробуйте позже.',
+  'setBuilder.toast.offlineLocalNesting': 'Офлайн — раскладка без common-line (локальный режим)',
   'setBuilder.prompt.setQtySelected': 'Укажите количество для выбранных',
   'setBuilder.prompt.moveToCatalog': 'Переместить в каталог (введите номер или название):',
   'setBuilder.prompt.deleteCatalogMode': 'Удаление каталога: введите "move" (перенести файлы) или "delete" (удалить файлы)',

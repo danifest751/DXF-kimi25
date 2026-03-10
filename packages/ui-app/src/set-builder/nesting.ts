@@ -257,12 +257,18 @@ export async function runNesting(
     return;
   }
 
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
   let result: NestingResult | null = null;
   try {
     // Фаза 2: выполнение раскладки
     state.nestingPhase = 'nesting';
     render();
 
+    if (isOffline) {
+      showToast(t('setBuilder.toast.offlineLocalNesting'));
+      result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
+    } else
     try {
       const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
         items,

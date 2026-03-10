@@ -308,6 +308,7 @@ export const en: Record<TranslationKey, string> = {
   'setBuilder.toast.catalogZipEmpty': 'No files to archive',
   'setBuilder.toast.rateLimitRetry': 'Rate limit hit. Retrying in {n} sec…',
   'setBuilder.toast.rateLimitNesting': 'Rate limit hit. Please try again later.',
+  'setBuilder.toast.offlineLocalNesting': 'Offline — nesting without common-line (local mode)',
   'setBuilder.prompt.setQtySelected': 'Set quantity for selected',
   'setBuilder.prompt.moveToCatalog': 'Move to catalog (enter number or name):',
   'setBuilder.prompt.deleteCatalogMode': 'Delete catalog: enter "move" (move files) or "delete" (delete files)',
