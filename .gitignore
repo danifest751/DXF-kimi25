@@ -1,5 +1,8 @@
 node_modules/
 dist/
+dev-dist/
+packages/*/dev-dist/
+test-results/
 packages/*/src/**/*.js
 packages/*/src/**/*.d.ts
 packages/*/src/**/*.d.ts.map
