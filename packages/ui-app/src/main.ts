@@ -14,9 +14,31 @@ import { restoreAuthSession, runTMAAutoLogin } from './auth.js';
 import { initSetBuilder } from './set-builder/index.js';
 import { setBuilderRoot, btnSetBuilder } from './ui-shell.js';
 
+async function clearLegacyOfflineCache(): Promise<void> {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    } catch {
+      // ignore
+    }
+  }
+
+  if ('caches' in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {
+      // ignore
+    }
+  }
+}
+
 initSentry();
 
 // ─── Boot ─────────────────────────────────────────────────────────────
+
+void clearLegacyOfflineCache();
 
 initSetBuilder(setBuilderRoot, btnSetBuilder);
 
