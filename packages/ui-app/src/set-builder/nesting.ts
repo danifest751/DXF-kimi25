@@ -3,7 +3,7 @@ import { loadedFiles } from '../state.js';
 import { t } from '../i18n/index.js';
 import NestingWorker from '../nesting-worker.js?worker';
 import type { NestingWorkerRequest, NestingWorkerResponse } from '../nesting-worker.js';
-import type { NestingItem, NestingOptions, NestingResult } from '../../../core-engine/src/nesting/index.js';
+import type { NestingItem, NestingOptions, NestingResult, NestingSheet } from '../../../core-engine/src/nesting/index.js';
 
 import { exportNestingToDXF } from '../../../core-engine/src/export/index.js';
 import type { ItemDocData } from '../../../core-engine/src/export/index.js';
@@ -87,12 +87,15 @@ export function buildSetNestingItems(state: SetBuilderState): { items: NestingIt
       continue;
     }
 
+    // Get material assignment for this item
+    const assignment = state.materialAssignments.get(row.item.id);
     items.push({
       id: lf.id,
       name: lf.name,
       width,
       height,
       quantity: row.set.qty,
+      materialId: assignment?.materialId ?? undefined,
     });
   }
 
@@ -135,6 +138,7 @@ export function mapEngineResultToSetBuilder(
   return {
     sheets: result.sheets.map((sheet, idx) => ({
       id: `sheet-${sheet.sheetIndex + 1}`,
+      materialId: sheet.materialId ?? null,
       utilization: Math.max(0, Math.min(100, Math.round(sheet.fillPercent))),
       partCount: sheet.placed.length,
       hash: hashes[idx] ?? '',
@@ -225,6 +229,125 @@ export async function exportSheetByIndex(
   return true;
 }
 
+/**
+ * Groups items by materialId, keeping items without materialId in a special 'ungrouped' key.
+ */
+function groupItemsByMaterial(items: NestingItem[]): Map<string | null, NestingItem[]> {
+  const groups = new Map<string | null, NestingItem[]>();
+  for (const item of items) {
+    const key = item.materialId ?? null;
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+    }
+    group.push(item);
+  }
+  return groups;
+}
+
+/**
+ * Calls the nesting API for a single material group and returns the result.
+ */
+async function nestGroup(
+  items: NestingItem[],
+  sheet: { w: number; h: number },
+  gap: number,
+  options: NestingOptions,
+  showToast: (msg: string) => void,
+): Promise<NestingResult | null> {
+  try {
+    const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+      items,
+      sheet: { width: sheet.w, height: sheet.h },
+      gap,
+      rotationEnabled: options.rotationEnabled,
+      rotationAngleStepDeg: options.rotationAngleStepDeg,
+      strategy: options.strategy,
+      multiStart: options.multiStart,
+      seed: options.seed,
+      commonLine: options.commonLine,
+    });
+    return resp.data;
+  } catch (apiErr) {
+    if (apiErr instanceof ApiError && apiErr.status === 429) {
+      const RETRY_DELAY_SEC = 60;
+      for (let sec = RETRY_DELAY_SEC; sec > 0; sec--) {
+        showToast(t('setBuilder.toast.rateLimitRetry').replace('{n}', String(sec)));
+        await new Promise<void>((res) => setTimeout(res, 1000));
+      }
+      try {
+        const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
+          items,
+          sheet: { width: sheet.w, height: sheet.h },
+          gap,
+          rotationEnabled: options.rotationEnabled,
+          rotationAngleStepDeg: options.rotationAngleStepDeg,
+          strategy: options.strategy,
+          multiStart: options.multiStart,
+          seed: options.seed,
+          commonLine: options.commonLine,
+        });
+        return resp.data;
+      } catch (retryErr) {
+        console.warn('[set-builder] Retry after 429 failed, falling back to local worker:', retryErr);
+        return await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
+      }
+    } else {
+      console.warn('[set-builder] API nesting failed, falling back to local worker:', apiErr);
+      return await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
+    }
+  }
+}
+
+/**
+ * Merges multiple NestingResult objects into one, re-indexing sheets.
+ */
+function mergeNestingResults(results: NestingResult[], totalRequired: number): NestingResult {
+  const allSheets: NestingSheet[] = [];
+  let totalPlaced = 0;
+  let totalCutLength = 0;
+  let totalSharedCut = 0;
+  let totalCutAfterMerge = 0;
+  let sheetIndexOffset = 0;
+
+  for (const result of results) {
+    // Re-index sheets with global sheetIndex
+    for (const s of result.sheets) {
+      allSheets.push({
+        ...s,
+        sheetIndex: s.sheetIndex + sheetIndexOffset,
+      });
+    }
+    totalPlaced += result.totalPlaced;
+    totalCutLength += result.cutLengthEstimate;
+    totalSharedCut += result.sharedCutLength;
+    totalCutAfterMerge += result.cutLengthAfterMerge;
+    sheetIndexOffset += result.sheets.length;
+  }
+
+  const totalSheets = allSheets.length;
+  const avgFillPercent = totalSheets > 0
+    ? results.reduce((acc, r) => acc + r.avgFillPercent * r.sheets.length, 0) / totalSheets
+    : 0;
+
+  return {
+    sheet: results[0]?.sheet ?? { width: 1250, height: 2500 },
+    gap: results[0]?.gap ?? 5,
+    sheets: allSheets,
+    totalSheets,
+    totalPlaced,
+    totalRequired,
+    avgFillPercent: Math.round(avgFillPercent * 10) / 10,
+    cutLengthEstimate: Math.round(totalCutLength * 100) / 100,
+    sharedCutLength: Math.round(totalSharedCut * 100) / 100,
+    cutLengthAfterMerge: Math.round(totalCutAfterMerge * 100) / 100,
+    pierceEstimate: totalPlaced,
+    pierceDelta: 0,
+    strategy: results[0]?.strategy,
+  };
+}
+
 export async function runNesting(
   state: SetBuilderState,
   sheetPresets: SheetPreset[],
@@ -263,58 +386,31 @@ export async function runNesting(
     state.nestingPhase = 'nesting';
     render();
 
-    try {
-      const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
-        items,
-        sheet: { width: sheet.w, height: sheet.h },
-        gap,
-        rotationEnabled: options.rotationEnabled,
-        rotationAngleStepDeg: options.rotationAngleStepDeg,
-        strategy: options.strategy,
-        multiStart: options.multiStart,
-        seed: options.seed,
-        commonLine: options.commonLine,
-      });
-      result = resp.data;
-    } catch (apiErr) {
-      if (apiErr instanceof ApiError && apiErr.status === 429) {
-        const RETRY_DELAY_SEC = 60;
-        for (let sec = RETRY_DELAY_SEC; sec > 0; sec--) {
-          showToast(t('setBuilder.toast.rateLimitRetry').replace('{n}', String(sec)));
-          await new Promise<void>((res) => setTimeout(res, 1000));
-          if (!state.loading) return;
-        }
-        try {
-          const resp = await apiPostJSON<{ success: boolean; data: NestingResult }>('/api/nest', {
-            items,
-            sheet: { width: sheet.w, height: sheet.h },
-            gap,
-            rotationEnabled: options.rotationEnabled,
-            rotationAngleStepDeg: options.rotationAngleStepDeg,
-            strategy: options.strategy,
-            multiStart: options.multiStart,
-            seed: options.seed,
-            commonLine: options.commonLine,
-          });
-          result = resp.data;
-        } catch (retryErr) {
-          console.warn('[set-builder] Retry after 429 failed, falling back to local worker:', retryErr);
-          result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
-        }
-      } else {
-        console.warn('[set-builder] API nesting failed, falling back to local worker:', apiErr);
-        result = await nestItemsViaWorker(items, { width: sheet.w, height: sheet.h }, gap, options);
+    // Group items by materialId for material-aware nesting
+    const groups = groupItemsByMaterial(items);
+    const groupResults: NestingResult[] = [];
+    const groupRequired: number[] = [];
+
+    for (const [_materialId, groupItems] of groups) {
+      if (groupItems.length === 0) continue;
+
+      const groupRequiredCount = groupItems.reduce((acc, it) => acc + Math.max(0, Math.trunc(it.quantity)), 0);
+      groupRequired.push(groupRequiredCount);
+
+      const groupResult = await nestGroup(groupItems, { w: sheet.w, h: sheet.h }, gap, options, showToast);
+      if (groupResult) {
+        groupResults.push(groupResult);
       }
     }
 
-    if (!result) {
+    if (groupResults.length === 0) {
       showToast(t('setBuilder.toast.nestingFailed'));
       return;
     }
 
-    const requiredActual = items.reduce((acc, it) => acc + Math.max(0, Math.trunc(it.quantity)), 0);
-    const placedActual = result.sheets.reduce((acc, s) => acc + s.placed.length, 0);
-    result = { ...result, totalRequired: requiredActual, totalPlaced: placedActual };
+    // Merge results from all material groups
+    const totalRequired = groupRequired.reduce((acc, n) => acc + n, 0);
+    result = mergeNestingResults(groupResults, totalRequired);
 
     const correctedPierces = calcPierceEstimateForSheets(result.sheets);
     const engineResult = { ...result, pierceEstimate: correctedPierces };

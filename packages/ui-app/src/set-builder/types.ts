@@ -44,6 +44,8 @@ export interface SheetPreset {
 
 export interface SheetResult {
   readonly id: string;
+  /** Material ID (group|grade|thickness) for all parts on this sheet. */
+  readonly materialId: string | null;
   readonly utilization: number;
   readonly partCount: number;
   readonly hash: string;

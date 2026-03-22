@@ -50,6 +50,7 @@ export function runMockNesting(state: SetBuilderState): NestingResults {
 
     sheets.push({
       id: `sheet-${i + 1}`,
+      materialId: null,
       utilization,
       partCount,
       hash,

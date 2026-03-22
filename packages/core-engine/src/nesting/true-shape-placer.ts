@@ -205,6 +205,9 @@ export function placeTrueShape(
   let sharedCutLength = 0;
   let mergePairs = 0;
 
+  // Extract materialId from first item that has it (assumes all items in a group share the same materialId)
+  const materialId = items.find((it) => it.materialId !== undefined)?.materialId;
+
   // Build a perimeter lookup: itemId -> contour perimeter (at angle 0)
   const perimeterByItemId = new Map<number, number>();
   for (const item of items) {
@@ -233,6 +236,7 @@ export function placeTrueShape(
 
     nestingSheets.push({
       sheetIndex: i,
+      materialId,
       placed: placedItems,
       usedArea: st.usedArea,
       fillPercent: Math.round(fill * 10) / 10,

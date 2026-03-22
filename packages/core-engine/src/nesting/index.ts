@@ -32,6 +32,8 @@ export interface NestingItem {
   readonly width: number;
   readonly height: number;
   readonly quantity: number;
+  /** Material ID (group|grade|thickness). Used for grouping same-material parts together. */
+  readonly materialId?: string;
   readonly contour?: readonly NestingPoint[];
 }
 
@@ -71,6 +73,8 @@ export interface NestingOptions {
 /** Один лист с размещёнными деталями */
 export interface NestingSheet {
   readonly sheetIndex: number;
+  /** Material ID for all parts on this sheet (group|grade|thickness). */
+  readonly materialId?: string;
   readonly placed: readonly PlacedItem[];
   readonly usedArea: number;
   readonly fillPercent: number;
@@ -606,6 +610,9 @@ export function nestItems(
   const packers = bestAttempt.packers;
   const totalPlaced = bestAttempt.totalPlaced;
 
+  // Extract materialId from first item that has it (assumes all items in a group share the same materialId)
+  const materialId = items.find((it) => it.materialId !== undefined)?.materialId;
+
   const sheets: NestingSheet[] = [];
 
   const sheetArea = sheet.width * sheet.height;
@@ -626,6 +633,7 @@ export function nestItems(
     }
     sheets.push({
       sheetIndex: i,
+      materialId,
       placed: p.placed,
       usedArea: p.usedArea,
       fillPercent: Math.round(fill * 10) / 10,

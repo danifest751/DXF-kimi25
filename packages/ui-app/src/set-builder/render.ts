@@ -646,7 +646,7 @@ export function renderPreviewModal(
           <div class="sb-modal-title">
             <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${prevSheet?.id ?? ''}" ${!prevSheet ? 'disabled' : ''} title="${prevSheet?.id.toUpperCase() ?? ''}">${iconChevronLeft}</button>
             <div class="sb-modal-title-text">
-              <span class="sb-modal-name">${t('setBuilder.sheet')} ${sheetIdx + 1}</span>
+              <span class="sb-modal-name">${t('setBuilder.sheet')} ${sheetIdx + 1}${sheet.materialId ? ` · ${esc(formatMaterialLabel(sheet.materialId))}` : ''}</span>
               <span class="sb-modal-catalog">${sheet.sheetWidth} × ${sheet.sheetHeight} ${t('unit.mm')}</span>
             </div>
             <button class="sb-icon sb-modal-nav" data-a="preview-sheet" data-sheet="${nextSheet?.id ?? ''}" ${!nextSheet ? 'disabled' : ''} title="${nextSheet?.id.toUpperCase() ?? ''}">${iconChevronRight}</button>
@@ -894,20 +894,9 @@ export function renderMain(
                 ` : ''}
                 ${!state.results
                   ? `<div class="sb-empty">${t('setBuilder.empty.runToSee')}</div>`
-                  : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => `
-                    <div class="sb-sheet-card">
-                      <div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>
-                      ${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, false, state.manualPlacements.get(sheet.id), true)}
-                      <div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div>
-                      <div class="sb-sheet-actions">
-                        <button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button>
-                        <button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button>
-                      </div>
-                      ${sheet.hash
-                        ? `<code class="sb-hash-code" data-a="copy-hash" data-hash="${sheet.hash}" title="${t('setBuilder.copyHash')}">${sheet.hash}</code>`
-                        : `<span class="sb-hash-code sb-hash-code--empty">—</span>`}
-                    </div>
-                  `).join('')}</div>`}
+                  : `<div class="sb-sheets-grid">${state.results.sheets.map((sheet, index) => {
+                    const matLabel = sheet.materialId ? formatMaterialLabel(sheet.materialId) : null;
+                    return `<div class="sb-sheet-card">${matLabel ? `<div class="sb-sheet-material">${esc(matLabel)}</div>` : ''}<div class="sb-sheet-head"><b>${sheet.id.toUpperCase()}</b><span>${sheet.utilization}%</span></div>${buildSheetPlacementsMarkup(sheet, dxfThumbCache, true, false, state.manualPlacements.get(sheet.id), true)}<div class="sb-sheet-meta">${sheet.partCount} ${t('setBuilder.parts')}</div><div class="sb-sheet-actions"><button class="sb-btn" data-a="export-sheet" data-index="${index}">${t('setBuilder.exportDxf')}</button><button class="sb-btn" data-a="preview-sheet" data-sheet="${sheet.id}">${t('setBuilder.openPreview')}</button></div>${sheet.hash ? `<code class="sb-hash-code" data-a="copy-hash" data-hash="${sheet.hash}" title="${t('setBuilder.copyHash')}">${sheet.hash}</code>` : `<span class="sb-hash-code sb-hash-code--empty">—</span>`}</div>`;}).join('')}</div>`}
               </div>
             </div>
           ` : `
