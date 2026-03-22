@@ -13,6 +13,7 @@ export const ru = {
   'toolbar.logout': 'Выйти',
   'toolbar.logout.title': 'Выйти из воркспейса',
   'toolbar.guest': 'Гость',
+  'theme.toggle': 'Сменить тему',
 
   // Sidebar
   'sidebar.title': 'Файлы и каталоги',

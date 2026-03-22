@@ -1,0 +1,264 @@
+/**
+ * @file themes.css
+ * Дополнительные темы оформления.
+ * Базовые переменные определены в base.css (:root)
+ * 
+ * Темы применяются через класс на <html>:
+ * <html class="theme-dark">  — темная (по умолчанию)
+ * <html class="theme-light"> — светлая
+ * <html class="theme-sepia"> — сепия (теплая)
+ * <html class="theme-blue">  — синяя (холодная)
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME: LIGHT — Светлая тема
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-light {
+  /* Фон — светлые оттенки */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --bg-active: #cbd5e1;
+  --bg-overlay: rgba(248, 250, 252, 0.9);
+  
+  /* Акценты — приглушенные, но читаемые */
+  --accent-primary: #0369a1;
+  --accent-secondary: #7c3aed;
+  --accent-success: #047857;
+  --accent-warning: #b45309;
+  --accent-danger: #dc2626;
+  --accent-info: #0369a1;
+  
+  /* Акценты с эффектами */
+  --accent-glow: rgba(3, 105, 161, 0.12);
+  --success-glow: rgba(4, 120, 87, 0.12);
+  --danger-glow: rgba(220, 38, 38, 0.12);
+  
+  /* Текст — темный на светлом */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-dim: #64748b;
+  --text-muted: #94a3b8;
+  
+  /* Границы — мягкие серые */
+  --border: rgba(0, 0, 0, 0.06);
+  --border-light: rgba(0, 0, 0, 0.1);
+  --border-accent: rgba(3, 105, 161, 0.35);
+  
+  /* Тени — мягкие */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.14);
+  
+  /* Свечение — приглушенное */
+  --glow-primary: 0 0 15px rgba(3, 105, 161, 0.2);
+  --glow-success: 0 0 15px rgba(4, 120, 87, 0.2);
+  --glow-warning: 0 0 15px rgba(180, 83, 9, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME: SEPIA — Теплая тема (для чтения)
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-sepia {
+  /* Фон — теплые песочные оттенки */
+  --bg-primary: #f5f0e6;
+  --bg-secondary: #faf6ed;
+  --bg-tertiary: #ede5d8;
+  --bg-hover: #e5dcc8;
+  --bg-active: #d9ceb8;
+  --bg-overlay: rgba(245, 240, 230, 0.92);
+  
+  /* Акценты — приглушенные коричневые/оранжевые */
+  --accent-primary: #9a6b35;
+  --accent-secondary: #8b5a2b;
+  --accent-success: #6b8b35;
+  --accent-warning: #b8860b;
+  --accent-danger: #a04040;
+  --accent-info: #6b7394;
+  
+  /* Акценты с эффектами */
+  --accent-glow: rgba(154, 107, 53, 0.12);
+  --success-glow: rgba(107, 139, 53, 0.12);
+  --danger-glow: rgba(160, 64, 64, 0.12);
+  
+  /* Текст — темно-коричневый */
+  --text-primary: #3d3126;
+  --text-secondary: #5c4d3d;
+  --text-dim: #7a6b5a;
+  --text-muted: #9a8b7a;
+  
+  /* Границы — теплые серые */
+  --border: rgba(61, 49, 38, 0.08);
+  --border-light: rgba(61, 49, 38, 0.14);
+  --border-accent: rgba(154, 107, 53, 0.35);
+  
+  /* Тени — теплые */
+  --shadow-sm: 0 1px 3px rgba(61, 49, 38, 0.1);
+  --shadow-md: 0 4px 12px rgba(61, 49, 38, 0.12);
+  --shadow-lg: 0 8px 24px rgba(61, 49, 38, 0.14);
+  --shadow-xl: 0 16px 40px rgba(61, 49, 38, 0.16);
+  
+  /* Свечение — теплое */
+  --glow-primary: 0 0 15px rgba(154, 107, 53, 0.15);
+  --glow-success: 0 0 15px rgba(107, 139, 53, 0.15);
+  --glow-warning: 0 0 15px rgba(184, 134, 11, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME: BLUE — Синяя холодная тема
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-blue {
+  /* Фон — глубокие синие оттенки */
+  --bg-primary: #0a1628;
+  --bg-secondary: #0f2140;
+  --bg-tertiary: #152a50;
+  --bg-hover: #1c3560;
+  --bg-active: #244075;
+  --bg-overlay: rgba(10, 22, 40, 0.9);
+  
+  /* Акценты — яркий синий/голубой */
+  --accent-primary: #38bdf8;
+  --accent-secondary: #818cf8;
+  --accent-success: #34d399;
+  --accent-warning: #fbbf24;
+  --accent-danger: #f87171;
+  --accent-info: #38bdf8;
+  
+  /* Акценты с эффектами */
+  --accent-glow: rgba(56, 189, 248, 0.15);
+  --success-glow: rgba(52, 211, 153, 0.15);
+  --danger-glow: rgba(248, 113, 113, 0.15);
+  
+  /* Текст — светлый на темном */
+  --text-primary: #f0f9ff;
+  --text-secondary: #94a3b8;
+  --text-dim: #64748b;
+  --text-muted: #475569;
+  
+  /* Границы — синеватые */
+  --border: rgba(56, 189, 248, 0.08);
+  --border-light: rgba(56, 189, 248, 0.15);
+  --border-accent: rgba(56, 189, 248, 0.35);
+  
+  /* Тени — синие */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+  
+  /* Свечение — голубое */
+  --glow-primary: 0 0 20px rgba(56, 189, 248, 0.3);
+  --glow-success: 0 0 20px rgba(52, 211, 153, 0.3);
+  --glow-warning: 0 0 20px rgba(251, 191, 36, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME: DARK — Темная тема (по умолчанию)
+   Определена в base.css как :root, но дублируется здесь
+   для консистентности и возможности явного переключения
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-dark {
+  /* Фон */
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #121826;
+  --bg-tertiary: #1a2236;
+  --bg-hover: #232d45;
+  --bg-active: #2d3a5a;
+  --bg-overlay: rgba(10, 14, 26, 0.85);
+  
+  /* Акценты */
+  --accent-primary: #00d4ff;
+  --accent-secondary: #7b2cbf;
+  --accent-success: #00ff9d;
+  --accent-warning: #ffaa00;
+  --accent-danger: #ff4757;
+  --accent-info: #00d4ff;
+  
+  /* Акценты с эффектами */
+  --accent-glow: rgba(0, 212, 255, 0.15);
+  --success-glow: rgba(0, 255, 157, 0.15);
+  --danger-glow: rgba(255, 71, 87, 0.15);
+  
+  /* Текст */
+  --text-primary: #ffffff;
+  --text-secondary: #a0aec0;
+  --text-dim: #718096;
+  --text-muted: #4a5568;
+  
+  /* Границы */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(0, 212, 255, 0.3);
+  
+  /* Тени */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
+  
+  /* Свечение */
+  --glow-primary: 0 0 20px rgba(0, 212, 255, 0.3);
+  --glow-success: 0 0 20px rgba(0, 255, 157, 0.3);
+  --glow-warning: 0 0 20px rgba(255, 170, 0, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SYSTEM PREFERENCE — Автоматическая тема по настройкам ОС
+   Использовать если нет явной темы в настройках
+   ═══════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light) {
+  :root:not(.theme-dark):not(.theme-light):not(.theme-sepia):not(.theme-blue) {
+    /* Наследует от .theme-light */
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f1f5f9;
+    --bg-hover: #e2e8f0;
+    --bg-active: #cbd5e1;
+    --bg-overlay: rgba(248, 250, 252, 0.9);
+    
+    --accent-primary: #0369a1;
+    --accent-secondary: #7c3aed;
+    --accent-success: #047857;
+    --accent-warning: #b45309;
+    --accent-danger: #dc2626;
+    --accent-info: #0369a1;
+    
+    --accent-glow: rgba(3, 105, 161, 0.12);
+    --success-glow: rgba(4, 120, 87, 0.12);
+    --danger-glow: rgba(220, 38, 38, 0.12);
+    
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-dim: #64748b;
+    --text-muted: #94a3b8;
+    
+    --border: rgba(0, 0, 0, 0.06);
+    --border-light: rgba(0, 0, 0, 0.1);
+    --border-accent: rgba(3, 105, 161, 0.35);
+    
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.14);
+    
+    --glow-primary: 0 0 15px rgba(3, 105, 161, 0.2);
+    --glow-success: 0 0 15px rgba(4, 120, 87, 0.2);
+    --glow-warning: 0 0 15px rgba(180, 83, 9, 0.2);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME TRANSITIONS — Плавные переходы между темами
+   ═══════════════════════════════════════════════════════════════════ */
+.theme-dark,
+.theme-light,
+.theme-sepia,
+.theme-blue {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}

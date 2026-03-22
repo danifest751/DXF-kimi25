@@ -11,10 +11,53 @@ import { renderBatchModal } from './optimizer/batch-render.js';
 import type { BatchOptimizerState } from './optimizer/batch-types.js';
 import type { OptimizerState } from './optimizer/types.js';
 import { esc, fmtLen, sortMark, statusLabel, thumbSvg } from './utils.js';
-import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip, iconMove, iconResave, iconAutoArrange } from './icons.js';
+import { iconClose, iconChevronLeft, iconChevronRight, iconChevronDown, iconEye, iconDots, iconWrench, iconTrash, iconHexagon, iconHexagonFilled, iconPencil, iconFolder, iconLightning, iconSplit, iconZip, iconMove, iconResave, iconAutoArrange, iconSun, iconMoon, iconTheme } from './icons.js';
 import { computeSplitParts } from './split-modal.js';
 import type { SheetPreset } from './context.js';
 import { getVisibleLibraryItems } from './library.js';
+
+// ─── Theme helpers ─────────────────────────────────────────────────────
+
+const VALID_THEMES = ['dark', 'light', 'sepia', 'blue'] as const;
+export type ThemeName = typeof VALID_THEMES[number];
+
+let _cachedTheme: ThemeName = 'dark';
+
+export function getCurrentTheme(): ThemeName {
+  const html = document.documentElement;
+  for (const theme of VALID_THEMES) {
+    if (html.classList.contains(`theme-${theme}`)) {
+      _cachedTheme = theme;
+      return theme;
+    }
+  }
+  return _cachedTheme;
+}
+
+export function getThemeIcon(theme?: ThemeName): string {
+  const current = theme ?? getCurrentTheme();
+  switch (current) {
+    case 'light': return iconMoon;  // Show moon to switch to dark
+    case 'dark': return iconSun;    // Show sun to switch to light
+    case 'sepia': return iconSun;   // Show sun to switch
+    case 'blue': return iconMoon;   // Show moon to switch
+    default: return iconTheme;
+  }
+}
+
+export function applyTheme(theme: ThemeName): void {
+  document.documentElement.classList.remove('theme-dark', 'theme-light', 'theme-sepia', 'theme-blue');
+  document.documentElement.classList.add(`theme-${theme}`);
+  _cachedTheme = theme;
+}
+
+export function cycleTheme(): ThemeName {
+  const current = getCurrentTheme();
+  const idx = VALID_THEMES.indexOf(current);
+  const next = VALID_THEMES[(idx + 1) % VALID_THEMES.length];
+  applyTheme(next);
+  return next;
+}
 
 export interface RenderSnapshot {
   libCount: number;
@@ -788,6 +831,7 @@ export function renderMain(
         ${brandMarkup}
         <div class="sb-topbar-actions">
           <span class="sb-auth-pill" title="${esc(authWorkspaceLabel)}">${esc(authWorkspaceLabel)}</span>
+          <button class="sb-btn sb-btn--ghost" data-a="theme-toggle" title="${t('theme.toggle') ?? 'Toggle theme'}">${getThemeIcon()}</button>
           <button class="sb-btn sb-btn--ghost" data-a="lang-toggle">${localeLabel}</button>
           <button class="sb-btn sb-btn--ghost" data-a="tg-login">${authActive ? t('auth.changeAccount') : t('toolbar.login')}</button>
           ${authActive ? `<button class="sb-btn sb-btn--ghost" data-a="tg-logout">${t('toolbar.logout')}</button>` : ''}

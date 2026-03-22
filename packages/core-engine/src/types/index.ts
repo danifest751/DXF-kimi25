@@ -515,7 +515,7 @@ export interface LayerVisibility {
 // ─── Настройки приложения ───────────────────────────────────────────
 
 /** Тема оформления */
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'sepia' | 'blue';
 
 /** Настройки приложения */
 export interface AppSettings {

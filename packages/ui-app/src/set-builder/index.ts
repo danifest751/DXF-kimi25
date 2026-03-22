@@ -19,13 +19,14 @@ import type { SheetPreset } from './context.js';
 import { hydrateState, persistState, saveMaterials, loadMaterials, loadMaterialsFromServer, syncMaterialsToServer, applyPendingSet, applyPendingMaterials, migrateGuestMaterialsToServer } from './persist.js';
 import { syncLoadedFilesIntoLibrary, getVisibleLibraryItems, removeLibraryItem, moveLibraryItemToCatalog, moveLibraryItemToCatalogName, downloadLibraryItemSource, addCatalog, renameCurrentCatalog, deleteCurrentCatalog, downloadCatalogZip } from './library.js';
 import { runNesting, exportSheetByIndex, reshareSheet, buildSingleSheetResult } from './nesting.js';
-import { renderMain, snapshotState, snapshotsEqual, clearSheetMarkupCache } from './render.js';
+import { renderMain, snapshotState, snapshotsEqual, clearSheetMarkupCache, cycleTheme, getThemeIcon } from './render.js';
 import { createThumbQueueController } from './thumb-queue.js';
 import type { RenderSnapshot } from './render.js';
 import { applyModalPierceCanvas, createModalCanvasState, resetModalCanvasState } from './canvas-modal.js';
 import type { ModalCanvasState } from './canvas-modal.js';
 import { getGradesByGroup, getThicknessesByGrade, findMaterial, formatWeightKg, calcWeightKg } from './materials.js';
 import { esc } from './utils.js';
+import { getSettings, saveSettings } from '../store/index.js';
 import { analyzeFile, optimizeFile, downloadOptimizedDxf, downloadReportJson, createOptimizerState } from './optimizer/index.js';
 import { loadLibraryCache, saveLibraryCache, clearLibraryCache } from './library-cache.js';
 import type { OptimizerState } from './optimizer/types.js';
@@ -492,6 +493,14 @@ export function initSetBuilder(root: HTMLDivElement, trigger: HTMLButtonElement)
     if (action === 'close') { toggleOpen(false); return; }
     if (action === 'upload') { fileInput.click(); return; }
     if (action === 'lang-toggle') { setLocale(getLocale() === 'ru' ? 'en' : 'ru'); return; }
+    if (action === 'theme-toggle') {
+      const nextTheme = cycleTheme();
+      void saveSettings({ theme: nextTheme });
+      // Update icon in button after theme changed
+      const themeBtn = root.querySelector<HTMLButtonElement>('[data-a="theme-toggle"]');
+      if (themeBtn) themeBtn.innerHTML = getThemeIcon(nextTheme);
+      return;
+    }
     if (action === 'tg-login') { void runTelegramLoginFlow().then(() => scheduleRender()); return; }
     if (action === 'tg-logout') { void logoutWorkspace().then(() => scheduleRender()); return; }
     if (action === 'catalog-add') { void addCatalog(state, authSessionToken, showToast, render); return; }

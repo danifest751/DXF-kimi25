@@ -137,3 +137,27 @@ export const iconWarning = svg(
    <line x1="8" y1="7" x2="8" y2="10"/>
    <circle cx="8" cy="12" r="0.5" fill="currentColor" stroke="none"/>`,
 );
+
+/** ☀ Sun / light theme icon */
+export const iconSun = svg(
+  `<circle cx="8" cy="8" r="3"/>
+   <line x1="8" y1="1" x2="8" y2="3"/>
+   <line x1="8" y1="13" x2="8" y2="15"/>
+   <line x1="1" y1="8" x2="3" y2="8"/>
+   <line x1="13" y1="8" x2="15" y2="8"/>
+   <line x1="3" y1="3" x2="4.5" y2="4.5"/>
+   <line x1="11.5" y1="11.5" x2="13" y2="13"/>
+   <line x1="13" y1="3" x2="11.5" y2="4.5"/>
+   <line x1="4.5" y1="11.5" x2="3" y2="13"/>`,
+);
+
+/** ☾ Moon / dark theme icon */
+export const iconMoon = svg(
+  `<path d="M12 3a6 6 0 0 0 0 12 6 6 0 0 1 0-12z"/>`,
+);
+
+/** ◐ Half-filled circle / sepia/blue theme icon */
+export const iconTheme = svg(
+  `<path d="M12 2v12A10 10 0 1 1 2 12"/>`,
+  `stroke-dasharray="4 2"`,
+);

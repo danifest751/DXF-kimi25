@@ -15,6 +15,7 @@ export const en: Record<TranslationKey, string> = {
   'toolbar.logout': 'Sign out',
   'toolbar.logout.title': 'Sign out of workspace',
   'toolbar.guest': 'Guest',
+  'theme.toggle': 'Toggle theme',
 
   // Sidebar
   'sidebar.title': 'Files & Catalogs',
